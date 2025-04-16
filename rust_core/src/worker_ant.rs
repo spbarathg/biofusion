@@ -93,6 +93,17 @@ impl WorkerAnt {
         // TODO: Implement trade execution
         Ok(())
     }
+
+    pub async fn get_metrics(&self) -> Result<serde_json::Value> {
+        let mut metrics = serde_json::Map::new();
+        
+        metrics.insert("id".to_string(), serde_json::Value::String(self.id.clone()));
+        metrics.insert("is_active".to_string(), serde_json::Value::Bool(*self.is_active.lock().await));
+        metrics.insert("trades_executed".to_string(), serde_json::Value::Number((*self.trades_executed.lock().await).into()));
+        metrics.insert("total_profit".to_string(), serde_json::Value::Number((*self.total_profit.lock().await).into()));
+        
+        Ok(serde_json::Value::Object(metrics))
+    }
 }
 
 #[cfg(test)]
@@ -107,6 +118,9 @@ mod tests {
             max_slippage: 0.02,
             max_trade_size: 1.0,
             min_liquidity: 1000.0,
+            max_hold_time: 3600,
+            target_trades_per_minute: 1,
+            max_concurrent_trades: 3,
         };
         
         let dex_client = Arc::new(DexClient::new().unwrap());

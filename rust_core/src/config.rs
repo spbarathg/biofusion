@@ -6,6 +6,7 @@ use tokio::sync::RwLock;
 use anyhow::{Result, anyhow};
 use log::{info, warn, error};
 use serde_yaml::Value;
+use solana_sdk::commitment_config;
 
 /// Worker configuration settings
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -18,6 +19,13 @@ pub struct WorkerConfig {
     pub max_hold_time: u32,
     pub target_trades_per_minute: u32,
     pub max_concurrent_trades: u32,
+}
+
+/// RPC configuration settings
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RpcConfig {
+    pub rpc_url: String,
+    pub commitment: commitment_config::CommitmentConfig,
 }
 
 /// Network configuration settings
@@ -230,6 +238,31 @@ pub async fn get_config() -> Config {
 /// Reload configuration from file
 pub async fn reload_config() -> Result<()> {
     CONFIG_MANAGER.reload_config().await
+}
+
+impl NetworkConfig {
+    pub fn to_rpc_config(&self) -> RpcConfig {
+        RpcConfig {
+            rpc_url: self.rpc_endpoint.clone(),
+            commitment: match self.commitment.as_str() {
+                "confirmed" => commitment_config::CommitmentConfig::confirmed(),
+                "finalized" => commitment_config::CommitmentConfig::finalized(),
+                "processed" => commitment_config::CommitmentConfig::processed(),
+                _ => commitment_config::CommitmentConfig::confirmed(),
+            },
+        }
+    }
+}
+
+/// Get RPC configuration
+pub fn get_rpc_config() -> Result<RpcConfig> {
+    // This is a blocking version that can be used in sync contexts
+    use tokio::runtime::Runtime;
+    
+    let rt = Runtime::new()?;
+    let network_config = rt.block_on(get_network_config());
+    
+    Ok(network_config.to_rpc_config())
 }
 
 #[cfg(test)]

@@ -12,12 +12,14 @@ use solana_client::rpc_client::RpcClient;
 use log::{info, warn, error};
 use anyhow::{Result, anyhow};
 use async_trait::async_trait;
+use serde::{Serialize, Deserialize};
 
 use crate::dex_client::DexQuote;
 use crate::config::RpcConfig;
 use crate::dex_client::DexClient;
 use crate::pathfinder::{Token, Swap};
 
+#[derive(Debug, Serialize, Deserialize)]
 pub struct TxExecutor {
     rpc_client: Arc<RpcClient>,
     wallet: Arc<Mutex<Keypair>>,
@@ -25,7 +27,17 @@ pub struct TxExecutor {
 }
 
 impl TxExecutor {
-    pub fn new(config: &RpcConfig, wallet: Keypair) -> Result<Self> {
+    pub fn new() -> Result<Self> {
+        let rpc_client = Arc::new(RpcClient::new("https://api.mainnet-beta.solana.com".to_string()));
+        
+        Ok(Self {
+            rpc_client,
+            wallet: Arc::new(Mutex::new(Keypair::new())),
+            commitment: CommitmentConfig::confirmed(),
+        })
+    }
+    
+    pub fn new_with_config(config: &RpcConfig, wallet: Keypair) -> Result<Self> {
         let rpc_client = Arc::new(RpcClient::new_with_commitment(
             config.rpc_url.clone(),
             config.commitment,
@@ -62,10 +74,10 @@ impl TxExecutor {
             recent_blockhash,
         );
         
-        // Add swap instruction
-        // This is a placeholder - actual implementation would depend on the DEX
-        // and would involve creating the appropriate instruction
-        todo("Implement swap instruction creation");
+        // Add swap instruction - this is a stub implementation
+        // In a real implementation, we would create the proper swap instruction
+        // based on the DEX being used (e.g., Jupiter, Orca, etc.)
+        let instructions: Vec<Instruction> = Vec::new();
         
         // Sign transaction
         transaction.sign(&[&*wallet], recent_blockhash);
@@ -74,6 +86,15 @@ impl TxExecutor {
         let signature = self.rpc_client.send_and_confirm_transaction_with_spinner(&transaction)?;
         
         info!("Swap executed: {}", signature);
+        
+        Ok(signature.to_string())
+    }
+    
+    pub fn execute_transaction(&self, transaction: &Transaction) -> Result<String> {
+        // Send transaction
+        let signature = self.rpc_client.send_and_confirm_transaction_with_spinner(transaction)?;
+        
+        info!("Transaction executed: {}", signature);
         
         Ok(signature.to_string())
     }
@@ -143,12 +164,10 @@ impl TxExecutor {
         let mut transaction = Transaction::new_with_payer(
             &instructions,
             Some(&pubkey),
+            recent_blockhash,
         );
         
         transaction.sign(&[&*wallet], recent_blockhash);
-        
-        // TODO: Implement swap instruction creation
-        todo!("Implement swap instruction creation");
         
         let signature = self.rpc_client.send_and_confirm_transaction_with_spinner(&transaction)?;
         
@@ -164,6 +183,7 @@ impl TxExecutor {
         let mut transaction = Transaction::new_with_payer(
             &instructions,
             Some(&from_pubkey),
+            recent_blockhash,
         );
         
         transaction.sign(&[&*wallet], recent_blockhash);

@@ -33,7 +33,7 @@ impl Colony {
     pub async fn add_worker(&mut self, worker_id: String) -> Result<()> {
         let config = get_worker_config()?;
         let dex_client = Arc::new(DexClient::new()?);
-        let tx_executor = Arc::new(TxExecutor::new(&config.rpc_config, Keypair::new())?);
+        let tx_executor = Arc::new(TxExecutor::new()?);
         
         let worker = WorkerAnt::new(
             worker_id.clone(),
@@ -44,6 +44,7 @@ impl Colony {
         );
         
         self.workers.insert(worker_id, Arc::new(worker));
+        
         Ok(())
     }
 

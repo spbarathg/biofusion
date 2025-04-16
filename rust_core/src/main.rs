@@ -2,6 +2,7 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 use log::{info, error};
 use anyhow::Result;
+use solana_sdk::keypair::Keypair;
 
 mod worker_ant;
 mod pathfinder;
@@ -53,6 +54,7 @@ async fn main() -> Result<()> {
         worker_config,
         dex_client,
         tx_executor,
+        Keypair::new(),
     );
 
     // Start trading loop
@@ -74,6 +76,9 @@ mod tests {
             max_slippage: 0.02,
             max_trade_size: 1.0,
             min_liquidity: 1000.0,
+            max_hold_time: 3600,
+            target_trades_per_minute: 1,
+            max_concurrent_trades: 3,
         };
         
         let dex_client = Arc::new(DexClient::new().unwrap());
@@ -84,6 +89,7 @@ mod tests {
             worker_config,
             dex_client,
             tx_executor,
+            Keypair::new(),
         );
         
         assert_eq!(worker.id, "test_worker");
