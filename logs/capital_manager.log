@@ -1,0 +1,4 @@
+2025-04-17 02:19:35.969 | INFO     | __main__:process_profits:53 - Processing 2.0 SOL in profits from test_wal
+2025-04-17 02:19:35.970 | WARNING  | __main__:todo:10 - TODO: Implement savings transfer
+2025-04-17 02:19:35.971 | INFO     | __main__:process_profits:65 - Allocated 1.8 SOL to savings, 0.19999999999999996 SOL for trading
+2025-04-17 02:19:40.829 | INFO     | __main__:compound_savings:77 - Not time to compound yet. 14.2 hours remaining

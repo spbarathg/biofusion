@@ -1,0 +1,5 @@
+2025-04-17 02:19:11.972 | INFO     | __main__:initialize:53 - Initializing princess test_wallet with 5.0 SOL
+2025-04-17 02:19:11.973 | WARNING  | __main__:todo:10 - TODO: Implement wallet balance checking
+2025-04-17 02:19:11.973 | WARNING  | __main__:todo:10 - TODO: Implement wallet balance checking
+2025-04-17 02:19:11.973 | INFO     | __main__:monitor_growth:65 - Princess test_wal growth rate: -100.00%
+2025-04-17 02:19:11.973 | INFO     | __main__:monitor_growth:66 - Princess test_wal maturity level: 0.00

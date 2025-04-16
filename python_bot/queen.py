@@ -6,17 +6,26 @@ from dataclasses import dataclass
 from pathlib import Path
 from loguru import logger
 
+def todo(message: str):
+    logger.warning(f"TODO: {message}")
+    pass
+
 @dataclass
 class ColonyConfig:
     initial_capital: float
     min_princess_capital: float
     max_workers_per_vps: int
-    savings_ratio: float
-    profit_threshold: float
+    max_workers: int
+    min_workers: int
+    worker_timeout: int
+    health_check_interval: int
 
 class Queen:
     def __init__(self, config_path: str = "config/settings.yaml"):
         self.config = self._load_config(config_path)
+        with open(config_path, 'r') as f:
+            full_config = yaml.safe_load(f)
+            self.savings_ratio = full_config['capital']['savings_ratio']
         self.colony_state = {
             "queen_wallet": None,
             "princess_wallets": [],
@@ -38,7 +47,7 @@ class Queen:
     def _load_config(self, config_path: str) -> ColonyConfig:
         with open(config_path, 'r') as f:
             config = yaml.safe_load(f)
-        return ColonyConfig(**config)
+        return ColonyConfig(**config['colony'])
 
     async def initialize_colony(self, initial_capital: float) -> None:
         """Initialize the colony with founding capital."""
@@ -116,8 +125,8 @@ class Queen:
             total_profits += profits
         
         # Split profits between savings and reinvestment
-        savings_amount = total_profits * self.config.savings_ratio
-        reinvestment = total_profits * (1 - self.config.savings_ratio)
+        savings_amount = total_profits * self.savings_ratio
+        reinvestment = total_profits * (1 - self.savings_ratio)
         
         # Send to savings
         await self._transfer_capital(
@@ -161,11 +170,13 @@ class Queen:
         """Get total available capital for new workers."""
         # Implement available capital calculation
         todo("Implement available capital calculation")
+        return 0.0
 
     async def _collect_wallet_profits(self, wallet: str) -> float:
         """Collect profits from a wallet."""
         # Implement profit collection logic
         todo("Implement profit collection")
+        return 0.0
 
 if __name__ == "__main__":
     import asyncio

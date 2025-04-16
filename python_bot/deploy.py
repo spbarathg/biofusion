@@ -8,6 +8,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from loguru import logger
 
+def todo(message: str):
+    logger.warning(f"TODO: {message}")
+    pass
+
 @dataclass
 class DeployConfig:
     vps_provider: str
