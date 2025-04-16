@@ -11,7 +11,7 @@ def main():
     dashboard_path = Path(__file__).parent / "dashboard.py"
     
     # Run the Streamlit dashboard
-    subprocess.run([sys.executable, "-m", "streamlit", "run", str(dashboard_path)])
+    subprocess.run([sys.executable, "-m", "streamlit", "run", str(dashboard_path), "--server.address=0.0.0.0", "--server.port=8501"])
 
 if __name__ == "__main__":
     main() 
