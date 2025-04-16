@@ -48,10 +48,10 @@ impl DexProvider for JupiterClient {
     async fn get_quote(&self, input_token: &str, output_token: &str, amount: f64) -> Result<DexQuote> {
         let url = format!(
             "{}/quote?inputMint={}&outputMint={}&amount={}&slippageBps=50",
-            this.base_url, input_token, output_token, amount
+            self.base_url, input_token, output_token, amount
         );
         
-        let response = this.client.get(&url).send().await?;
+        let response = self.client.get(&url).send().await?;
         let quote: DexQuote = response.json().await?;
         
         Ok(quote)
@@ -64,15 +64,15 @@ impl DexProvider for JupiterClient {
     
     async fn get_token_info(&self, token_address: &str) -> Result<Token> {
         // Check cache first
-        let mut cache = this.token_cache.lock().await;
+        let mut cache = self.token_cache.lock().await;
         
         if let Some(token) = cache.get(token_address) {
             return Ok(token.clone());
         }
         
         // Fetch from API
-        let url = format!("{}/token/{}", this.base_url, token_address);
-        let response = this.client.get(&url).send().await?;
+        let url = format!("{}/token/{}", self.base_url, token_address);
+        let response = self.client.get(&url).send().await?;
         let token: Token = response.json().await?;
         
         // Update cache
@@ -112,15 +112,15 @@ impl DexProvider for OrcaClient {
     
     async fn get_token_info(&self, token_address: &str) -> Result<Token> {
         // Check cache first
-        let mut cache = this.token_cache.lock().await;
+        let mut cache = self.token_cache.lock().await;
         
         if let Some(token) = cache.get(token_address) {
             return Ok(token.clone());
         }
         
         // Fetch from API
-        let url = format!("{}/token/{}", this.base_url, token_address);
-        let response = this.client.get(&url).send().await?;
+        let url = format!("{}/token/{}", self.base_url, token_address);
+        let response = self.client.get(&url).send().await?;
         let token: Token = response.json().await?;
         
         // Update cache
@@ -155,7 +155,7 @@ impl DexClient {
         let mut best_quote: Option<DexQuote> = None;
         let mut best_output = 0.0;
         
-        for provider in &this.providers {
+        for provider in &self.providers {
             match provider.get_quote(input_token, output_token, amount).await {
                 Ok(quote) => {
                     if quote.output_amount > best_output {
@@ -174,7 +174,7 @@ impl DexClient {
     
     pub async fn execute_swap(&self, quote: &DexQuote) -> Result<String> {
         // Find the provider that generated this quote
-        for provider in &this.providers {
+        for provider in &self.providers {
             match provider.execute_swap(quote).await {
                 Ok(tx_hash) => return Ok(tx_hash),
                 Err(e) => {
@@ -188,14 +188,14 @@ impl DexClient {
     
     pub async fn get_token_info(&self, token_address: &str) -> Result<Token> {
         // Check cache first
-        let mut cache = this.token_cache.lock().await;
+        let mut cache = self.token_cache.lock().await;
         
         if let Some(token) = cache.get(token_address) {
             return Ok(token.clone());
         }
         
         // Try each provider
-        for provider in &this.providers {
+        for provider in &self.providers {
             match provider.get_token_info(token_address).await {
                 Ok(token) => {
                     // Update cache
@@ -209,6 +209,107 @@ impl DexClient {
         }
         
         Err(anyhow!("Failed to get token info from any provider"))
+    }
+
+    pub async fn get_token_info_force_refresh(&self, token_address: &str) -> Result<Token> {
+        let url = format!("{}/token/{}", self.base_url, token_address);
+        let response = self.client.get(&url).send().await?;
+        let token: Token = response.json().await?;
+        
+        Ok(token)
+    }
+
+    pub async fn get_available_tokens(&self) -> Result<Vec<Token>> {
+        let mut tokens = Vec::new();
+        
+        for provider in &self.providers {
+            match provider.get_token_info("").await {
+                Ok(token) => {
+                    tokens.push(token);
+                }
+                Err(e) => {
+                    warn!("Failed to get token info from provider: {}", e);
+                }
+            }
+        }
+        
+        Ok(tokens)
+    }
+
+    pub async fn get_token_pairs(&self) -> Result<Vec<(Token, Token)>> {
+        let mut pairs = Vec::new();
+        
+        for provider in &self.providers {
+            match provider.get_token_info("").await {
+                Ok(token) => {
+                    for provider in &self.providers {
+                        match provider.get_token_info(&token.address).await {
+                            Ok(token_pair) => {
+                                pairs.push((token.clone(), token_pair.clone()));
+                            }
+                            Err(e) => {
+                                warn!("Failed to get token pair from provider: {}", e);
+                            }
+                        }
+                    }
+                }
+                Err(e) => {
+                    warn!("Failed to get token info from provider: {}", e);
+                }
+            }
+        }
+        
+        Ok(pairs)
+    }
+
+    pub async fn get_token_pairs_for_provider(&self, provider: &str) -> Result<Vec<(Token, Token)>> {
+        // Check cache first
+        let mut cache = self.token_cache.lock().await;
+        
+        if let Some(token) = cache.get(provider) {
+            let mut pairs = Vec::new();
+            
+            for provider in &self.providers {
+                match provider.get_token_info(&token.address).await {
+                    Ok(token_pair) => {
+                        pairs.push((token.clone(), token_pair.clone()));
+                    }
+                    Err(e) => {
+                        warn!("Failed to get token pair from provider: {}", e);
+                    }
+                }
+            }
+            
+            Ok(pairs)
+        } else {
+            Err(anyhow!("Token not found in cache"))
+        }
+    }
+
+    pub async fn get_token_pairs_force_refresh(&self, provider: &str) -> Result<Vec<(Token, Token)>> {
+        let mut pairs = Vec::new();
+        
+        for provider in &self.providers {
+            match provider.get_token_info(provider).await {
+                Ok(token) => {
+                    for provider in &self.providers {
+                        match provider.get_token_info(&token.address).await {
+                            Ok(token_pair) => {
+                                pairs.push((token.clone(), token_pair.clone()));
+                            }
+                            Err(e) => {
+                                warn!("Failed to get token pair from provider: {}", e);
+                            }
+                        }
+                    }
+                }
+                Err(e) => {
+                    warn!("Failed to get token info from provider: {}", e);
+                }
+            }
+        }
+        
+        Ok(pairs)
     }
 }
 

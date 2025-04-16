@@ -59,23 +59,22 @@ impl TxExecutor {
         Ok(keypair)
     }
     
-    pub async fn get_balance(&self) -> Result<f64> {
-        let wallet = this.wallet.lock().await;
+    pub async fn get_balance(&self) -> Result<u64> {
+        let wallet = self.wallet.lock().await;
         let pubkey = wallet.pubkey();
         
-        let balance = this.rpc_client.get_balance(&pubkey)?;
+        let balance = self.rpc_client.get_balance(&pubkey)?;
         
-        // Convert lamports to SOL
-        Ok(balance as f64 / 1_000_000_000.0)
+        Ok(balance)
     }
     
     pub async fn execute_swap(&self, quote: &DexQuote) -> Result<String> {
         // Get wallet
-        let wallet = this.wallet.lock().await;
+        let wallet = self.wallet.lock().await;
         let pubkey = wallet.pubkey();
         
         // Get recent blockhash
-        let recent_blockhash = this.rpc_client.get_latest_blockhash()?;
+        let recent_blockhash = self.rpc_client.get_latest_blockhash()?;
         
         // Create transaction
         let mut transaction = Transaction::new_with_payer(
@@ -93,7 +92,7 @@ impl TxExecutor {
         transaction.sign(&[&*wallet], recent_blockhash);
         
         // Send transaction
-        let signature = this.rpc_client.send_and_confirm_transaction_with_spinner(&transaction)?;
+        let signature = self.rpc_client.send_and_confirm_transaction_with_spinner(&transaction)?;
         
         info!("Swap executed: {}", signature);
         
@@ -102,14 +101,14 @@ impl TxExecutor {
     
     pub async fn transfer_sol(&self, to_pubkey: &Pubkey, amount: f64) -> Result<String> {
         // Get wallet
-        let wallet = this.wallet.lock().await;
+        let wallet = self.wallet.lock().await;
         let from_pubkey = wallet.pubkey();
         
         // Convert SOL to lamports
         let lamports = (amount * 1_000_000_000.0) as u64;
         
         // Get recent blockhash
-        let recent_blockhash = this.rpc_client.get_latest_blockhash()?;
+        let recent_blockhash = self.rpc_client.get_latest_blockhash()?;
         
         // Create transfer instruction
         let instruction = system_instruction::transfer(
@@ -129,7 +128,7 @@ impl TxExecutor {
         transaction.sign(&[&*wallet], recent_blockhash);
         
         // Send transaction
-        let signature = this.rpc_client.send_and_confirm_transaction_with_spinner(&transaction)?;
+        let signature = self.rpc_client.send_and_confirm_transaction_with_spinner(&transaction)?;
         
         info!("Transfer executed: {}", signature);
         
@@ -139,7 +138,7 @@ impl TxExecutor {
     pub async fn wait_for_confirmation(&self, signature: &str) -> Result<bool> {
         let signature = signature.parse::<Signature>()?;
         
-        match this.rpc_client.confirm_transaction_with_spinner(&signature, &this.commitment) {
+        match self.rpc_client.confirm_transaction_with_spinner(&signature, &self.commitment) {
             Ok(confirmed) => {
                 if confirmed {
                     info!("Transaction confirmed: {}", signature);
@@ -152,6 +151,55 @@ impl TxExecutor {
             Err(e) => {
                 error!("Error confirming transaction: {}", e);
                 Err(anyhow!("Failed to confirm transaction: {}", e))
+            }
+        }
+    }
+
+    pub async fn send_transaction(&self, instructions: Vec<Instruction>) -> Result<Signature> {
+        let wallet = self.wallet.lock().await;
+        let pubkey = wallet.pubkey();
+        
+        let recent_blockhash = self.rpc_client.get_latest_blockhash()?;
+        
+        let mut transaction = Transaction::new_with_payer(
+            &instructions,
+            Some(&pubkey),
+        );
+        
+        transaction.sign(&[&*wallet], recent_blockhash);
+        
+        // TODO: Implement swap instruction creation
+        todo!("Implement swap instruction creation");
+        
+        let signature = self.rpc_client.send_and_confirm_transaction_with_spinner(&transaction)?;
+        
+        Ok(signature)
+    }
+
+    pub async fn send_transaction_with_retry(&self, instructions: Vec<Instruction>) -> Result<Signature> {
+        let wallet = self.wallet.lock().await;
+        let from_pubkey = wallet.pubkey();
+        
+        let recent_blockhash = self.rpc_client.get_latest_blockhash()?;
+        
+        let mut transaction = Transaction::new_with_payer(
+            &instructions,
+            Some(&from_pubkey),
+        );
+        
+        transaction.sign(&[&*wallet], recent_blockhash);
+        
+        let signature = self.rpc_client.send_and_confirm_transaction_with_spinner(&transaction)?;
+        
+        Ok(signature)
+    }
+
+    pub async fn confirm_transaction(&self, signature: &Signature) -> Result<bool> {
+        match self.rpc_client.confirm_transaction_with_spinner(signature, &self.commitment) {
+            Ok(_) => Ok(true),
+            Err(e) => {
+                error!("Failed to confirm transaction: {}", e);
+                Ok(false)
             }
         }
     }
