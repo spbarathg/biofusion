@@ -3,7 +3,7 @@ use tokio::sync::Mutex;
 use solana_sdk::{
     commitment_config::CommitmentConfig,
     pubkey::Pubkey,
-    signature::{Keypair, Signature},
+    signature::{Keypair, Signature, Signer},
     transaction::Transaction,
     system_instruction,
     instruction::Instruction,
@@ -13,17 +13,70 @@ use log::{info, warn, error};
 use anyhow::{Result, anyhow};
 use async_trait::async_trait;
 use serde::{Serialize, Deserialize};
+use std::fmt;
 
 use crate::dex_client::DexQuote;
 use crate::config::RpcConfig;
 use crate::dex_client::DexClient;
 use crate::pathfinder::{Token, Swap};
 
-#[derive(Debug, Serialize, Deserialize)]
 pub struct TxExecutor {
     rpc_client: Arc<RpcClient>,
     wallet: Arc<Mutex<Keypair>>,
     commitment: CommitmentConfig,
+}
+
+impl fmt::Debug for TxExecutor {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("TxExecutor")
+            .field("commitment", &self.commitment)
+            .field("wallet", &"<redacted>") // Don't print the keypair
+            .finish()
+    }
+}
+
+impl Serialize for TxExecutor {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeStruct;
+        let mut state = serializer.serialize_struct("TxExecutor", 1)?;
+        // We can only serialize the commitment config
+        state.serialize_field("commitment", &self.commitment.commitment)?;
+        state.end()
+    }
+}
+
+impl<'de> Deserialize<'de> for TxExecutor {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        struct Helper {
+            commitment: String,
+        }
+        
+        let helper = Helper::deserialize(deserializer)?;
+        
+        // Create with defaults
+        let commitment = match helper.commitment.as_str() {
+            "confirmed" => CommitmentConfig::confirmed(),
+            "finalized" => CommitmentConfig::finalized(),
+            "processed" => CommitmentConfig::processed(),
+            _ => CommitmentConfig::confirmed(),
+        };
+        
+        Ok(TxExecutor {
+            rpc_client: Arc::new(RpcClient::new_with_commitment(
+                "https://api.mainnet-beta.solana.com".to_string(),
+                commitment,
+            )),
+            wallet: Arc::new(Mutex::new(Keypair::new())),
+            commitment,
+        })
+    }
 }
 
 impl TxExecutor {
@@ -71,8 +124,10 @@ impl TxExecutor {
         let mut transaction = Transaction::new_with_payer(
             &[],
             Some(&pubkey),
-            recent_blockhash,
         );
+        
+        // Set recent blockhash
+        transaction.message.recent_blockhash = recent_blockhash;
         
         // Add swap instruction - this is a stub implementation
         // In a real implementation, we would create the proper swap instruction
@@ -121,8 +176,10 @@ impl TxExecutor {
         let mut transaction = Transaction::new_with_payer(
             &[instruction],
             Some(&from_pubkey),
-            recent_blockhash,
         );
+        
+        // Set recent blockhash
+        transaction.message.recent_blockhash = recent_blockhash;
         
         // Sign transaction
         transaction.sign(&[&*wallet], recent_blockhash);
@@ -137,16 +194,12 @@ impl TxExecutor {
     
     pub async fn wait_for_confirmation(&self, signature: &str) -> Result<bool> {
         let signature = signature.parse::<Signature>()?;
+        let blockhash = self.rpc_client.get_latest_blockhash()?;
         
-        match self.rpc_client.confirm_transaction_with_spinner(&signature, &self.commitment) {
-            Ok(confirmed) => {
-                if confirmed {
-                    info!("Transaction confirmed: {}", signature);
-                    Ok(true)
-                } else {
-                    warn!("Transaction not confirmed: {}", signature);
-                    Ok(false)
-                }
+        match self.rpc_client.confirm_transaction_with_spinner(&signature, &blockhash, self.commitment) {
+            Ok(_) => {
+                info!("Transaction confirmed: {}", signature);
+                Ok(true)
             }
             Err(e) => {
                 error!("Error confirming transaction: {}", e);
@@ -164,8 +217,9 @@ impl TxExecutor {
         let mut transaction = Transaction::new_with_payer(
             &instructions,
             Some(&pubkey),
-            recent_blockhash,
         );
+        
+        transaction.message.recent_blockhash = recent_blockhash;
         
         transaction.sign(&[&*wallet], recent_blockhash);
         
@@ -183,8 +237,9 @@ impl TxExecutor {
         let mut transaction = Transaction::new_with_payer(
             &instructions,
             Some(&from_pubkey),
-            recent_blockhash,
         );
+        
+        transaction.message.recent_blockhash = recent_blockhash;
         
         transaction.sign(&[&*wallet], recent_blockhash);
         
@@ -194,7 +249,8 @@ impl TxExecutor {
     }
 
     pub async fn confirm_transaction(&self, signature: &Signature) -> Result<bool> {
-        match self.rpc_client.confirm_transaction_with_spinner(signature, &self.commitment) {
+        let blockhash = self.rpc_client.get_latest_blockhash()?;
+        match self.rpc_client.confirm_transaction_with_spinner(signature, &blockhash, self.commitment) {
             Ok(_) => Ok(true),
             Err(e) => {
                 error!("Failed to confirm transaction: {}", e);

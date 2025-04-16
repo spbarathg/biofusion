@@ -11,6 +11,7 @@ use solana_client::rpc_client::RpcClient;
 use log::{info, warn, error};
 use anyhow::{Result, anyhow};
 use serde::{Deserialize, Serialize};
+use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WalletInfo {
@@ -92,10 +93,10 @@ impl WalletManager {
             created_at: chrono::Utc::now().to_rfc3339(),
         };
         
-        // Save keypair to file
+        // Save keypair to file, using base64 encoding for the bytes
         let keypair_path = Path::new(&self.wallet_dir).join(format!("{}.json", pubkey));
-        let keypair_data = serde_json::to_string_pretty(&keypair.to_bytes())?;
-        fs::write(&keypair_path, keypair_data)?;
+        let encoded_keypair = BASE64.encode(keypair.to_bytes());
+        fs::write(&keypair_path, encoded_keypair)?;
         
         // Add to wallet list
         let mut wallet_list = self.wallets.lock().await;
@@ -165,8 +166,8 @@ impl WalletManager {
             return Err(anyhow!("Keypair file not found for {}", pubkey));
         }
         
-        let keypair_data = fs::read_to_string(&keypair_path)?;
-        let keypair_bytes: Vec<u8> = serde_json::from_str(&keypair_data)?;
+        let encoded_keypair = fs::read_to_string(&keypair_path)?;
+        let keypair_bytes = BASE64.decode(encoded_keypair)?;
         
         Ok(Keypair::from_bytes(&keypair_bytes)?)
     }

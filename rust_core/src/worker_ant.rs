@@ -9,7 +9,7 @@ use solana_sdk::signature::Keypair;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug)]
 pub struct WorkerAnt {
     id: String,
     config: WorkerConfig,
@@ -19,6 +19,47 @@ pub struct WorkerAnt {
     is_active: Arc<Mutex<bool>>,
     trades_executed: Arc<Mutex<u32>>,
     total_profit: Arc<Mutex<f64>>,
+}
+
+impl Serialize for WorkerAnt {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeStruct;
+        let mut state = serializer.serialize_struct("WorkerAnt", 3)?;
+        state.serialize_field("id", &self.id)?;
+        state.serialize_field("config", &self.config)?;
+        // Skip fields that can't be serialized
+        state.end()
+    }
+}
+
+impl<'de> Deserialize<'de> for WorkerAnt {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        struct Helper {
+            id: String,
+            config: WorkerConfig,
+        }
+        
+        let helper = Helper::deserialize(deserializer)?;
+        
+        // Create minimal version with defaults for the rest
+        Ok(WorkerAnt {
+            id: helper.id,
+            config: helper.config,
+            dex_client: Arc::new(DexClient::new().map_err(serde::de::Error::custom)?),
+            tx_executor: Arc::new(TxExecutor::new().map_err(serde::de::Error::custom)?),
+            wallet: Arc::new(Mutex::new(Keypair::new())),
+            is_active: Arc::new(Mutex::new(true)),
+            trades_executed: Arc::new(Mutex::new(0)),
+            total_profit: Arc::new(Mutex::new(0.0)),
+        })
+    }
 }
 
 impl WorkerAnt {
@@ -99,8 +140,13 @@ impl WorkerAnt {
         
         metrics.insert("id".to_string(), serde_json::Value::String(self.id.clone()));
         metrics.insert("is_active".to_string(), serde_json::Value::Bool(*self.is_active.lock().await));
-        metrics.insert("trades_executed".to_string(), serde_json::Value::Number((*self.trades_executed.lock().await).into()));
-        metrics.insert("total_profit".to_string(), serde_json::Value::Number((*self.total_profit.lock().await).into()));
+        
+        let trades = *self.trades_executed.lock().await;
+        metrics.insert("trades_executed".to_string(), serde_json::Value::Number(trades.into()));
+        
+        let profit = *self.total_profit.lock().await;
+        // Convert f64 to string to avoid precision issues
+        metrics.insert("total_profit".to_string(), serde_json::Value::String(profit.to_string()));
         
         Ok(serde_json::Value::Object(metrics))
     }

@@ -2,7 +2,7 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 use log::{info, error};
 use anyhow::Result;
-use solana_sdk::keypair::Keypair;
+use solana_sdk::signature::Keypair;
 
 mod worker_ant;
 mod pathfinder;
@@ -11,7 +11,7 @@ mod tx_executor;
 mod wallet;
 mod config;
 
-use worker_ant::{WorkerAnt, WorkerConfig};
+use worker_ant::WorkerAnt;
 use pathfinder::PathFinder;
 use dex_client::DexClient;
 use tx_executor::TxExecutor;
@@ -67,6 +67,7 @@ async fn main() -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use config::WorkerConfig;
 
     #[tokio::test]
     async fn test_worker_initialization() {

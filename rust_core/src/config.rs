@@ -16,7 +16,7 @@ pub struct WorkerConfig {
     pub max_slippage: f64,
     pub max_trade_size: f64,
     pub min_liquidity: f64,
-    pub max_hold_time: u32,
+    pub max_hold_time: u64,
     pub target_trades_per_minute: u32,
     pub max_concurrent_trades: u32,
 }

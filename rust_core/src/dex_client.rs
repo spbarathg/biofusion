@@ -160,12 +160,45 @@ impl DexProvider for OrcaClient {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug)]
 pub struct DexClient {
     providers: Vec<Box<dyn DexProvider>>,
     token_cache: Arc<Mutex<HashMap<String, Token>>>,
     base_url: String,
     client: Client,
+}
+
+impl Serialize for DexClient {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeStruct;
+        let mut state = serializer.serialize_struct("DexClient", 2)?;
+        state.serialize_field("base_url", &self.base_url)?;
+        state.end()
+    }
+}
+
+impl<'de> Deserialize<'de> for DexClient {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        struct Helper {
+            base_url: String,
+        }
+        
+        let helper = Helper::deserialize(deserializer)?;
+        
+        Ok(DexClient {
+            providers: Vec::new(),
+            token_cache: Arc::new(Mutex::new(HashMap::new())),
+            base_url: helper.base_url,
+            client: Client::new(),
+        })
+    }
 }
 
 impl DexClient {
@@ -344,8 +377,6 @@ impl DexClient {
     }
 
     pub async fn get_token_pairs_force_refresh(&self, provider: &str) -> Result<Vec<(Token, Token)>> {
-        let mut pairs = Vec::new();
-        
         // Fetch from API
         let url = format!("{}/token/pairs/{}", self.base_url, provider);
         let response = self.client.get(&url).send().await?;

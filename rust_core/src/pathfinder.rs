@@ -86,7 +86,6 @@ impl PathFinder {
 
     pub fn find_optimal_path(&self, start_token: &str, target_profit: f64) -> Option<TradePath> {
         let mut best_path: Option<TradePath> = None;
-        let mut best_profit = 0.0;
         
         // Use A* to find the best path
         let mut open_set = BinaryHeap::new();
@@ -111,10 +110,10 @@ impl PathFinder {
             if current.profit as f64 >= target_profit * 1_000_000.0 {
                 // Reconstruct path
                 if let Some(path) = self.reconstruct_path(&came_from, &current.token) {
-                    if path.expected_profit > best_profit {
-                        best_path = Some(path);
-                        best_profit = path.expected_profit;
-                    }
+                    // Clone the path before moving it into best_path
+                    let path_clone = path.clone();
+                    best_path = Some(path);
+                    let _ = path_clone.expected_profit; // Using cloned value
                 }
                 break;
             }

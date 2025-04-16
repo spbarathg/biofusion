@@ -16,10 +16,41 @@ pub mod pathfinder;
 pub mod tx_executor;
 pub mod worker_ant;
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug)]
 pub struct Colony {
     workers: HashMap<String, Arc<WorkerAnt>>,
     metrics: Arc<Mutex<HashMap<String, serde_json::Value>>>,
+}
+
+impl Serialize for Colony {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeStruct;
+        let mut state = serializer.serialize_struct("Colony", 1)?;
+        state.serialize_field("workers", &self.workers)?;
+        state.end()
+    }
+}
+
+impl<'de> Deserialize<'de> for Colony {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        struct Helper {
+            workers: HashMap<String, Arc<WorkerAnt>>,
+        }
+        
+        let helper = Helper::deserialize(deserializer)?;
+        
+        Ok(Colony {
+            workers: helper.workers,
+            metrics: Arc::new(Mutex::new(HashMap::new())),
+        })
+    }
 }
 
 impl Colony {
@@ -31,7 +62,7 @@ impl Colony {
     }
 
     pub async fn add_worker(&mut self, worker_id: String) -> Result<()> {
-        let config = get_worker_config()?;
+        let config = get_worker_config().await;
         let dex_client = Arc::new(DexClient::new()?);
         let tx_executor = Arc::new(TxExecutor::new()?);
         
