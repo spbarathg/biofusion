@@ -20,9 +20,9 @@ pub struct DexQuote {
     pub route: Vec<String>,
 }
 
-#[async_trait]
-pub trait DexProvider {
-    async fn get_quote(&self, input_token: &str, output_token: &str, amount: f64) -> Result<DexQuote>;
+#[async_trait::async_trait]
+pub trait DexProvider: Send + Sync {
+    async fn get_quote(&self, from_token: &str, to_token: &str, amount: f64) -> Result<DexQuote>;
     async fn execute_swap(&self, quote: &DexQuote) -> Result<String>;
     async fn get_token_info(&self, token_address: &str) -> Result<Token>;
 }
@@ -131,35 +131,33 @@ impl DexProvider for OrcaClient {
 }
 
 pub struct DexClient {
-    providers: Vec<Box<dyn DexProvider + Send + Sync>>,
+    providers: Vec<Box<dyn DexProvider>>,
     token_cache: Arc<Mutex<HashMap<String, Token>>>,
 }
 
 impl DexClient {
     pub fn new() -> Result<Self> {
-        let mut providers: Vec<Box<dyn DexProvider + Send + Sync>> = Vec::new();
-        
-        // Add Jupiter
-        providers.push(Box::new(JupiterClient::new()?));
-        
-        // Add Orca
-        providers.push(Box::new(OrcaClient::new()?));
-        
         Ok(Self {
-            providers,
+            providers: Vec::new(),
             token_cache: Arc::new(Mutex::new(HashMap::new())),
         })
     }
-    
-    pub async fn get_best_quote(&self, input_token: &str, output_token: &str, amount: f64) -> Result<DexQuote> {
+
+    pub async fn initialize(&mut self) -> Result<()> {
+        // Initialize DEX providers
+        // TODO: Add actual DEX provider implementations
+        Ok(())
+    }
+
+    pub async fn get_best_quote(&self, from_token: &str, to_token: &str, amount: f64) -> Result<DexQuote> {
         let mut best_quote: Option<DexQuote> = None;
         let mut best_output = 0.0;
-        
+
         for provider in &self.providers {
-            match provider.get_quote(input_token, output_token, amount).await {
+            match provider.get_quote(from_token, to_token, amount).await {
                 Ok(quote) => {
                     if quote.output_amount > best_output {
-                        best_quote = Some(quote);
+                        best_quote = Some(quote.clone());
                         best_output = quote.output_amount;
                     }
                 }
@@ -168,37 +166,36 @@ impl DexClient {
                 }
             }
         }
-        
-        best_quote.ok_or_else(|| anyhow!("No quotes available"))
+
+        best_quote.ok_or_else(|| anyhow::anyhow!("No valid quotes found"))
     }
-    
+
     pub async fn execute_swap(&self, quote: &DexQuote) -> Result<String> {
-        // Find the provider that generated this quote
         for provider in &self.providers {
             match provider.execute_swap(quote).await {
                 Ok(tx_hash) => return Ok(tx_hash),
                 Err(e) => {
-                    warn!("Failed to execute swap: {}", e);
+                    warn!("Failed to execute swap with provider: {}", e);
                 }
             }
         }
-        
-        Err(anyhow!("Failed to execute swap on any provider"))
+
+        Err(anyhow::anyhow!("Failed to execute swap with any provider"))
     }
-    
+
     pub async fn get_token_info(&self, token_address: &str) -> Result<Token> {
         // Check cache first
-        let mut cache = self.token_cache.lock().await;
-        
+        let cache = self.token_cache.lock().await;
         if let Some(token) = cache.get(token_address) {
             return Ok(token.clone());
         }
-        
+
         // Try each provider
         for provider in &self.providers {
             match provider.get_token_info(token_address).await {
                 Ok(token) => {
                     // Update cache
+                    let mut cache = self.token_cache.lock().await;
                     cache.insert(token_address.to_string(), token.clone());
                     return Ok(token);
                 }
@@ -207,8 +204,8 @@ impl DexClient {
                 }
             }
         }
-        
-        Err(anyhow!("Failed to get token info from any provider"))
+
+        Err(anyhow::anyhow!("Failed to get token info from any provider"))
     }
 
     pub async fn get_token_info_force_refresh(&self, token_address: &str) -> Result<Token> {

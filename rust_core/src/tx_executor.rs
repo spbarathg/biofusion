@@ -6,6 +6,7 @@ use solana_sdk::{
     signature::{Keypair, Signature},
     transaction::Transaction,
     system_instruction,
+    instruction::Instruction,
 };
 use solana_client::rpc_client::RpcClient;
 use log::{info, warn, error};
@@ -13,6 +14,9 @@ use anyhow::{Result, anyhow};
 use async_trait::async_trait;
 
 use crate::dex_client::DexQuote;
+use crate::config::RpcConfig;
+use crate::dex_client::DexClient;
+use crate::pathfinder::{Token, Swap};
 
 pub struct TxExecutor {
     rpc_client: Arc<RpcClient>,
@@ -21,42 +25,17 @@ pub struct TxExecutor {
 }
 
 impl TxExecutor {
-    pub fn new() -> Result<Self> {
-        // Initialize RPC client
-        let rpc_url = std::env::var("SOLANA_RPC_URL")
-            .unwrap_or_else(|_| "https://api.mainnet-beta.solana.com".to_string());
-        
-        let rpc_client = RpcClient::new_with_commitment(
-            rpc_url,
-            CommitmentConfig::confirmed(),
-        );
-        
-        // Load wallet from file or create new one
-        let wallet = Self::load_wallet()?;
+    pub fn new(config: &RpcConfig, wallet: Keypair) -> Result<Self> {
+        let rpc_client = Arc::new(RpcClient::new_with_commitment(
+            config.rpc_url.clone(),
+            config.commitment,
+        ));
         
         Ok(Self {
-            rpc_client: Arc::new(rpc_client),
+            rpc_client,
             wallet: Arc::new(Mutex::new(wallet)),
-            commitment: CommitmentConfig::confirmed(),
+            commitment: config.commitment,
         })
-    }
-    
-    fn load_wallet() -> Result<Keypair> {
-        // Try to load from file
-        let wallet_path = std::env::var("WALLET_PATH")
-            .unwrap_or_else(|_| "wallet.json".to_string());
-        
-        if let Ok(keypair_bytes) = std::fs::read(&wallet_path) {
-            return Ok(Keypair::from_bytes(&keypair_bytes)?);
-        }
-        
-        // Create new wallet if file doesn't exist
-        let keypair = Keypair::new();
-        
-        // Save to file
-        std::fs::write(&wallet_path, keypair.to_bytes())?;
-        
-        Ok(keypair)
     }
     
     pub async fn get_balance(&self) -> Result<u64> {

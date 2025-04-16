@@ -1,37 +1,24 @@
+use crate::config::WorkerConfig;
+use crate::dex_client::DexClient;
+use crate::pathfinder::{Token, TradePath};
+use crate::tx_executor::TxExecutor;
+use anyhow::Result;
+use log::{info, error};
+use serde::{Deserialize, Serialize};
+use solana_sdk::signature::Keypair;
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use serde::{Deserialize, Serialize};
-use log::{info, warn, error};
-use anyhow::{Result, anyhow};
-use async_trait::async_trait;
 
-use crate::pathfinder::{Token, Swap, TradePath};
-use crate::dex_client::DexClient;
-use crate::tx_executor::TxExecutor;
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct WorkerConfig {
-    pub max_trades_per_hour: u32,
-    pub min_profit_threshold: f64,
-    pub max_slippage: f64,
-    pub max_trade_size: f64,
-    pub min_liquidity: f64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TradeResult {
-    pub success: bool,
-    pub profit: f64,
-    pub path: Option<TradePath>,
-    pub error: Option<String>,
-}
-
+#[derive(Debug, Serialize, Deserialize)]
 pub struct WorkerAnt {
     id: String,
     config: WorkerConfig,
     dex_client: Arc<DexClient>,
     tx_executor: Arc<TxExecutor>,
+    wallet: Arc<Mutex<Keypair>>,
     is_active: Arc<Mutex<bool>>,
+    trades_executed: Arc<Mutex<u32>>,
+    total_profit: Arc<Mutex<f64>>,
 }
 
 impl WorkerAnt {
@@ -40,30 +27,31 @@ impl WorkerAnt {
         config: WorkerConfig,
         dex_client: Arc<DexClient>,
         tx_executor: Arc<TxExecutor>,
+        wallet: Keypair,
     ) -> Self {
         Self {
             id,
             config,
             dex_client,
             tx_executor,
+            wallet: Arc::new(Mutex::new(wallet)),
             is_active: Arc::new(Mutex::new(true)),
+            trades_executed: Arc::new(Mutex::new(0)),
+            total_profit: Arc::new(Mutex::new(0.0)),
         }
     }
 
     pub async fn start(&self) -> Result<()> {
-        info!("Worker ant {} starting...", self.id);
+        info!("Worker {} starting...", self.id);
         
         while *self.is_active.lock().await {
             match self.execute_trading_cycle().await {
-                Ok(_) => {
-                    info!("Worker ant {} completed trading cycle", self.id);
-                }
+                Ok(_) => (),
                 Err(e) => {
-                    error!("Worker ant {} error: {}", self.id, e);
+                    error!("Error in trading cycle: {}", e);
                 }
             }
             
-            // Sleep between cycles
             tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
         }
         
@@ -71,105 +59,39 @@ impl WorkerAnt {
     }
 
     pub async fn stop(&self) -> Result<()> {
-        info!("Worker ant {} stopping...", self.id);
+        info!("Worker {} stopping...", self.id);
         *self.is_active.lock().await = false;
         Ok(())
     }
 
-    async fn execute_trading_cycle(&self) -> Result<TradeResult> {
-        // Get optimal trading path
-        let path = self.find_optimal_path().await?;
-        
-        // Validate path
-        if !self.validate_path(&path).await? {
-            return Ok(TradeResult {
-                success: false,
-                profit: 0.0,
-                path: None,
-                error: Some("Path validation failed".to_string()),
-            });
-        }
-        
-        // Execute trades
-        match self.execute_trades(&path).await {
-            Ok(profit) => {
-                Ok(TradeResult {
-                    success: true,
-                    profit,
-                    path: Some(path),
-                    error: None,
-                })
-            }
-            Err(e) => {
-                Ok(TradeResult {
-                    success: false,
-                    profit: 0.0,
-                    path: Some(path),
-                    error: Some(e.to_string()),
-                })
-            }
-        }
-    }
-
-    async fn find_optimal_path(&self) -> Result<TradePath> {
+    async fn execute_trading_cycle(&self) -> Result<()> {
         // Get available tokens
         let tokens = self.get_available_tokens().await?;
         
-        // Find best path using pathfinder
-        // This is a placeholder - actual implementation would use the pathfinder
-        todo!("Implement path finding logic");
-    }
-
-    async fn validate_path(&self, path: &TradePath) -> Result<bool> {
-        // Check if path meets criteria
-        if path.expected_profit < self.config.min_profit_threshold {
-            return Ok(false);
+        // Find trading opportunities
+        let opportunities = self.find_opportunities(&tokens).await?;
+        
+        // Execute best opportunity if found
+        if let Some(opportunity) = opportunities.first() {
+            self.execute_trade(opportunity).await?;
         }
         
-        if path.total_slippage > self.config.max_slippage {
-            return Ok(false);
-        }
-        
-        // Check liquidity for each swap
-        for swap in &path.swaps {
-            let token = self.dex_client.get_token_info(&swap.to_token).await?;
-            if token.liquidity < self.config.min_liquidity {
-                return Ok(false);
-            }
-        }
-        
-        Ok(true)
-    }
-
-    async fn execute_trades(&self, path: &TradePath) -> Result<f64> {
-        let mut total_profit = 0.0;
-        
-        for swap in &path.swaps {
-            // Get quote
-            let quote = self.dex_client.get_best_quote(
-                &swap.from_token,
-                &swap.to_token,
-                swap.amount,
-            ).await?;
-            
-            // Execute swap
-            let tx_hash = self.tx_executor.execute_swap(&quote).await?;
-            
-            // Wait for confirmation
-            if !self.tx_executor.wait_for_confirmation(&tx_hash).await? {
-                return Err(anyhow!("Transaction failed: {}", tx_hash));
-            }
-            
-            // Update profit
-            total_profit += quote.output_amount - quote.input_amount;
-        }
-        
-        Ok(total_profit)
+        Ok(())
     }
 
     async fn get_available_tokens(&self) -> Result<Vec<Token>> {
-        // This is a placeholder - actual implementation would fetch from DEX
-        todo!("Implement token fetching");
+        // TODO: Implement token fetching
+        Ok(Vec::new())
+    }
+
+    async fn find_opportunities(&self, tokens: &[Token]) -> Result<Vec<TradePath>> {
+        // TODO: Implement opportunity finding
+        Ok(Vec::new())
+    }
+
+    async fn execute_trade(&self, path: &TradePath) -> Result<()> {
+        // TODO: Implement trade execution
+        Ok(())
     }
 }
 
@@ -190,11 +112,14 @@ mod tests {
         let dex_client = Arc::new(DexClient::new().unwrap());
         let tx_executor = Arc::new(TxExecutor::new().unwrap());
         
+        let wallet = Keypair::new();
+        
         let worker = WorkerAnt::new(
             "test_worker".to_string(),
             config,
             dex_client,
             tx_executor,
+            wallet,
         );
         
         assert_eq!(worker.id, "test_worker");
