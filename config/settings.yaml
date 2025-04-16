@@ -1,0 +1,101 @@
+# Ant Bot Unified Configuration
+
+# Colony Management
+colony:
+  initial_capital: 10.0  # Initial capital in SOL
+  min_princess_capital: 5.0  # Minimum capital required to spawn a princess
+  max_workers_per_vps: 10  # Maximum number of workers per VPS instance
+  max_workers: 10  # Maximum number of worker ants
+  min_workers: 3   # Minimum number of worker ants
+  worker_timeout: 300  # Seconds to wait before considering a worker dead
+  health_check_interval: 60  # Seconds between health checks
+
+# Capital Management
+capital:
+  savings_ratio: 0.90  # Percentage of profits to save (90%)
+  reinvestment_ratio: 0.80  # Percentage of savings to reinvest (80%)
+  compound_frequency: 24  # Hours between compound events
+  min_savings: 1.0  # Minimum SOL in savings
+  max_withdrawal: 0.5  # Maximum percentage to withdraw at once
+  emergency_reserve: 100.0  # Emergency reserve in SOL
+
+# Worker Configuration
+worker:
+  max_trades_per_hour: 10
+  min_profit_threshold: 0.01  # Minimum profit threshold (1%)
+  max_slippage: 0.02  # Maximum allowed slippage (2%)
+  max_trade_size: 1.0  # Maximum trade size in SOL
+  min_liquidity: 1000.0  # Minimum liquidity requirement
+  max_hold_time: 30  # Maximum hold time in seconds
+  target_trades_per_minute: 60
+  max_concurrent_trades: 5
+
+# Princess Configuration
+princess:
+  min_growth_rate: 0.05  # 5% minimum growth rate
+  max_allocation: 0.2    # 20% maximum allocation
+  reinvestment_ratio: 0.8 # 80% reinvestment
+  maturity_threshold: 1.5 # 150% of initial capital
+
+# Drone Configuration
+drone:
+  split_threshold: 5.0    # Split when capital exceeds 5 SOL
+  min_split_amount: 1.0   # Minimum 1 SOL per split
+  max_splits: 10          # Maximum number of splits
+  split_ratio: 0.5        # 50/50 split
+
+# Risk Management
+risk:
+  max_position_size: 0.1  # Maximum position size as fraction of capital
+  stop_loss: 0.05  # Stop loss percentage (5%)
+  trailing_stop: 0.02  # Trailing stop percentage (2%)
+  max_daily_loss: 50.0  # Maximum daily loss in SOL
+  take_profit_percentage: 0.15  # Take profit percentage (15%)
+
+# Network Settings
+network:
+  rpc_endpoint: "https://api.mainnet-beta.solana.com"
+  ws_endpoint: "wss://api.mainnet-beta.solana.com"
+  commitment: "confirmed"
+  timeout: 30  # Seconds
+
+# DEX Preferences
+dex:
+  preferred_dexes:
+    - jupiter
+    - orca
+    - raydium
+  min_dex_volume: 10000.0  # Minimum 24h volume in SOL
+  max_price_impact: 0.01  # Maximum price impact (1%)
+  min_market_cap: 1000000  # Minimum market cap in USD
+
+# Monitoring and Logging
+monitoring:
+  log_level: "INFO"
+  log_rotation: "1 day"
+  log_retention: "7 days"
+  health_check_interval: 60  # seconds
+  performance_report_interval: 300  # seconds
+  alert_threshold: 0.20  # Alert if performance drops by 20%
+  metrics_interval: 300  # Seconds between metrics collection
+  alert_thresholds:
+    error_rate: 0.1  # 10% error rate threshold
+    profit_threshold: 0.05  # 5% profit threshold
+    trade_frequency: 60  # 1 trade per minute threshold
+    capital_growth: 0.1  # 10% capital growth threshold
+
+# Deployment
+deployment:
+  vps_provider: "digitalocean"
+  region: "nyc1"
+  instance_type: "s-1vcpu-1gb"
+  max_instances: 5
+  worker_per_instance: 10
+  ssh_key_path: "~/.ssh/id_rsa"
+
+# Security
+security:
+  max_failed_attempts: 3  # Maximum failed attempts before blocking
+  block_duration: 3600  # Block duration in seconds
+  require_confirmation: true  # Require confirmation for large trades
+  confirmation_threshold: 50.0  # Threshold for trade confirmation in SOL 
