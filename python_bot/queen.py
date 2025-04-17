@@ -5,13 +5,10 @@ from typing import Dict, List, Optional
 from dataclasses import dataclass
 from pathlib import Path
 from loguru import logger
-# Fix import to work with PYTHONPATH
-try:
-    # Try relative import first (for development)
-    from .log_config import setup_logging
-except ImportError:
-    # Fall back to absolute import (for production)
-    from log_config import setup_logging
+# Direct import that works in both development and production
+import sys, os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from log_config import setup_logging
 
 def todo(message: str):
     logger.warning(f"TODO: {message}")
