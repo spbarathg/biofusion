@@ -5,11 +5,11 @@ from typing import Dict, List, Optional
 from dataclasses import dataclass
 from pathlib import Path
 from loguru import logger
-# Direct import that works in both development and production
-import sys, os
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from utils.log_config import setup_logging
-from utils.wallet_manager import WalletManager
+
+# Fix imports
+from src.logging.log_config import setup_logging
+from src.core.wallet_manager import WalletManager
+from src.core.paths import CONFIG_DIR, QUEEN_CONFIG_PATH
 
 def todo(message: str):
     logger.warning(f"TODO: {message}")
@@ -26,13 +26,16 @@ class ColonyConfig:
     health_check_interval: int
 
 class Queen:
-    def __init__(self, config_path: str = "config/settings.yaml"):
-        # Convert config_path to absolute path
-        config_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), config_path)
-        self.config = self._load_config(config_path)
-        with open(config_path, 'r') as f:
+    def __init__(self, config_path: str = None):
+        # Use provided config path or default
+        self.config_path = Path(config_path) if config_path else QUEEN_CONFIG_PATH
+        self.config = self._load_config(self.config_path)
+        
+        # Load savings ratio from config
+        with open(self.config_path, 'r') as f:
             full_config = yaml.safe_load(f)
             self.savings_ratio = full_config['capital']['savings_ratio']
+            
         self.colony_state = {
             "queen_wallet": None,
             "princess_wallets": [],

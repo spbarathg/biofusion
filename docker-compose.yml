@@ -1,0 +1,67 @@
+version: '3.8'
+
+services:
+  queen:
+    build: .
+    image: antbot:latest
+    container_name: antbot-queen
+    restart: unless-stopped
+    volumes:
+      - ./config:/app/config
+      - ./data:/app/data
+      - ./logs:/app/logs
+    env_file: .env
+    command: python -m src.models.queen
+    ports:
+      - "8500:8500"  # Queen API port
+
+  dashboard:
+    build: .
+    image: antbot:latest
+    container_name: antbot-dashboard
+    restart: unless-stopped
+    volumes:
+      - ./config:/app/config
+      - ./data:/app/data
+      - ./logs:/app/logs
+    env_file: .env
+    command: python -m src.dashboard.run_dashboard
+    ports:
+      - "8501:8501"  # Streamlit dashboard port
+    depends_on:
+      - queen
+
+  worker-1:
+    build: .
+    image: antbot:latest
+    container_name: antbot-worker-1
+    restart: unless-stopped
+    volumes:
+      - ./config:/app/config
+      - ./data:/app/data
+      - ./logs:/app/logs
+    env_file: .env
+    command: python -m src.models.worker --name worker-1
+    depends_on:
+      - queen
+
+  worker-2:
+    build: .
+    image: antbot:latest
+    container_name: antbot-worker-2
+    restart: unless-stopped
+    volumes:
+      - ./config:/app/config
+      - ./data:/app/data
+      - ./logs:/app/logs
+    env_file: .env
+    command: python -m src.models.worker --name worker-2
+    depends_on:
+      - queen
+
+  # Additional workers and princess agents can be added as needed
+
+volumes:
+  data:
+  logs:
+  config: 

@@ -4,15 +4,18 @@ import asyncio
 import json
 from datetime import datetime
 from typing import Dict, List, Optional
+from pathlib import Path
 from loguru import logger
 
+# Import paths module
+from src.core.paths import CONFIG_PATH, LOGS_DIR
+
 class WorkerConfig:
-    def __init__(self, config_path: str = "config/settings.yaml"):
-        # If config_path is a relative path starting with "config/", convert to absolute path
-        if config_path.startswith("config/"):
-            config_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), config_path)
+    def __init__(self, config_path: str = None):
+        # Use provided config path or default
+        self.config_path = Path(config_path) if config_path else CONFIG_PATH
             
-        with open(config_path, "r") as f:
+        with open(self.config_path, "r") as f:
             config = yaml.safe_load(f)
             worker_config = config.get("worker", {})
             
@@ -25,11 +28,11 @@ class WorkerConfig:
             self.dex_preferences = worker_config.get("dex_preferences", {})
 
 class Worker:
-    def __init__(self, worker_id: str, config_path: str = "config/settings.yaml"):
-        # Convert config_path to absolute path
-        config_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), config_path)
+    def __init__(self, worker_id: str, config_path: str = None):
+        # Use provided config path or default
+        self.config_path = Path(config_path) if config_path else CONFIG_PATH
         self.worker_id = worker_id
-        self.config = WorkerConfig(config_path)
+        self.config = WorkerConfig(self.config_path)
         self.is_active = True
         self.trades_executed = 0
         self.total_profit = 0.0
@@ -37,7 +40,7 @@ class Worker:
         
         # Setup logging
         logger.add(
-            f"logs/worker_{worker_id}.log",
+            LOGS_DIR / f"worker_{worker_id}.log",
             rotation="1 day",
             retention="7 days",
             level="INFO"

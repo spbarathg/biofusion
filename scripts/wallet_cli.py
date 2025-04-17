@@ -10,8 +10,8 @@ from typing import Dict, List, Optional
 from pathlib import Path
 
 # Add the project root to the path
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-from utils.wallet_manager import WalletManager
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from src.core.wallet_manager import WalletManager
 
 def main():
     parser = argparse.ArgumentParser(
