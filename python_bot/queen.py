@@ -9,6 +9,7 @@ from loguru import logger
 import sys, os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from log_config import setup_logging
+from utils.wallet_manager import WalletManager
 
 def todo(message: str):
     logger.warning(f"TODO: {message}")
@@ -39,6 +40,7 @@ class Queen:
             "total_profits": 0.0,
         }
         self._setup_logging()
+        self.wallet_manager = WalletManager(config_path)
 
     def _setup_logging(self):
         setup_logging("queen", "queen.log")
@@ -58,11 +60,10 @@ class Queen:
         # Create savings wallet
         self.colony_state["savings_wallet"] = await self._create_wallet("savings")
         
-        # Fund queen wallet
-        await self._fund_wallet(
-            self.colony_state["queen_wallet"],
-            initial_capital
-        )
+        # Fund queen wallet with initial capital
+        # In a real scenario, this would be done by transferring from an external wallet
+        logger.info(f"For initial funding, please transfer {initial_capital} SOL to:")
+        logger.info(f"Queen wallet public key: {self.wallet_manager.wallets[self.colony_state['queen_wallet']]['public_key']}")
         
         self.colony_state["total_capital"] = initial_capital
         logger.info("Colony initialized successfully")
@@ -142,18 +143,21 @@ class Queen:
 
     async def _create_wallet(self, wallet_type: str) -> str:
         """Create a new wallet of specified type."""
-        # Implement wallet creation logic
-        todo("Implement wallet creation")
+        wallet_name = f"{wallet_type}_{int(self.colony_state['total_profits'])}"
+        wallet_id = await self.wallet_manager.create_wallet(wallet_name, wallet_type)
+        return wallet_id
 
     async def _fund_wallet(self, wallet: str, amount: float) -> None:
         """Fund a wallet with specified amount."""
-        # Implement wallet funding logic
-        todo("Implement wallet funding")
+        # In a real scenario, this would involve transferring funds from an external source
+        # For now, we'll just log it
+        logger.info(f"To fund wallet, please transfer {amount} SOL to:")
+        wallet_info = self.wallet_manager.wallets[wallet]
+        logger.info(f"Wallet public key: {wallet_info['public_key']}")
 
     async def _get_wallet_balance(self, wallet: str) -> float:
         """Get balance of specified wallet."""
-        # Implement balance checking logic
-        todo("Implement balance checking")
+        return await self.wallet_manager.get_balance(wallet)
 
     async def _transfer_capital(
         self,
@@ -162,20 +166,63 @@ class Queen:
         amount: float
     ) -> None:
         """Transfer capital between wallets."""
-        # Implement capital transfer logic
-        todo("Implement capital transfer")
+        await self.wallet_manager.transfer_sol(from_wallet, to_wallet, amount)
 
     async def _get_available_capital(self) -> float:
         """Get total available capital for new workers."""
-        # Implement available capital calculation
-        todo("Implement available capital calculation")
-        return 0.0
+        queen_balance = await self._get_wallet_balance(self.colony_state["queen_wallet"])
+        return queen_balance * 0.5  # Use 50% of queen's balance for worker allocation
 
     async def _collect_wallet_profits(self, wallet: str) -> float:
         """Collect profits from a wallet."""
-        # Implement profit collection logic
-        todo("Implement profit collection")
+        # In a real implementation, this would analyze the wallet's trading history
+        # and determine profits to collect
+        # For now, it's a stub returning 0
         return 0.0
+
+    async def get_colony_state(self) -> Dict:
+        """Get current state of the colony including wallet balances."""
+        state = {
+            "total_capital": self.colony_state["total_capital"],
+            "total_profits": self.colony_state["total_profits"],
+            "wallets": {}
+        }
+        
+        # Queen wallet
+        if self.colony_state["queen_wallet"]:
+            state["wallets"]["queen"] = {
+                "id": self.colony_state["queen_wallet"],
+                "balance": await self._get_wallet_balance(self.colony_state["queen_wallet"])
+            }
+        
+        # Savings wallet
+        if self.colony_state["savings_wallet"]:
+            state["wallets"]["savings"] = {
+                "id": self.colony_state["savings_wallet"],
+                "balance": await self._get_wallet_balance(self.colony_state["savings_wallet"])
+            }
+        
+        # Princess wallets
+        state["wallets"]["princesses"] = []
+        for wallet_id in self.colony_state["princess_wallets"]:
+            state["wallets"]["princesses"].append({
+                "id": wallet_id,
+                "balance": await self._get_wallet_balance(wallet_id)
+            })
+        
+        # Worker wallets
+        state["wallets"]["workers"] = []
+        for wallet_id in self.colony_state["worker_wallets"]:
+            state["wallets"]["workers"].append({
+                "id": wallet_id,
+                "balance": await self._get_wallet_balance(wallet_id)
+            })
+        
+        return state
+
+    async def backup_wallets(self, backup_path: Optional[str] = None) -> str:
+        """Create a backup of all wallets."""
+        return await self.wallet_manager.create_backup(backup_path)
 
 if __name__ == "__main__":
     import asyncio
@@ -185,19 +232,46 @@ if __name__ == "__main__":
     parser.add_argument(
         "--init-capital",
         type=float,
-        required=True,
         help="Initial capital in SOL"
+    )
+    parser.add_argument(
+        "--state",
+        action="store_true",
+        help="Show colony state"
+    )
+    parser.add_argument(
+        "--backup",
+        action="store_true",
+        help="Backup wallets"
+    )
+    parser.add_argument(
+        "--backup-path",
+        type=str,
+        help="Path for wallet backup"
     )
     args = parser.parse_args()
 
     async def main():
         queen = Queen()
-        await queen.initialize_colony(args.init_capital)
         
-        # Start management loops
-        while True:
-            await queen.manage_workers()
-            await queen.collect_profits()
-            await asyncio.sleep(60)  # Check every minute
+        if args.init_capital:
+            await queen.initialize_colony(args.init_capital)
+        
+        if args.state:
+            state = await queen.get_colony_state()
+            print("Colony State:")
+            print(f"Total Capital: {state['total_capital']} SOL")
+            print(f"Total Profits: {state['total_profits']} SOL")
+            print("Wallets:")
+            if "queen" in state["wallets"]:
+                print(f"  Queen: {state['wallets']['queen']['balance']} SOL")
+            if "savings" in state["wallets"]:
+                print(f"  Savings: {state['wallets']['savings']['balance']} SOL")
+            print(f"  Princesses: {len(state['wallets'].get('princesses', []))}")
+            print(f"  Workers: {len(state['wallets'].get('workers', []))}")
+        
+        if args.backup:
+            backup_path = await queen.backup_wallets(args.backup_path)
+            print(f"Created wallet backup: {backup_path}")
 
     asyncio.run(main()) 

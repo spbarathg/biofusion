@@ -9,6 +9,7 @@ from loguru import logger
 import sys, os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from log_config import setup_logging
+from utils.wallet_manager import WalletManager
 
 def todo(message: str):
     logger.warning(f"TODO: {message}")
@@ -32,6 +33,7 @@ class CapitalManager:
             "last_compound_time": 0,
         }
         self._setup_logging()
+        self.wallet_manager = WalletManager(config_path)
 
     def _setup_logging(self):
         setup_logging("capital_manager", "capital_manager.log")
@@ -58,8 +60,8 @@ class CapitalManager:
         # Update metrics
         self.savings_metrics["total_saved"] += savings_amount
         
-        # Send to savings
-        await self._send_to_savings(savings_amount)
+        # Send to savings - using the wallet manager
+        await self._send_to_savings(source_wallet, savings_amount)
         
         logger.info(f"Allocated {savings_amount} SOL to savings, {trading_amount} SOL for trading")
         return {
@@ -67,7 +69,7 @@ class CapitalManager:
             "trading": trading_amount,
         }
 
-    async def compound_savings(self) -> float:
+    async def compound_savings(self, queen_wallet_id: str) -> float:
         """Compound savings by reinvesting a portion back into trading."""
         current_time = asyncio.get_event_loop().time()
         hours_since_last_compound = (current_time - self.savings_metrics["last_compound_time"]) / 3600
@@ -76,8 +78,13 @@ class CapitalManager:
             logger.info(f"Not time to compound yet. {self.config.compound_frequency - hours_since_last_compound:.1f} hours remaining")
             return 0.0
         
-        # Get current savings balance
-        savings_balance = await self._get_savings_balance()
+        # Get current savings balance - get all savings wallets
+        savings_wallet_id = await self._get_savings_wallet_id()
+        if not savings_wallet_id:
+            logger.warning("No savings wallet found for compounding")
+            return 0.0
+            
+        savings_balance = await self._get_savings_balance(savings_wallet_id)
         
         if savings_balance < self.config.min_savings:
             logger.info(f"Savings balance {savings_balance} SOL below minimum, skipping compound")
@@ -86,8 +93,8 @@ class CapitalManager:
         # Calculate compound amount
         compound_amount = savings_balance * self.config.reinvestment_ratio
         
-        # Withdraw from savings
-        await self._withdraw_from_savings(compound_amount)
+        # Withdraw from savings and send to queen for redistribution
+        await self._withdraw_from_savings(savings_wallet_id, queen_wallet_id, compound_amount)
         
         # Update metrics
         self.savings_metrics["total_reinvested"] += compound_amount
@@ -97,9 +104,14 @@ class CapitalManager:
         logger.info(f"Compounded {compound_amount} SOL from savings")
         return compound_amount
 
-    async def withdraw_savings(self, amount: float) -> float:
+    async def withdraw_savings(self, amount: float, destination_wallet_id: str) -> float:
         """Withdraw a portion of savings for external use."""
-        savings_balance = await self._get_savings_balance()
+        savings_wallet_id = await self._get_savings_wallet_id()
+        if not savings_wallet_id:
+            logger.warning("No savings wallet found for withdrawal")
+            return 0.0
+            
+        savings_balance = await self._get_savings_balance(savings_wallet_id)
         
         # Limit withdrawal to maximum allowed
         if amount > savings_balance * self.config.max_withdrawal:
@@ -116,14 +128,18 @@ class CapitalManager:
             return 0.0
         
         # Process withdrawal
-        await self._withdraw_from_savings(amount)
+        await self._withdraw_from_savings(savings_wallet_id, destination_wallet_id, amount)
         
         logger.info(f"Withdrawn {amount} SOL from savings")
         return amount
 
     async def get_savings_metrics(self) -> Dict[str, float]:
         """Get current savings metrics."""
-        savings_balance = await self._get_savings_balance()
+        savings_wallet_id = await self._get_savings_wallet_id()
+        savings_balance = 0.0
+        
+        if savings_wallet_id:
+            savings_balance = await self._get_savings_balance(savings_wallet_id)
         
         return {
             "current_balance": savings_balance,
@@ -133,21 +149,33 @@ class CapitalManager:
             "compound_rate": self.savings_metrics["total_reinvested"] / max(1, self.savings_metrics["total_saved"]),
         }
 
-    async def _send_to_savings(self, amount: float) -> None:
+    async def _send_to_savings(self, source_wallet_id: str, amount: float) -> None:
         """Send funds to savings wallet."""
-        # Implement savings transfer
-        todo("Implement savings transfer")
+        savings_wallet_id = await self._get_savings_wallet_id()
+        if not savings_wallet_id:
+            logger.warning("No savings wallet found, creating one")
+            savings_wallet_id = await self.wallet_manager.create_wallet("savings_main", "savings")
+        
+        await self.wallet_manager.transfer_sol(source_wallet_id, savings_wallet_id, amount)
+        logger.info(f"Transferred {amount} SOL to savings wallet")
 
-    async def _withdraw_from_savings(self, amount: float) -> None:
+    async def _withdraw_from_savings(self, savings_wallet_id: str, destination_wallet_id: str, amount: float) -> None:
         """Withdraw funds from savings wallet."""
-        # Implement savings withdrawal
-        todo("Implement savings withdrawal")
+        await self.wallet_manager.transfer_sol(savings_wallet_id, destination_wallet_id, amount)
+        logger.info(f"Withdrawn {amount} SOL from savings wallet")
 
-    async def _get_savings_balance(self) -> float:
+    async def _get_savings_balance(self, savings_wallet_id: str) -> float:
         """Get current savings wallet balance."""
-        # Implement balance checking
-        todo("Implement balance checking")
-        return 0.0
+        return await self.wallet_manager.get_balance(savings_wallet_id)
+        
+    async def _get_savings_wallet_id(self) -> Optional[str]:
+        """Get the ID of the savings wallet."""
+        savings_wallets = self.wallet_manager.list_wallets(wallet_type="savings")
+        if not savings_wallets:
+            return None
+        
+        # Use the first savings wallet
+        return savings_wallets[0]["id"]
 
 if __name__ == "__main__":
     import argparse
@@ -167,7 +195,12 @@ if __name__ == "__main__":
     parser.add_argument(
         "--source",
         type=str,
-        help="Source wallet for process action"
+        help="Source wallet name for process action"
+    )
+    parser.add_argument(
+        "--destination",
+        type=str,
+        help="Destination wallet name for withdraw action"
     )
     args = parser.parse_args()
 
@@ -178,18 +211,37 @@ if __name__ == "__main__":
             if not args.amount or not args.source:
                 print("Amount and source required for process action")
                 return
-            result = await manager.process_profits(args.amount, args.source)
+                
+            source_wallet_id = manager.wallet_manager.get_wallet_by_name(args.source)
+            if not source_wallet_id:
+                print(f"Source wallet {args.source} not found")
+                return
+                
+            result = await manager.process_profits(args.amount, source_wallet_id)
             print(f"Processed profits: {result}")
         
         elif args.action == "compound":
-            amount = await manager.compound_savings()
+            # Find queen wallet
+            queen_wallets = manager.wallet_manager.list_wallets(wallet_type="queen")
+            if not queen_wallets:
+                print("No queen wallet found for compounding")
+                return
+                
+            queen_wallet_id = queen_wallets[0]["id"]
+            amount = await manager.compound_savings(queen_wallet_id)
             print(f"Compounded amount: {amount} SOL")
         
         elif args.action == "withdraw":
-            if not args.amount:
-                print("Amount required for withdraw action")
+            if not args.amount or not args.destination:
+                print("Amount and destination required for withdraw action")
                 return
-            amount = await manager.withdraw_savings(args.amount)
+                
+            destination_wallet_id = manager.wallet_manager.get_wallet_by_name(args.destination)
+            if not destination_wallet_id:
+                print(f"Destination wallet {args.destination} not found")
+                return
+                
+            amount = await manager.withdraw_savings(args.amount, destination_wallet_id)
             print(f"Withdrawn amount: {amount} SOL")
         
         elif args.action == "metrics":
