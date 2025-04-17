@@ -1,6 +1,23 @@
 use serde::{Deserialize, Serialize, ser::SerializeStruct};
 use std::sync::Arc;
 use tokio::sync::Mutex;
+use solana_sdk::signature::Keypair;
+use log::{info, error};
+use anyhow::{Result, anyhow};
+
+// Import the components we created
+use crate::dex_client::DexClient;
+use crate::tx_executor::TxExecutor;
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct WorkerConfig {
+    pub max_trades_per_hour: u32,
+    pub min_profit_threshold: f64,
+    pub max_slippage: f64,
+    pub max_position_size: u64,
+    pub min_hold_time_seconds: u32,
+    pub max_hold_time_seconds: u32,
+}
 
 #[derive(Debug)]
 pub struct WorkerAnt {
@@ -115,4 +132,66 @@ impl<'de> Deserialize<'de> for WorkerAnt {
     }
 }
 
-// ... rest of the implementation ... 
+impl WorkerAnt {
+    pub fn new(
+        id: String,
+        config: WorkerConfig,
+        dex_client: Arc<DexClient>,
+        tx_executor: Arc<TxExecutor>,
+        wallet: Arc<Mutex<Keypair>>,
+    ) -> Self {
+        WorkerAnt {
+            id,
+            config,
+            dex_client,
+            tx_executor,
+            wallet,
+            is_active: Arc::new(Mutex::new(true)),
+            trades_executed: Arc::new(Mutex::new(0)),
+            total_profit: Arc::new(Mutex::new(0.0)),
+        }
+    }
+
+    pub async fn start(&self) -> Result<()> {
+        info!("Starting worker ant: {}", self.id);
+        *self.is_active.lock().await = true;
+        Ok(())
+    }
+
+    pub async fn stop(&self) -> Result<()> {
+        info!("Stopping worker ant: {}", self.id);
+        *self.is_active.lock().await = false;
+        Ok(())
+    }
+
+    pub async fn is_active(&self) -> bool {
+        *self.is_active.lock().await
+    }
+
+    pub async fn get_metrics(&self) -> Result<serde_json::Value> {
+        let trades = *self.trades_executed.lock().await;
+        let profit = *self.total_profit.lock().await;
+        
+        let metrics = serde_json::json!({
+            "id": self.id,
+            "trades_executed": trades,
+            "total_profit": profit,
+            "is_active": self.is_active().await,
+        });
+        
+        Ok(metrics)
+    }
+
+    pub async fn record_trade_result(&self, profit: f64) -> Result<()> {
+        let mut trades = self.trades_executed.lock().await;
+        let mut total_profit = self.total_profit.lock().await;
+        
+        *trades += 1;
+        *total_profit += profit;
+        
+        info!("Worker {} recorded trade: trades={}, profit={:.4}, total_profit={:.4}", 
+              self.id, *trades, profit, *total_profit);
+        
+        Ok(())
+    }
+} 

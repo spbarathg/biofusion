@@ -265,6 +265,13 @@ if check_password():
         # In a real implementation, you'd want to validate and safely save
         st.success("Configuration saved!")
     
-    # Auto-refresh
-    time.sleep(5)
-    st.experimental_rerun() 
+    # Auto-refresh toggle instead of automatic refresh
+    auto_refresh = st.sidebar.checkbox("Auto Refresh", value=False)
+    refresh_interval = st.sidebar.slider("Refresh Interval (seconds)", 5, 60, 10)
+    
+    if auto_refresh:
+        time.sleep(refresh_interval)
+        st.experimental_rerun()
+    else:
+        if st.sidebar.button("Refresh Data"):
+            st.experimental_rerun() 

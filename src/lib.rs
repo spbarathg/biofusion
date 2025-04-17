@@ -2,6 +2,11 @@ use serde::{Deserialize, Serialize, ser::SerializeStruct};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::Mutex;
+use anyhow::{Result, anyhow};
+use log::{info, error};
+
+// Import the worker ant module
+use crate::worker_ant::WorkerAnt;
 
 #[derive(Debug)]
 pub struct Colony {
@@ -70,4 +75,57 @@ impl<'de> Deserialize<'de> for Colony {
     }
 }
 
-// ... rest of the implementation ... 
+impl Colony {
+    pub fn new() -> Self {
+        Colony {
+            workers: HashMap::new(),
+            metrics: Arc::new(Mutex::new(HashMap::new())),
+        }
+    }
+    
+    pub fn add_worker(&mut self, worker: Arc<WorkerAnt>, id: String) {
+        info!("Adding worker to colony: {}", id);
+        self.workers.insert(id, worker);
+    }
+    
+    pub fn remove_worker(&mut self, id: &str) -> Option<Arc<WorkerAnt>> {
+        info!("Removing worker from colony: {}", id);
+        self.workers.remove(id)
+    }
+    
+    pub fn get_worker(&self, id: &str) -> Option<&Arc<WorkerAnt>> {
+        self.workers.get(id)
+    }
+    
+    pub fn get_workers(&self) -> &HashMap<String, Arc<WorkerAnt>> {
+        &self.workers
+    }
+    
+    pub async fn update_metrics(&self) -> Result<()> {
+        info!("Updating colony metrics");
+        let mut metrics_lock = self.metrics.lock().await;
+        
+        for (id, worker) in &self.workers {
+            match worker.get_metrics().await {
+                Ok(worker_metrics) => {
+                    metrics_lock.insert(id.clone(), worker_metrics);
+                },
+                Err(e) => {
+                    error!("Failed to get metrics for worker {}: {}", id, e);
+                }
+            }
+        }
+        
+        Ok(())
+    }
+    
+    pub async fn get_metrics(&self) -> Result<HashMap<String, serde_json::Value>> {
+        let metrics_lock = self.metrics.lock().await;
+        Ok(metrics_lock.clone())
+    }
+}
+
+// Export the modules
+pub mod dex_client;
+pub mod tx_executor;
+pub mod worker_ant; 
