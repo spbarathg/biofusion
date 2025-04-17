@@ -1,0 +1,17 @@
+[Unit]
+Description=Ant Bot Queen Service
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/antbot
+Environment=PATH=/opt/antbot/venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+Environment=PYTHONPATH=/opt/antbot
+EnvironmentFile=/opt/antbot/.env
+ExecStart=/opt/antbot/venv/bin/python /opt/antbot/python_bot/queen.py --init-capital 10.0
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target 

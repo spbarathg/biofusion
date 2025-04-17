@@ -1,0 +1,17 @@
+[Unit]
+Description=Ant Bot Dashboard
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/antbot
+Environment=PATH=/opt/antbot/venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+Environment=PYTHONPATH=/opt/antbot
+EnvironmentFile=/opt/antbot/.env
+ExecStart=/opt/antbot/venv/bin/streamlit run /opt/antbot/python_bot/dashboard.py --server.address=0.0.0.0 --server.port=8501
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target 
