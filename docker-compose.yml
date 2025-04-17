@@ -11,6 +11,8 @@ services:
       - ./data:/app/data
       - ./logs:/app/logs
     env_file: .env
+    environment:
+      - ENCRYPTION_KEY_PATH=/app/config/secrets/.encryption_key
     command: python -m src.models.queen
     ports:
       - "8500:8500"  # Queen API port
@@ -25,6 +27,8 @@ services:
       - ./data:/app/data
       - ./logs:/app/logs
     env_file: .env
+    environment:
+      - ENCRYPTION_KEY_PATH=/app/config/secrets/.encryption_key
     command: python -m src.dashboard.run_dashboard
     ports:
       - "8501:8501"  # Streamlit dashboard port
@@ -41,6 +45,8 @@ services:
       - ./data:/app/data
       - ./logs:/app/logs
     env_file: .env
+    environment:
+      - ENCRYPTION_KEY_PATH=/app/config/secrets/.encryption_key
     command: python -m src.models.worker --name worker-1
     depends_on:
       - queen
@@ -55,6 +61,8 @@ services:
       - ./data:/app/data
       - ./logs:/app/logs
     env_file: .env
+    environment:
+      - ENCRYPTION_KEY_PATH=/app/config/secrets/.encryption_key
     command: python -m src.models.worker --name worker-2
     depends_on:
       - queen

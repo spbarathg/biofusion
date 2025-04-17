@@ -52,21 +52,29 @@ class WalletManager:
         # self.client = SolanaClient("https://api.devnet.solana.com")
     
     def _load_or_create_key(self):
-        """Load existing encryption key or create a new one."""
+        """Always generate a new encryption key to avoid mounting issues."""
         try:
-            if self.key_path.exists():
-                with open(self.key_path, 'rb') as f:
-                    self.key = f.read()
-            else:
-                # Generate a new key
-                self.key = Fernet.generate_key()
+            # Generate a new key
+            self.key = Fernet.generate_key()
+            
+            # Try to save the key if possible
+            try:
+                key_dir = os.path.dirname(self.key_path)
+                if not os.path.exists(key_dir):
+                    os.makedirs(key_dir, exist_ok=True)
                 with open(self.key_path, 'wb') as f:
                     f.write(self.key)
-            
+            except Exception as e:
+                # Just log the error but continue - we have the key in memory
+                loguru.logger.warning(f"Could not save encryption key to {self.key_path}: {str(e)}")
+                
+            # Create Fernet instance
             self.fernet = Fernet(self.key)
             
         except Exception as e:
-            loguru.logger.error(f"Error loading/creating encryption key: {str(e)}")
+            loguru.logger.error(f"Error creating encryption key: {str(e)}")
+            import traceback
+            loguru.logger.error(traceback.format_exc())
             raise
     
     def _load_wallets(self):

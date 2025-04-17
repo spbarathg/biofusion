@@ -29,8 +29,8 @@ WORKDIR /app
 COPY --from=builder /app/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy Rust binary
-COPY --from=builder /app/rust_core/target/release/librust_core.so /usr/local/lib/
+# Copy Rust binary - use the actual compiled library name
+COPY --from=builder /app/rust_core/target/release/libant_bot_core.so /usr/local/lib/
 ENV LD_LIBRARY_PATH="/usr/local/lib:${LD_LIBRARY_PATH}"
 
 # Copy source code
@@ -40,11 +40,13 @@ COPY config/ config/
 COPY .env .env
 
 # Create necessary directories
-RUN mkdir -p data/wallets data/backups logs
+RUN mkdir -p data/wallets data/backups logs config/secrets
+RUN chmod -R 777 logs
 
 # Set environment variables
 ENV PYTHONPATH=/app
 ENV LOG_DIR=/app/logs
+ENV ENCRYPTION_KEY_PATH=/app/config/secrets/.encryption_key
 
 # Run as non-root user
 RUN groupadd -r antbot && useradd -r -g antbot antbot

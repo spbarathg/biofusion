@@ -3,10 +3,19 @@
 
 # Colony Management
 colony:
+  initial_capital: 10.0
+  min_princess_capital: 5.0
+  max_workers_per_vps: 5
   max_workers: 10  # Maximum number of worker ants
   min_workers: 3   # Minimum number of worker ants
   worker_timeout: 300  # Seconds to wait before considering a worker dead
   health_check_interval: 60  # Seconds between health checks
+
+# Capital Management
+capital:
+  savings_ratio: 0.2
+  worker_allocation_ratio: 0.1
+  princess_allocation_ratio: 0.4
 
 # Resource Management
 resources:
