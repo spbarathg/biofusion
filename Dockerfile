@@ -27,7 +27,9 @@ WORKDIR /app
 
 # Copy Python requirements
 COPY --from=builder /app/requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Install dependencies with specific versions
+RUN pip install --no-cache-dir -r requirements.txt \
+    && pip install solana==0.27.2 solders==0.9.3 anchorpy==0.12.0 websockets==10.4
 
 # Copy Rust binary - use the actual compiled library name
 COPY --from=builder /app/rust_core/target/release/libant_bot_core.so /usr/local/lib/
