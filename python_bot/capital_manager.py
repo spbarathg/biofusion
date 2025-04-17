@@ -5,6 +5,7 @@ from typing import Dict, List, Optional
 from dataclasses import dataclass
 from pathlib import Path
 from loguru import logger
+from python_bot.log_config import setup_logging
 
 def todo(message: str):
     logger.warning(f"TODO: {message}")
@@ -30,12 +31,7 @@ class CapitalManager:
         self._setup_logging()
 
     def _setup_logging(self):
-        logger.add(
-            "logs/capital_manager.log",
-            rotation="1 day",
-            retention="7 days",
-            level="INFO"
-        )
+        setup_logging("capital_manager", "capital_manager.log")
 
     def _load_config(self, config_path: str) -> CapitalConfig:
         with open(config_path, 'r') as f:
