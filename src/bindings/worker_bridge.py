@@ -49,8 +49,9 @@ class WorkerBridge:
         try:
             self._load_rust_lib()
         except Exception as e:
-            logger.warning(f"Could not load Rust library: {str(e)}")
-            logger.warning("Worker bridge will operate in simulation mode")
+            logger.warning(f"Failed to load Rust library: {str(e)}")
+            logger.info("Using mock implementation for testing")
+            self.rust_lib = MockRustLib()
     
     def _load_rust_lib(self):
         """Load the Rust library, if available"""

@@ -56,6 +56,12 @@ class WorkerDistribution:
     def _setup_logging(self):
         """Set up logging for worker distribution"""
         setup_logging("worker_distribution", "worker_distribution.log")
+        logger.info("Initializing WorkerDistribution...")
+        
+        # State tracking
+        self.is_running = False
+        self.vps_instances = {}
+        self.worker_assignments = {}
         
     def _load_config(self, config_path: str) -> WorkerDistributionConfig:
         """Load configuration from YAML file"""
@@ -264,85 +270,165 @@ class WorkerDistribution:
         return reassigned_count
         
     async def start_monitoring(self):
-        """Start background monitoring and load balancing"""
-        logger.info("Starting worker distribution monitoring")
+        """Start monitoring VPS instances and worker distribution."""
+        logger.info("Starting worker distribution monitoring...")
+        self.is_running = True
         
-        while True:
+        while self.is_running:
             try:
                 # Update VPS metrics
-                await self._update_all_vps_metrics()
+                await self._update_vps_metrics()
                 
-                # Perform load balancing
-                await self.balance_load()
+                # Check distribution
+                await self._check_distribution()
                 
-                # Check for failed VPS instances
-                await self._check_vps_health()
-                
-                # Sleep for the configured interval
-                await asyncio.sleep(self.config.load_balancing_interval)
+                await asyncio.sleep(60)  # Check every minute
                 
             except Exception as e:
                 logger.error(f"Error in worker distribution monitoring: {str(e)}")
-                await asyncio.sleep(60)  # Sleep for a minute on error
-    
-    async def _update_all_vps_metrics(self):
-        """Update metrics for all VPS instances"""
+                await asyncio.sleep(5)  # Wait before retrying
+                
+    async def stop_monitoring(self):
+        """Stop monitoring VPS instances and worker distribution."""
+        logger.info("Stopping worker distribution monitoring...")
+        self.is_running = False
+        
+    async def _update_vps_metrics(self):
+        """Update metrics for all VPS instances."""
         for vps_id, vps in self.vps_instances.items():
             try:
-                # In a real implementation, this would call an API on the VPS
-                # to get real metrics. For now, we'll just simulate it.
-                await self._get_vps_metrics(vps_id)
+                # Simulate metric updates for now
+                vps.cpu_usage = 0.5  # Example value
+                vps.memory_usage = 0.6  # Example value
+                vps.performance_score = 0.8  # Example value
+                
+                logger.debug(f"Updated metrics for VPS {vps_id}")
+                
             except Exception as e:
                 logger.error(f"Error updating metrics for VPS {vps_id}: {str(e)}")
-    
-    async def _get_vps_metrics(self, vps_id: str):
-        """Get current metrics from a VPS instance"""
-        if vps_id not in self.vps_instances:
-            return
-            
-        vps = self.vps_instances[vps_id]
-        
-        try:
-            # In a real implementation, this would make an HTTP request
-            # to the VPS to get metrics. For now, we'll just simulate it.
-            # Placeholder metrics collection logic
-            await self.update_vps_metrics(vps_id, {
-                "is_available": True,  # Assume it's available for this simulation
-                "cpu_usage": vps.cpu_usage,  # Keep existing value for now
-                "memory_usage": vps.memory_usage,  # Keep existing value for now
-                "performance_score": vps.performance_score  # Keep existing value for now
-            })
-        except Exception as e:
-            logger.error(f"Failed to get metrics from VPS {vps_id}: {str(e)}")
-            
-    async def _check_vps_health(self):
-        """Check the health of all VPS instances"""
-        for vps_id, vps in list(self.vps_instances.items()):
-            if not vps.is_available:
-                continue  # Already marked as unavailable
                 
+    async def _check_distribution(self):
+        """Check and update worker distribution if needed."""
+        for vps_id, vps in self.vps_instances.items():
             try:
-                # In a real implementation, this would ping the VPS or check
-                # a health endpoint. For now, we'll just simulate it.
-                healthy = await self._check_vps_connectivity(vps_id)
-                
-                if not healthy:
-                    logger.warning(f"VPS {vps_id} is not responding - initiating failover")
-                    await self.handle_vps_failure(vps_id)
+                # Check if VPS is overloaded
+                if vps.cpu_usage > 0.8 or vps.memory_usage > 0.8:
+                    logger.warning(f"VPS {vps_id} is overloaded")
+                    await self._redistribute_workers(vps_id)
                     
             except Exception as e:
-                logger.error(f"Error checking health of VPS {vps_id}: {str(e)}")
+                logger.error(f"Error checking distribution for VPS {vps_id}: {str(e)}")
                 
-    async def _check_vps_connectivity(self, vps_id: str) -> bool:
-        """Check if a VPS instance is responsive"""
-        if vps_id not in self.vps_instances:
-            return False
-            
-        vps = self.vps_instances[vps_id]
+    async def _redistribute_workers(self, overloaded_vps_id):
+        """Redistribute workers from an overloaded VPS."""
+        logger.info(f"Redistributing workers from VPS {overloaded_vps_id}")
         
-        # In a real implementation, this would ping the VPS or check a health endpoint
-        # For now, we'll just assume it's healthy
-        return True
+        # Find available VPS instances
+        available_vps = [
+            vps_id for vps_id, vps in self.vps_instances.items()
+            if vps_id != overloaded_vps_id and vps.is_available
+        ]
+        
+        if not available_vps:
+            logger.warning("No available VPS instances for redistribution")
+            return
+            
+        # Get workers assigned to overloaded VPS
+        workers_to_move = [
+            worker_id for worker_id, vps_id in self.worker_assignments.items()
+            if vps_id == overloaded_vps_id
+        ]
+        
+        # Redistribute workers
+        for worker_id in workers_to_move:
+            try:
+                # Find least loaded VPS
+                target_vps = min(
+                    available_vps,
+                    key=lambda vps_id: self.vps_instances[vps_id].cpu_usage
+                )
+                
+                # Update assignment
+                self.worker_assignments[worker_id] = target_vps
+                logger.info(f"Moved worker {worker_id} to VPS {target_vps}")
+                
+            except Exception as e:
+                logger.error(f"Error redistributing worker {worker_id}: {str(e)}")
+                
+    async def update_distribution(self):
+        """Update worker distribution based on current metrics."""
+        logger.info("Updating worker distribution...")
+        
+        try:
+            # Check each VPS instance
+            for vps_id, vps in self.vps_instances.items():
+                if vps.is_available:
+                    # Calculate optimal worker count
+                    optimal_workers = self._calculate_optimal_workers(vps)
+                    
+                    # Adjust worker count if needed
+                    current_workers = len([
+                        w for w, v in self.worker_assignments.items()
+                        if v == vps_id
+                    ])
+                    
+                    if current_workers != optimal_workers:
+                        logger.info(
+                            f"Adjusting worker count for VPS {vps_id}: "
+                            f"{current_workers} -> {optimal_workers}"
+                        )
+                        await self._adjust_worker_count(vps_id, optimal_workers)
+                        
+        except Exception as e:
+            logger.error(f"Error updating worker distribution: {str(e)}")
+            
+    def _calculate_optimal_workers(self, vps):
+        """Calculate optimal number of workers for a VPS."""
+        # Simple calculation based on CPU and memory usage
+        cpu_workers = int((1 - vps.cpu_usage) * vps.max_workers)
+        memory_workers = int((1 - vps.memory_usage) * vps.max_workers)
+        
+        return min(cpu_workers, memory_workers, vps.max_workers)
+        
+    async def _adjust_worker_count(self, vps_id, target_count):
+        """Adjust the number of workers assigned to a VPS."""
+        current_workers = [
+            w for w, v in self.worker_assignments.items()
+            if v == vps_id
+        ]
+        
+        if len(current_workers) < target_count:
+            # Need to add workers
+            for _ in range(target_count - len(current_workers)):
+                await self._add_worker(vps_id)
+        elif len(current_workers) > target_count:
+            # Need to remove workers
+            for worker_id in current_workers[:len(current_workers) - target_count]:
+                await self._remove_worker(worker_id)
+                
+    async def _add_worker(self, vps_id):
+        """Add a new worker to a VPS."""
+        try:
+            # Create new worker ID
+            worker_id = f"worker-{len(self.worker_assignments) + 1}"
+            
+            # Assign to VPS
+            self.worker_assignments[worker_id] = vps_id
+            logger.info(f"Added worker {worker_id} to VPS {vps_id}")
+            
+        except Exception as e:
+            logger.error(f"Error adding worker to VPS {vps_id}: {str(e)}")
+            
+    async def _remove_worker(self, worker_id):
+        """Remove a worker from its VPS."""
+        try:
+            if worker_id in self.worker_assignments:
+                vps_id = self.worker_assignments[worker_id]
+                del self.worker_assignments[worker_id]
+                logger.info(f"Removed worker {worker_id} from VPS {vps_id}")
+                
+        except Exception as e:
+            logger.error(f"Error removing worker {worker_id}: {str(e)}")
         
     def get_vps_list(self) -> List[Dict[str, Any]]:
         """Get a list of all VPS instances"""

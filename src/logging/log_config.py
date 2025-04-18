@@ -1,56 +1,39 @@
-import sys
 import os
+import sys
 from loguru import logger
+from pathlib import Path
 
-def setup_logging(component_name, log_file=None):
-    """Set up comprehensive logging for easier debugging and implementation."""
+def setup_logging(module_name: str, log_file: str):
+    """
+    Set up logging configuration for a module.
+    
+    Args:
+        module_name: Name of the module setting up logging
+        log_file: Name of the log file to write to
+    """
+    # Create logs directory if it doesn't exist
+    log_dir = Path("logs")
+    log_dir.mkdir(exist_ok=True)
     
     # Remove default handler
     logger.remove()
     
-    # Add stdout handler with detailed formatting
+    # Add console handler with custom format
     logger.add(
-        sys.stdout,
-        format="<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>",
-        level="DEBUG"  # Capture all log levels to stdout
+        sys.stderr,
+        format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>",
+        level="INFO"
     )
     
-    # Ensure logs directory exists
-    os.makedirs("logs", exist_ok=True)
-    
-    # Add file handler for the specific component
-    if log_file:
-        logger.add(
-            f"logs/{log_file}",
-            format="{time:YYYY-MM-DD HH:mm:ss.SSS} | {level: <8} | {name}:{function}:{line} - {message}",
-            rotation="10 MB",  # Rotate when file reaches 10MB
-            retention="30 days",  # Keep logs for 30 days
-            compression="zip",  # Compress rotated logs
-            level="DEBUG"  # Capture all log levels to file
-        )
-    
-    # Add a general debug log file with all logs from all components
+    # Add file handler
+    log_path = log_dir / log_file
     logger.add(
-        "logs/debug.log",
-        format="{time:YYYY-MM-DD HH:mm:ss.SSS} | {level: <8} | {name}:{function}:{line} - {message}",
-        rotation="50 MB",
-        retention="30 days",
-        compression="zip",
-        level="DEBUG"
+        log_path,
+        format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {name}:{function}:{line} - {message}",
+        level="DEBUG",
+        rotation="1 day",
+        retention="7 days",
+        compression="zip"
     )
     
-    # Add a separate error log file for critical issues
-    logger.add(
-        "logs/error.log",
-        format="{time:YYYY-MM-DD HH:mm:ss.SSS} | {level: <8} | {name}:{function}:{line} - {message}",
-        rotation="10 MB",
-        retention="60 days",
-        compression="zip",
-        level="ERROR"  # Only capture ERROR and CRITICAL
-    )
-    
-    # Create a component-specific logger
-    component_logger = logger.bind(name=component_name)
-    component_logger.info(f"Logging initialized for {component_name}")
-    
-    return component_logger 
+    logger.info(f"Logging initialized for {module_name}") 

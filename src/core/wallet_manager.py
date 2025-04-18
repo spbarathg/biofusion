@@ -8,11 +8,8 @@ from pathlib import Path
 from cryptography.fernet import Fernet
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
-from solana.keypair import Keypair
-from solana.publickey import PublicKey
-from solana.rpc.api import Client as SolanaClient
-from solana.transaction import Transaction
-from solana.system_program import TransferParams, transfer
+# Use mock Solana module instead of the real one
+from src.utils.mock_solana import Keypair, PublicKey, SystemProgram, Transaction
 import loguru
 
 # Import paths module
@@ -46,10 +43,8 @@ class WalletManager:
         # Load all wallets
         self._load_wallets()
         
-        # Set up Solana client
-        self.client = SolanaClient("https://api.mainnet-beta.solana.com")
-        # Can be overridden with testnet or devnet
-        # self.client = SolanaClient("https://api.devnet.solana.com")
+        # Set up Solana client (mock)
+        self.client = None  # Mock client
     
     def _load_or_create_key(self):
         """Always generate a new encryption key to avoid mounting issues."""

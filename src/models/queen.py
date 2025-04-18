@@ -69,6 +69,7 @@ class Queen:
 
     def _setup_logging(self):
         setup_logging("queen", "queen.log")
+        logger.info("Initializing Queen...")
 
     def _load_config(self, config_path: str) -> ColonyConfig:
         with open(config_path, 'r') as f:

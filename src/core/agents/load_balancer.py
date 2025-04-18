@@ -47,6 +47,7 @@ class LoadBalancer:
     def _setup_logging(self):
         """Set up logging for load balancer"""
         setup_logging("load_balancer", "load_balancer.log")
+        logger.info("Initializing LoadBalancer...")
         
     def _load_config(self, config_path: str) -> LoadBalancerConfig:
         """Load configuration from YAML file"""
@@ -327,4 +328,221 @@ class LoadBalancer:
             "active_connections": sum(self.connection_counts.values()),
             "sticky_sessions": len(self.sticky_mappings),
             "unhealthy_vps_count": len(self.unhealthy_vps)
+        }
+
+    async def start_monitoring(self):
+        """Start monitoring and load balancing."""
+        logger.info("Starting load balancer monitoring...")
+        self.is_running = True
+        
+        while self.is_running:
+            try:
+                # Update VPS metrics
+                await self._update_vps_metrics()
+                
+                # Check load distribution
+                await self._check_load_distribution()
+                
+                await asyncio.sleep(60)  # Check every minute
+                
+            except Exception as e:
+                logger.error(f"Error in load balancer monitoring: {str(e)}")
+                await asyncio.sleep(5)  # Wait before retrying
+                
+    async def stop_monitoring(self):
+        """Stop monitoring and load balancing."""
+        logger.info("Stopping load balancer monitoring...")
+        self.is_running = False
+        
+    async def register_vps(self, vps_instance):
+        """Register a new VPS instance."""
+        vps_id = vps_instance['id']
+        self.vps_instances[vps_id] = vps_instance
+        logger.info(f"Registered VPS instance: {vps_id}")
+        
+    async def _update_vps_metrics(self):
+        """Update metrics for all VPS instances."""
+        for vps_id, vps in self.vps_instances.items():
+            try:
+                # Simulate metric updates for now
+                vps['cpu_usage'] = 0.5  # Example value
+                vps['memory_usage'] = 0.6  # Example value
+                vps['active_connections'] = 10  # Example value
+                
+                logger.debug(f"Updated metrics for VPS {vps_id}")
+                
+            except Exception as e:
+                logger.error(f"Error updating metrics for VPS {vps_id}: {str(e)}")
+                
+    async def _check_load_distribution(self):
+        """Check and update load distribution if needed."""
+        try:
+            # Get available VPS instances
+            available_vps = [
+                vps_id for vps_id, vps in self.vps_instances.items()
+                if vps['is_available']
+            ]
+            
+            if not available_vps:
+                logger.warning("No available VPS instances for load balancing")
+                return
+                
+            # Check if redistribution is needed
+            if self._needs_redistribution():
+                logger.info("Load redistribution needed")
+                await self._redistribute_load()
+                
+        except Exception as e:
+            logger.error(f"Error checking load distribution: {str(e)}")
+            
+    def _needs_redistribution(self):
+        """Check if load redistribution is needed."""
+        if not self.vps_instances:
+            return False
+            
+        # Calculate average load
+        total_load = sum(
+            vps['cpu_usage'] for vps in self.vps_instances.values()
+            if vps['is_available']
+        )
+        avg_load = total_load / len([
+            vps for vps in self.vps_instances.values()
+            if vps['is_available']
+        ])
+        
+        # Check if any VPS is significantly above average
+        return any(
+            vps['cpu_usage'] > avg_load * 1.2  # 20% above average
+            for vps in self.vps_instances.values()
+            if vps['is_available']
+        )
+        
+    async def _redistribute_load(self):
+        """Redistribute load across VPS instances."""
+        logger.info("Redistributing load...")
+        
+        try:
+            # Get available VPS instances sorted by load
+            available_vps = sorted(
+                [
+                    (vps_id, vps)
+                    for vps_id, vps in self.vps_instances.items()
+                    if vps['is_available']
+                ],
+                key=lambda x: x[1]['cpu_usage']
+            )
+            
+            if not available_vps:
+                return
+                
+            # Find overloaded VPS instances
+            overloaded_vps = [
+                vps_id for vps_id, vps in available_vps
+                if vps['cpu_usage'] > 0.8  # 80% threshold
+            ]
+            
+            if not overloaded_vps:
+                return
+                
+            # Redistribute load from overloaded VPS instances
+            for vps_id in overloaded_vps:
+                await self._move_load_from_vps(vps_id)
+                
+        except Exception as e:
+            logger.error(f"Error redistributing load: {str(e)}")
+            
+    async def _move_load_from_vps(self, vps_id):
+        """Move load from an overloaded VPS to other instances."""
+        try:
+            # Find target VPS instances (least loaded)
+            target_vps = sorted(
+                [
+                    (vps_id, vps)
+                    for vps_id, vps in self.vps_instances.items()
+                    if vps['is_available'] and vps_id != vps_id
+                ],
+                key=lambda x: x[1]['cpu_usage']
+            )
+            
+            if not target_vps:
+                return
+                
+            # Move some connections to target VPS
+            connections_to_move = int(
+                self.vps_instances[vps_id]['active_connections'] * 0.2  # Move 20%
+            )
+            
+            for target_id, _ in target_vps:
+                if connections_to_move <= 0:
+                    break
+                    
+                # Simulate moving connections
+                self.vps_instances[vps_id]['active_connections'] -= connections_to_move
+                self.vps_instances[target_id]['active_connections'] += connections_to_move
+                
+                logger.info(
+                    f"Moved {connections_to_move} connections from VPS {vps_id} "
+                    f"to VPS {target_id}"
+                )
+                
+                connections_to_move = 0
+                
+        except Exception as e:
+            logger.error(f"Error moving load from VPS {vps_id}: {str(e)}")
+            
+    def get_next_vps(self):
+        """Get the next VPS instance based on the distribution method."""
+        available_vps = [
+            vps_id for vps_id, vps in self.vps_instances.items()
+            if vps['is_available']
+        ]
+        
+        if not available_vps:
+            return None
+            
+        if self.distribution_method == "round_robin":
+            # Round-robin distribution
+            self.current_index = (self.current_index + 1) % len(available_vps)
+            return available_vps[self.current_index]
+            
+        elif self.distribution_method == "least_connections":
+            # Least connections distribution
+            return min(
+                available_vps,
+                key=lambda vps_id: self.vps_instances[vps_id]['active_connections']
+            )
+            
+        elif self.distribution_method == "weighted":
+            # Weighted distribution based on performance
+            return min(
+                available_vps,
+                key=lambda vps_id: self.vps_instances[vps_id]['cpu_usage']
+            )
+            
+        else:
+            # Default to round-robin
+            self.current_index = (self.current_index + 1) % len(available_vps)
+            return available_vps[self.current_index]
+            
+    def set_distribution_method(self, method):
+        """Set the load distribution method."""
+        valid_methods = ["round_robin", "least_connections", "weighted"]
+        
+        if method not in valid_methods:
+            logger.warning(f"Invalid distribution method: {method}")
+            return
+            
+        self.distribution_method = method
+        logger.info(f"Set distribution method to: {method}")
+        
+    def get_status(self):
+        """Get the current status of the load balancer."""
+        return {
+            "is_running": self.is_running,
+            "distribution_method": self.distribution_method,
+            "vps_count": len(self.vps_instances),
+            "available_vps": len([
+                vps for vps in self.vps_instances.values()
+                if vps['is_available']
+            ])
         } 
