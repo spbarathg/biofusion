@@ -3,29 +3,11 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 use serde::{Deserialize, Serialize};
 use reqwest::Client;
-use log::{info, warn, error};
+use log::{info, warn, error, debug};
 use anyhow::{Result, anyhow};
 use async_trait::async_trait;
 
-use crate::pathfinder::{Token, Swap};
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DexQuote {
-    pub input_token: String,
-    pub output_token: String,
-    pub input_amount: f64,
-    pub output_amount: f64,
-    pub price_impact: f64,
-    pub fee: f64,
-    pub route: Vec<String>,
-}
-
-#[async_trait::async_trait]
-pub trait DexProvider: Send + Sync + std::fmt::Debug {
-    async fn get_quote(&self, from_token: &str, to_token: &str, amount: f64) -> Result<DexQuote>;
-    async fn execute_swap(&self, quote: &DexQuote) -> Result<String>;
-    async fn get_token_info(&self, token_address: &str) -> Result<Token>;
-}
+use crate::dex_provider::{DexProvider, DexQuote, TokenInfo, Token, Swap};
 
 #[derive(Debug)]
 pub struct JupiterClient {
@@ -46,7 +28,7 @@ impl JupiterClient {
 
 #[async_trait]
 impl DexProvider for JupiterClient {
-    async fn get_quote(&self, input_token: &str, output_token: &str, amount: f64) -> Result<DexQuote> {
+    async fn get_quote(&self, from_token: &str, to_token: &str, amount: f64) -> Result<DexQuote> {
         let url = format!(
             "{}/quote?inputMint={}&outputMint={}&amount={}&slippageBps=50",
             self.base_url, input_token, output_token, amount
@@ -90,6 +72,15 @@ impl DexProvider for JupiterClient {
         cache.insert(token_address.to_string(), token.clone());
         
         Ok(token)
+    }
+
+    async fn get_swap_rate(&self, from_token: &Token, to_token: &Token, amount: f64) -> Result<Swap> {
+        debug!("Getting swap rate from {} to {} for amount {}", from_token.symbol, to_token.symbol, amount);
+        self.get_quote(from_token.address.as_str(), to_token.address.as_str(), amount).await
+    }
+
+    fn clone_box(&self) -> Box<dyn DexProvider> {
+        Box::new(self.clone())
     }
 }
 
@@ -158,14 +149,21 @@ impl DexProvider for OrcaClient {
         
         Ok(token)
     }
+
+    async fn get_swap_rate(&self, from_token: &Token, to_token: &Token, amount: f64) -> Result<Swap> {
+        debug!("Getting swap rate from {} to {} for amount {}", from_token.symbol, to_token.symbol, amount);
+        self.get_quote(from_token.address.as_str(), to_token.address.as_str(), amount).await
+    }
+
+    fn clone_box(&self) -> Box<dyn DexProvider> {
+        Box::new(self.clone())
+    }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct DexClient {
-    providers: Vec<Box<dyn DexProvider>>,
-    token_cache: Arc<Mutex<HashMap<String, Token>>>,
-    base_url: String,
-    client: Client,
+    pub provider: Box<dyn DexProvider>,
+    pub base_url: String,
 }
 
 impl Serialize for DexClient {
@@ -193,34 +191,13 @@ impl<'de> Deserialize<'de> for DexClient {
         let helper = Helper::deserialize(deserializer)?;
         
         Ok(DexClient {
-            providers: Vec::new(),
-            token_cache: Arc::new(Mutex::new(HashMap::new())),
+            provider: Box::new(JupiterClient::new().map_err(serde::de::Error::custom)?),
             base_url: helper.base_url,
-            client: Client::new(),
         })
     }
 }
 
 impl DexClient {
-    pub fn new() -> Result<Self> {
-        let mut client = Self {
-            providers: Vec::new(),
-            token_cache: Arc::new(Mutex::new(HashMap::new())),
-            base_url: "https://api.solana.com".to_string(),
-            client: Client::new(),
-        };
-        
-        // Add Jupiter provider
-        let jupiter = Box::new(JupiterClient::new()?);
-        client.providers.push(jupiter);
-        
-        // Add Orca provider
-        let orca = Box::new(OrcaClient::new()?);
-        client.providers.push(orca);
-        
-        Ok(client)
-    }
-    
     pub async fn initialize(&mut self) -> Result<()> {
         // Preload common tokens
         self.get_token_info("So11111111111111111111111111111111111111112").await?; // SOL
@@ -234,97 +211,24 @@ impl DexClient {
               quote.input_amount, quote.input_token, 
               quote.output_amount, quote.output_token);
         
-        // Find provider that was used in quote (first in route)
-        // In a real implementation, the quote would include the provider info
-        if let Some(provider) = self.providers.first() {
-            return provider.execute_swap(quote).await;
-        } else {
-            return Err(anyhow!("No DEX provider available for swap execution"));
-        }
+        self.provider.execute_swap(quote).await
     }
     
     pub async fn get_quote(&self, input_token: &str, output_token: &str, amount: f64) -> Result<DexQuote> {
-        // Try to get quotes from all providers
-        let mut quotes = Vec::new();
-        
-        for provider in &self.providers {
-            match provider.get_quote(input_token, output_token, amount).await {
-                Ok(quote) => quotes.push(quote),
-                Err(e) => warn!("Failed to get quote from provider: {}", e),
-            }
-        }
-        
-        if quotes.is_empty() {
-            return Err(anyhow!("No quotes available for {} to {}", input_token, output_token));
-        }
-        
-        // Return the quote with the highest output amount
-        quotes.sort_by(|a, b| {
-            b.output_amount.partial_cmp(&a.output_amount)
-                .unwrap_or(std::cmp::Ordering::Equal)
-        });
-        
-        Ok(quotes[0].clone())
+        self.provider.get_quote(input_token, output_token, amount).await
     }
     
     pub async fn get_best_quote(&self, from_token: &str, to_token: &str, amount: f64) -> Result<DexQuote> {
         info!("Getting best quote for {} {} to {}", amount, from_token, to_token);
         
-        let mut best_quote: Option<DexQuote> = None;
-        let mut best_output = 0.0;
-        
-        for provider in &self.providers {
-            match provider.get_quote(from_token, to_token, amount).await {
-                Ok(quote) => {
-                    if best_quote.is_none() || quote.output_amount > best_output {
-                        best_output = quote.output_amount;
-                        best_quote = Some(quote);
-                    }
-                },
-                Err(e) => warn!("Failed to get quote from provider: {}", e),
-            }
-        }
-        
-        match best_quote {
-            Some(quote) => Ok(quote),
-            None => Err(anyhow!("No quotes available")),
-        }
+        self.provider.get_quote(from_token, to_token, amount).await
     }
     
     pub async fn get_token_info(&self, token_address: &str) -> Result<Token> {
-        // Check cache first
-        let cache = self.token_cache.lock().await;
-        
-        if let Some(token) = cache.get(token_address) {
-            return Ok(token.clone());
-        }
-        
-        drop(cache); // Release the lock before calling providers
-        
-        // Try to get token info from any provider
-        for provider in &self.providers {
-            match provider.get_token_info(token_address).await {
-                Ok(token) => {
-                    // Update cache
-                    let mut cache = self.token_cache.lock().await;
-                    cache.insert(token_address.to_string(), token.clone());
-                    return Ok(token);
-                },
-                Err(_) => continue,
-            }
-        }
-        
-        Err(anyhow!("Token info not available for {}", token_address))
+        self.provider.get_token_info(token_address).await
     }
     
     pub async fn get_token_info_force_refresh(&self, token_address: &str) -> Result<Token> {
-        // Clear cache entry
-        {
-            let mut cache = self.token_cache.lock().await;
-            cache.remove(token_address);
-        }
-        
-        // Get fresh token info
         self.get_token_info(token_address).await
     }
     
@@ -431,6 +335,18 @@ impl DexClient {
         }
         
         Ok(pairs)
+    }
+
+    pub async fn get_swap_rate(&self, amount: f64, from_token: &Token, to_token: &Token) -> Result<f64> {
+        info!("Getting swap rate for {} {} to {}", amount, from_token.symbol, to_token.symbol);
+        let swap = self.provider.get_swap_rate(from_token, to_token, amount).await?;
+        Ok(swap.expected_output / swap.input_amount)
+    }
+}
+
+impl Clone for Box<dyn DexProvider> {
+    fn clone(&self) -> Self {
+        self.clone_box()
     }
 }
 

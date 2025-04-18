@@ -29,13 +29,9 @@ pub struct Swap {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TradePath {
-    pub from_token: Token,
-    pub to_token: Token,
-    pub swaps: Vec<Swap>,
-    pub estimated_profit_amount: f64,
-    pub estimated_profit_percentage: f64,
     pub path_id: String,
-    pub total_price_impact: f64,
+    pub swaps: Vec<Swap>,
+    pub profit_percentage: f64,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -128,104 +124,76 @@ impl PathFinder {
         Ok(paths)
     }
     
-    async fn dfs_find_paths(
+    async fn dfs_find_paths_boxed(
         &self,
         base_token: &Token,
         current_token: &Token,
-        initial_amount: f64,
-        current_amount: f64,
-        path: Vec<Swap>,
         visited: &mut HashSet<String>,
-        result_paths: &mut Vec<TradePath>,
-        all_tokens: &[Token],
+        current_path: &mut Vec<Swap>,
+        paths: &mut Vec<TradePath>,
         depth: usize,
     ) -> Result<()> {
-        // Stop if we've reached the maximum path length
-        if depth >= self.max_path_length {
+        if depth == 0 {
             return Ok(());
         }
+
+        visited.insert(current_token.symbol.clone());
         
-        // For each possible token we can swap to
-        for token in all_tokens {
-            // Skip if we've already visited this token in this path
-            if visited.contains(&token.address) && token.address != base_token.address {
-                continue;
-            }
-            
-            // Skip if it's the current token
-            if token.address == current_token.address {
-                continue;
-            }
-            
-            // Get swap details from dex client
-            match self.dex_client.get_best_swap_rate(current_token, token, current_amount).await {
-                Ok(swap) => {
-                    // Skip if price impact is too high
-                    if swap.price_impact > self.max_price_impact {
-                        continue;
-                    }
+        for swap in &self.swaps {
+            if swap.from_token.symbol == current_token.symbol && !visited.contains(&swap.to_token.symbol) {
+                current_path.push(swap.clone());
+                
+                if swap.to_token.symbol == base_token.symbol {
+                    let path_id = current_path.iter()
+                        .map(|s| format!("{}->{}", s.from_token.symbol, s.to_token.symbol))
+                        .collect::<Vec<String>>()
+                        .join("->");
+                        
+                    let profit_percentage = self.calculate_path_profit(&current_path);
                     
-                    let mut new_path = path.clone();
-                    new_path.push(swap.clone());
+                    paths.push(TradePath {
+                        path_id: path_id.clone(),
+                        swaps: current_path.clone(),
+                        profit_percentage,
+                    });
                     
-                    // If we've returned to the base token, check if it's profitable
-                    if token.address == base_token.address {
-                        let final_amount = swap.expected_output;
-                        let profit = final_amount - initial_amount;
-                        let profit_percentage = profit / initial_amount;
-                        
-                        // If it's profitable, add it to the result
-                        if profit_percentage > self.min_profit_threshold {
-                            // Calculate total price impact
-                            let total_price_impact = new_path.iter()
-                                .map(|s| s.price_impact)
-                                .sum::<f64>();
-                            
-                            // Create path ID
-                            let path_id = new_path.iter()
-                                .map(|s| s.from_token.clone())
-                                .collect::<Vec<_>>()
-                                .join("->");
-                            
-                            let trade_path = TradePath {
-                                from_token: base_token.clone(),
-                                to_token: base_token.clone(),
-                                swaps: new_path,
-                                estimated_profit_amount: profit,
-                                estimated_profit_percentage: profit_percentage,
-                                path_id,
-                                total_price_impact,
-                            };
-                            
-                            result_paths.push(trade_path);
-                            debug!("Found profitable path: {} -> profit: {:.4}%", path_id, profit_percentage * 100.0);
-                        }
-                    } else {
-                        // Continue exploring this path
-                        visited.insert(token.address.clone());
-                        
-                        self.dfs_find_paths(
-                            base_token,
-                            token,
-                            initial_amount,
-                            swap.expected_output,
-                            new_path,
-                            visited,
-                            result_paths,
-                            all_tokens,
-                            depth + 1,
-                        ).await?;
-                        
-                        visited.remove(&token.address);
-                    }
+                    debug!("Found profitable path: {} -> profit: {:.4}%", path_id, profit_percentage);
+                } else {
+                    Box::pin(self.dfs_find_paths_boxed(
+                        base_token,
+                        &swap.to_token,
+                        visited,
+                        current_path,
+                        paths,
+                        depth - 1,
+                    )).await?;
                 }
-                Err(e) => {
-                    debug!("Skipping swap from {} to {}: {}", current_token.symbol, token.symbol, e);
-                }
+                
+                current_path.pop();
             }
         }
         
+        visited.remove(&current_token.symbol);
         Ok(())
+    }
+    
+    pub async fn dfs_find_paths(
+        &self,
+        base_token: &Token,
+        current_token: &Token,
+        visited: &mut HashSet<String>,
+        current_path: &mut Vec<Swap>,
+        paths: &mut Vec<TradePath>,
+        depth: usize,
+    ) -> Result<()> {
+        Box::pin(self.dfs_find_paths_boxed(
+            base_token,
+            current_token,
+            visited,
+            current_path,
+            paths,
+            depth,
+        )).await
     }
     
     pub async fn find_direct_paths(&self, from_token: &Token, to_token: &Token, amount: f64) -> Result<Vec<TradePath>> {
