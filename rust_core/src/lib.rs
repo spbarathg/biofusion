@@ -12,6 +12,7 @@ use tokio::sync::Mutex;
 
 pub mod config;
 pub mod dex_client;
+pub mod dex_provider;
 pub mod pathfinder;
 pub mod tx_executor;
 pub mod worker_ant;
