@@ -1,13 +1,13 @@
 # AntBot: Solana Trading Bot
 
-AntBot is a multi-agent trading bot system for Solana built with a hybrid Python-Rust architecture. The system uses a colony structure with Queen, Princess, and Worker agents to manage capital and execute trades.
+AntBot is a multi-agent trading bot system for Solana built with a hybrid Python-Rust architecture. The system uses a colony structure with Queen and Worker agents to manage capital and execute trades.
 
 ## Architecture
 
-AntBot uses a multi-layered architecture:
+AntBot uses a simplified multi-layered architecture:
 
-- **Python Layer**: Manages higher-level capital management, agent coordination, and monitoring
-- **Rust Core**: Powers the high-performance trading engine and execution components
+- **Python Layer**: Manages capital allocation, agent coordination, and monitoring
+- **Rust Core**: Powers the high-performance trading engine (with Python fallback when Rust isn't available)
 - **FFI Bindings**: Connects Python and Rust layers through native bindings
 
 ## Directory Structure
@@ -15,52 +15,38 @@ AntBot uses a multi-layered architecture:
 ```
 antbotNew/
 ├── config/                     # Configuration files
-│   ├── settings.yaml           # Main settings file
-│   └── queen.yaml              # Queen-specific settings
+│   └── settings.yaml           # Main settings file
 ├── src/                        # Main source code
 │   ├── core/                   # Core functionality
-│   │   ├── wallet_manager.py   # Wallet management
-│   │   └── config_loader.py    # Configuration loading
-│   ├── logging/                # Logging configuration
-│   │   ├── logger.py
-│   │   └── log_config.py
-│   ├── models/                 # Bot models
-│   │   ├── queen.py            # Queen agent
-│   │   ├── princess.py         # Princess agent
-│   │   ├── worker.py           # Worker agent
-│   │   ├── drone.py            # Drone agent
-│   │   └── capital_manager.py  # Capital management
+│   │   ├── agents/             # Agent implementations
+│   │   │   ├── queen.py        # Queen agent 
+│   │   │   └── worker.py       # Worker agent
+│   │   ├── capital/            # Capital management
+│   │   │   └── capital_manager.py
+│   │   └── wallet/             # Wallet management
+│   │       └── wallet_manager.py
 │   ├── dashboard/              # Dashboard components
-│   │   ├── dashboard.py
-│   │   └── run_dashboard.py
-│   ├── utils/                  # Utility functions
-│   │   └── monitor.py
-│   └── bindings/               # Rust-Python bindings
-│       └── worker_bridge.py
+│   │   ├── app.py              # Dashboard application
+│   │   └── components/         # UI components
+│   ├── bindings/               # Rust-Python bindings
+│   │   └── worker_bridge.py    # Bridge to the Rust engine
+│   └── utils/                  # Utility functions
+│       ├── logging/            # Logging utilities
+│       │   └── logger.py
+│       └── monitoring/         # Monitoring tools
 ├── rust_core/                  # Rust core implementation
 │   ├── src/
 │   │   ├── lib.rs
-│   │   ├── main.rs
 │   │   ├── worker.rs
-│   │   ├── worker_ant.rs
-│   │   ├── wallet.rs
-│   │   ├── tx_executor.rs
-│   │   ├── pathfinder.rs 
-│   │   ├── dex_client.rs
-│   │   └── config.rs
+│   │   └── ...
 │   ├── Cargo.toml
-│   └── Cargo.lock
-├── scripts/                    # Utility scripts
-│   └── wallet_cli.py           # Wallet management CLI
+│   └── build.rs
 ├── data/                       # Data directory
 │   ├── wallets/                # Wallet storage (encrypted)
 │   └── backups/                # Wallet backups
 ├── logs/                       # Log files
-├── systemd/                    # SystemD service files
-│   ├── antbot.service
-│   ├── antbot-dashboard.service
-│   └── README.md
 ├── requirements.txt            # Python dependencies
+├── setup.py                    # Package setup
 └── README.md                   # Project documentation
 ```
 
@@ -69,9 +55,8 @@ antbotNew/
 ### Prerequisites
 
 - Python 3.8+ 
-- Rust 1.5X+
+- Rust 1.5X+ (optional - Python fallback available)
 - Solana CLI tools
-- Node.js/npm (for dashboard)
 
 ### Setup
 
@@ -87,7 +72,7 @@ antbotNew/
    pip install -e .  # Install package in development mode
    ```
 
-3. **Build the Rust core:**
+3. **Build the Rust core (optional):**
    ```bash
    cd rust_core
    cargo build --release
@@ -100,64 +85,23 @@ antbotNew/
    cp config/settings.yaml.example config/settings.yaml
    ```
 
-5. **Prepare the environment:**
-   Either create a `.env` file with required variables or set them in your environment.
-
-## Quick Build Guide
-
-1. **Install Python dependencies:**
-   ```bash
-   pip install -r requirements.txt
-   pip install -e .  # Install package in development mode
-   ```
-
-2. **Build Rust components:**
-   ```bash
-   cd rust_core
-   cargo build --release
-   cd ..
-   ```
-
-3. **Test wallet CLI:**
-   ```bash
-   python scripts/wallet_cli.py --help
-   ```
-
-4. **Start the queen:**
-   ```bash
-   python -m src.models.queen --state
-   ```
-
 ## Usage
-
-### Wallet Management
-
-Use the wallet CLI to manage wallets:
-
-```bash
-python scripts/wallet_cli.py create --name "queen_wallet" --type queen
-python scripts/wallet_cli.py list
-python scripts/wallet_cli.py balance --id <wallet_id>
-python scripts/wallet_cli.py backup
-```
 
 ### Running the Bot
 
 1. **Start the Queen:**
    ```bash
-   python -m src.models.queen
+   python -m src.core.agents.queen
    ```
 
 2. **Start the Dashboard:**
    ```bash
-   python src/dashboard/run_dashboard.py
+   python -m src.dashboard.app
    ```
 
-3. **Deploy as a service:**
+   Or with Streamlit:
    ```bash
-   sudo cp systemd/antbot.service /etc/systemd/system/
-   sudo systemctl enable antbot
-   sudo systemctl start antbot
+   streamlit run src/dashboard/app.py
    ```
 
 ## Bot Architecture
@@ -165,33 +109,49 @@ python scripts/wallet_cli.py backup
 ### Agent Types
 
 - **Queen:** Capital manager, orchestrates the colony and allocates funds
-- **Princess:** Regional capital manager, spawned by the Queen
 - **Worker:** Execution agent, performs trades on specific markets
-- **Drone:** Utility agent, performs support tasks like rebalancing
 
 ### Trading Strategy
 
-The bot supports multiple configurable strategies:
+The bot supports a basic "find and execute" strategy that can be extended further:
 
-- Arbitrage between DEXes
 - Market making
-- Liquidity farming
-- Custom strategies via plugin system
+- Arbitrage between DEXes
+- Liquidity provision
 
 ## Configuration
 
 Configuration is stored in YAML files in the `config/` directory:
 
 - `settings.yaml`: Main configuration file
-- `queen.yaml`: Queen-specific settings
 
-See the documentation in `docs/` for detailed configuration options.
+Key configuration sections:
+
+```yaml
+# Colony Management (handles agent spawning and coordination)
+colony:
+  initial_capital: 10.0
+  min_workers: 3
+  max_workers: 10
+
+# Capital Management (handles profits and reinvestment)
+capital:
+  savings_ratio: 0.90
+  reinvestment_ratio: 0.80
+  compound_frequency: 24
+
+# Worker Configuration (handles trading parameters)
+worker:
+  max_trades_per_hour: 10
+  min_profit_threshold: 0.01
+  max_slippage: 0.02
+```
 
 ## Monitoring
 
 AntBot includes a real-time monitoring dashboard:
 
-- Web interface on port 8501 (default)
+- Web interface with Streamlit
 - Performance metrics
 - Trading history
 - Agent status
@@ -199,7 +159,6 @@ AntBot includes a real-time monitoring dashboard:
 ## Security
 
 - All wallet private keys are encrypted at rest
-- API keys and secrets should be stored in `.env` file (not included in repo)
 - Regular wallet backups are recommended
 
 ## Development
@@ -210,9 +169,17 @@ AntBot includes a real-time monitoring dashboard:
 python -m pytest tests/
 ```
 
-### Adding New Components
+### Installing Development Dependencies
 
-Follow the existing patterns for structure and imports to maintain consistency.
+```bash
+pip install -e ".[dev]"
+```
+
+### Installing Dashboard Dependencies
+
+```bash
+pip install -e ".[dashboard]"
+```
 
 ## License
 

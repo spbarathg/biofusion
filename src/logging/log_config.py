@@ -1,4 +1,5 @@
 import sys
+import os
 from loguru import logger
 
 def setup_logging(component_name, log_file=None):
@@ -13,6 +14,9 @@ def setup_logging(component_name, log_file=None):
         format="<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>",
         level="DEBUG"  # Capture all log levels to stdout
     )
+    
+    # Ensure logs directory exists
+    os.makedirs("logs", exist_ok=True)
     
     # Add file handler for the specific component
     if log_file:
@@ -45,5 +49,8 @@ def setup_logging(component_name, log_file=None):
         level="ERROR"  # Only capture ERROR and CRITICAL
     )
     
-    logger.info(f"Logging initialized for {component_name}")
-    return logger 
+    # Create a component-specific logger
+    component_logger = logger.bind(name=component_name)
+    component_logger.info(f"Logging initialized for {component_name}")
+    
+    return component_logger 

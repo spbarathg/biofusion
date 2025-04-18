@@ -1,0 +1,99 @@
+groups:
+- name: antbot_alerts
+  rules:
+  # Worker availability alerts
+  - alert: WorkerDown
+    expr: antbot_worker_status == 0
+    for: 5m
+    labels:
+      severity: critical
+    annotations:
+      summary: "Worker {{ $labels.worker_id }} is down"
+      description: "Worker has been down for more than 5 minutes."
+      
+  # Wallet balance alerts
+  - alert: LowWalletBalance
+    expr: antbot_wallet_balance_sol{wallet_type="queen"} < 1.0
+    for: 10m
+    labels:
+      severity: warning
+    annotations:
+      summary: "Low wallet balance for {{ $labels.wallet_name }}"
+      description: "Wallet balance is below 1 SOL and may need funding."
+      
+  - alert: CriticalWalletBalance
+    expr: antbot_wallet_balance_sol{wallet_type="queen"} < 0.1
+    for: 5m
+    labels:
+      severity: critical
+    annotations:
+      summary: "Critical wallet balance for {{ $labels.wallet_name }}"
+      description: "Wallet balance is below 0.1 SOL. Immediate funding required."
+      
+  # Error rate alerts
+  - alert: HighErrorRate
+    expr: rate(antbot_error_count_total[5m]) > 0.1
+    for: 10m
+    labels:
+      severity: warning
+    annotations:
+      summary: "High error rate in {{ $labels.component }}"
+      description: "Error rate is above 0.1 errors per second for the last 10 minutes."
+      
+  - alert: CriticalErrorRate
+    expr: rate(antbot_error_count_total[5m]) > 1
+    for: 5m
+    labels:
+      severity: critical
+    annotations:
+      summary: "Critical error rate in {{ $labels.component }}"
+      description: "Error rate is above 1 error per second for the last 5 minutes."
+      
+  # Transaction failure alerts
+  - alert: HighTransactionFailureRate
+    expr: rate(antbot_transaction_count_total{status="failure"}[10m]) / rate(antbot_transaction_count_total[10m]) > 0.1
+    for: 15m
+    labels:
+      severity: warning
+    annotations:
+      summary: "High transaction failure rate"
+      description: "Transaction failure rate is above 10% for the last 15 minutes."
+      
+  # Backup alerts
+  - alert: BackupTooOld
+    expr: time() - antbot_backup_duration_seconds > 86400
+    for: 1h
+    labels:
+      severity: warning
+    annotations:
+      summary: "Backup is too old"
+      description: "Last successful backup was more than 24 hours ago."
+      
+  # API latency alerts
+  - alert: HighApiLatency
+    expr: histogram_quantile(0.95, rate(antbot_api_request_duration_seconds_bucket[5m])) > 1
+    for: 10m
+    labels:
+      severity: warning
+    annotations:
+      summary: "High API latency for {{ $labels.endpoint }}"
+      description: "95th percentile API request latency is above 1 second for the last 10 minutes."
+      
+  # Key rotation alerts
+  - alert: KeyRotationFailed
+    expr: antbot_key_rotation_status == 0
+    for: 1h
+    labels:
+      severity: critical
+    annotations:
+      summary: "Key rotation failed"
+      description: "The last encryption key rotation attempt failed."
+      
+  - alert: KeyRotationOverdue
+    expr: time() - antbot_key_rotation_timestamp > 7776000  # 90 days in seconds
+    for: 1d
+    labels:
+      severity: warning
+    annotations:
+      summary: "Key rotation overdue"
+      description: "Encryption keys have not been rotated in over 90 days." 

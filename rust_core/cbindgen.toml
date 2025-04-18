@@ -1,0 +1,36 @@
+language = "C"
+header = """
+/* AntBot Core FFI Bindings
+ * Auto-generated - Do not edit manually
+ */
+"""
+
+include_version = true
+include_guard = "ANT_BOT_CORE_H"
+sys_includes = ["stdint.h", "stdbool.h"]
+include_item_docstrings = true
+
+[parse]
+parse_deps = true
+include = ["ant_bot_core"]
+extra_bindings = ["ant_bot_core"]
+
+[export]
+include = ["worker_create", "worker_start", "worker_stop", "worker_get_status", "worker_update_metrics"]
+prefix = "AntBot_"
+item_types = ["functions", "structs", "enums"]
+
+[export.rename]
+"worker_create" = "WorkerCreate"
+"worker_start" = "WorkerStart"
+"worker_stop" = "WorkerStop"
+"worker_get_status" = "WorkerGetStatus"
+"worker_update_metrics" = "WorkerUpdateMetrics"
+
+[define]
+"feature = \"ffi\"" = true
+
+[fn]
+rename_args = "CamelCase"
+args = "vertical"
+must_use = "WrapAsResult" 

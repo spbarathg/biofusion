@@ -1,0 +1,362 @@
+2025-04-18 13:08:15.076 | WARNING  | src.bindings.worker_bridge:__init__:194 - Using mock implementation for WorkerBridge
+2025-04-18 13:11:46.195 | WARNING  | src.bindings.worker_bridge:__init__:194 - Using mock implementation for WorkerBridge
+2025-04-18 13:12:30.155 | WARNING  | src.bindings.worker_bridge:__init__:194 - Using mock implementation for WorkerBridge
+2025-04-18 13:13:44.465 | WARNING  | src.bindings.worker_bridge:__init__:194 - Using mock implementation for WorkerBridge
+2025-04-18 13:13:45.420 | WARNING  | src.bindings.worker_bridge:__init__:194 - Using mock implementation for WorkerBridge
+2025-04-18 13:13:45.423 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet 0859aae0-af3c-4440-a338-aab5ebe42fa0.json: 
+2025-04-18 13:13:45.424 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet 1aaf28a8-aa98-4b82-8d15-fc6a5134698f.json: 
+2025-04-18 13:13:45.425 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet 3015d50c-72aa-4eac-b95b-8b8b29c46c87.json: 
+2025-04-18 13:13:45.426 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet 33a21d2a-9f45-4b3b-ba44-02f23b2a1afd.json: 
+2025-04-18 13:13:45.428 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet 3a72a8a6-bd1d-447a-a351-3f2ca5b1323f.json: 
+2025-04-18 13:13:45.428 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet 657a6112-59d0-4be1-b85d-a4f881410382.json: 
+2025-04-18 13:13:45.429 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet 8c8529af-af91-4f53-be7a-b01031d3e27e.json: 
+2025-04-18 13:13:45.431 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet 99bb3999-0153-45b2-a92a-e9ccf92991a1.json: 
+2025-04-18 13:13:45.432 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet a24bd7e8-f04b-44a7-bd27-75995a462392.json: 
+2025-04-18 13:13:45.441 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet b4d57f98-9e86-4b48-a7e9-fbf6b13a6cd7.json: 
+2025-04-18 13:13:45.443 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet d19a9cf7-caca-4b5c-8e48-de03e668becc.json: 
+2025-04-18 13:13:45.444 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet dcb2df46-a292-4095-8774-8534df8ef4d6.json: 
+2025-04-18 13:13:45.445 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet f50545ac-7144-4d0f-9657-08427eaac550.json: 
+2025-04-18 13:13:45.446 | INFO     | src.models.queen:manage_workers:120 - Colony has 0 workers, below minimum 3. Spawning more...
+2025-04-18 13:13:45.598 | WARNING  | src.models.queen:_spawn_workers:151 - Not enough capital to spawn 3 workers. Need 0.30000000000000004 SOL, have 0.0 SOL
+2025-04-18 13:13:45.784 | INFO     | src.models.worker:start:62 - Worker test_worker_1 starting...
+2025-04-18 13:13:45.785 | ERROR    | src.models.worker:start:77 - Wallet b4d57f98-9e86-4b48-a7e9-fbf6b13a6cd7 not found for worker test_worker_1
+2025-04-18 13:14:15.462 | INFO     | src.models.worker:stop:134 - Worker test_worker_1 stopping...
+2025-04-18 13:14:15.463 | WARNING  | src.bindings.worker_bridge:stop_worker:286 - Worker test_worker_1 is not running
+2025-04-18 13:14:15.464 | ERROR    | src.models.worker:stop:142 - Failed to stop worker test_worker_1 in Rust engine
+2025-04-18 13:14:47.316 | WARNING  | src.bindings.worker_bridge:__init__:194 - Using mock implementation for WorkerBridge
+2025-04-18 13:14:49.633 | WARNING  | src.bindings.worker_bridge:__init__:194 - Using mock implementation for WorkerBridge
+2025-04-18 13:14:49.635 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet 0859aae0-af3c-4440-a338-aab5ebe42fa0.json: 
+2025-04-18 13:14:49.644 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet 0f36a5e1-2978-4dcc-be3d-1e3ed5c83524.json: 
+2025-04-18 13:14:49.645 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet 1aaf28a8-aa98-4b82-8d15-fc6a5134698f.json: 
+2025-04-18 13:14:49.646 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet 3015d50c-72aa-4eac-b95b-8b8b29c46c87.json: 
+2025-04-18 13:14:49.647 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet 33a21d2a-9f45-4b3b-ba44-02f23b2a1afd.json: 
+2025-04-18 13:14:49.648 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet 3a72a8a6-bd1d-447a-a351-3f2ca5b1323f.json: 
+2025-04-18 13:14:49.649 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet 657a6112-59d0-4be1-b85d-a4f881410382.json: 
+2025-04-18 13:14:49.650 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet 75720381-4196-4747-8ae6-b99ec3b56adb.json: 
+2025-04-18 13:14:49.651 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet 8c8529af-af91-4f53-be7a-b01031d3e27e.json: 
+2025-04-18 13:14:49.652 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet 902a1b70-1499-4942-9cb4-0da3f78c93d4.json: 
+2025-04-18 13:14:49.653 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet 99bb3999-0153-45b2-a92a-e9ccf92991a1.json: 
+2025-04-18 13:14:49.654 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet a24bd7e8-f04b-44a7-bd27-75995a462392.json: 
+2025-04-18 13:14:49.655 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet b4d57f98-9e86-4b48-a7e9-fbf6b13a6cd7.json: 
+2025-04-18 13:14:49.655 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet c20770a0-532f-4b12-85a2-27c809bbfd81.json: 
+2025-04-18 13:14:49.656 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet d19a9cf7-caca-4b5c-8e48-de03e668becc.json: 
+2025-04-18 13:14:49.657 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet dcb2df46-a292-4095-8774-8534df8ef4d6.json: 
+2025-04-18 13:14:49.658 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet dfeea806-ca0e-4763-b8a3-13ab1131431d.json: 
+2025-04-18 13:14:49.659 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet f50545ac-7144-4d0f-9657-08427eaac550.json: 
+2025-04-18 13:14:49.661 | INFO     | src.models.queen:manage_workers:120 - Colony has 0 workers, below minimum 3. Spawning more...
+2025-04-18 13:14:49.804 | WARNING  | src.models.queen:_spawn_workers:151 - Not enough capital to spawn 3 workers. Need 0.30000000000000004 SOL, have 0.0 SOL
+2025-04-18 13:14:49.946 | INFO     | src.models.worker:start:62 - Worker test_worker_1 starting...
+2025-04-18 13:14:49.947 | ERROR    | src.models.worker:start:77 - Wallet 0f36a5e1-2978-4dcc-be3d-1e3ed5c83524 not found for worker test_worker_1
+2025-04-18 13:14:54.663 | INFO     | src.models.worker:stop:134 - Worker test_worker_1 stopping...
+2025-04-18 13:14:54.663 | WARNING  | src.bindings.worker_bridge:stop_worker:286 - Worker test_worker_1 is not running
+2025-04-18 13:14:54.664 | ERROR    | src.models.worker:stop:142 - Failed to stop worker test_worker_1 in Rust engine
+2025-04-18 13:15:43.775 | WARNING  | src.bindings.worker_bridge:__init__:194 - Using mock implementation for WorkerBridge
+2025-04-18 13:15:53.133 | WARNING  | src.bindings.worker_bridge:__init__:194 - Using mock implementation for WorkerBridge
+2025-04-18 13:15:54.069 | WARNING  | src.bindings.worker_bridge:__init__:194 - Using mock implementation for WorkerBridge
+2025-04-18 13:15:54.072 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet 0859aae0-af3c-4440-a338-aab5ebe42fa0.json: 
+2025-04-18 13:15:54.073 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet 0f36a5e1-2978-4dcc-be3d-1e3ed5c83524.json: 
+2025-04-18 13:15:54.074 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet 18325abe-05c5-4a0b-8858-33f01b27f1ed.json: 
+2025-04-18 13:15:54.075 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet 1aaf28a8-aa98-4b82-8d15-fc6a5134698f.json: 
+2025-04-18 13:15:54.076 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet 3015d50c-72aa-4eac-b95b-8b8b29c46c87.json: 
+2025-04-18 13:15:54.077 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet 33a21d2a-9f45-4b3b-ba44-02f23b2a1afd.json: 
+2025-04-18 13:15:54.078 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet 3a72a8a6-bd1d-447a-a351-3f2ca5b1323f.json: 
+2025-04-18 13:15:54.080 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet 4bc1deac-72ba-496e-a752-41fcdc3d518c.json: 
+2025-04-18 13:15:54.081 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet 5de1f6a0-ca10-4ab4-af70-b6e4b2a46ddf.json: 
+2025-04-18 13:15:54.097 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet 65673a2b-904f-40a9-bf86-61559b284921.json: 
+2025-04-18 13:15:54.098 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet 657a6112-59d0-4be1-b85d-a4f881410382.json: 
+2025-04-18 13:15:54.099 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet 75720381-4196-4747-8ae6-b99ec3b56adb.json: 
+2025-04-18 13:15:54.100 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet 8c8529af-af91-4f53-be7a-b01031d3e27e.json: 
+2025-04-18 13:15:54.101 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet 902a1b70-1499-4942-9cb4-0da3f78c93d4.json: 
+2025-04-18 13:15:54.102 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet 99bb3999-0153-45b2-a92a-e9ccf92991a1.json: 
+2025-04-18 13:15:54.103 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet a24bd7e8-f04b-44a7-bd27-75995a462392.json: 
+2025-04-18 13:15:54.104 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet b4d57f98-9e86-4b48-a7e9-fbf6b13a6cd7.json: 
+2025-04-18 13:15:54.105 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet c20770a0-532f-4b12-85a2-27c809bbfd81.json: 
+2025-04-18 13:15:54.106 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet d19a9cf7-caca-4b5c-8e48-de03e668becc.json: 
+2025-04-18 13:15:54.107 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet dbd3316f-f37f-4442-ac4c-64e2a716cd93.json: 
+2025-04-18 13:15:54.108 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet dcb2df46-a292-4095-8774-8534df8ef4d6.json: 
+2025-04-18 13:15:54.109 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet dfeea806-ca0e-4763-b8a3-13ab1131431d.json: 
+2025-04-18 13:15:54.110 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet dff5fb4c-1efe-4886-956f-828e58d4d93f.json: 
+2025-04-18 13:15:54.111 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet f50545ac-7144-4d0f-9657-08427eaac550.json: 
+2025-04-18 13:15:54.112 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet fa3986cf-7cca-47e8-86ca-94156a440396.json: 
+2025-04-18 13:15:54.113 | INFO     | src.models.queen:manage_workers:120 - Colony has 0 workers, below minimum 3. Spawning more...
+2025-04-18 13:15:54.272 | WARNING  | src.models.queen:_spawn_workers:151 - Not enough capital to spawn 3 workers. Need 0.30000000000000004 SOL, have 0.0 SOL
+2025-04-18 13:15:54.430 | INFO     | src.models.worker:start:62 - Worker test_worker_1 starting...
+2025-04-18 13:15:54.431 | ERROR    | src.models.worker:start:77 - Wallet 65673a2b-904f-40a9-bf86-61559b284921 not found for worker test_worker_1
+2025-04-18 13:15:59.128 | INFO     | src.models.worker:stop:134 - Worker test_worker_1 stopping...
+2025-04-18 13:15:59.129 | WARNING  | src.bindings.worker_bridge:stop_worker:286 - Worker test_worker_1 is not running
+2025-04-18 13:15:59.130 | ERROR    | src.models.worker:stop:142 - Failed to stop worker test_worker_1 in Rust engine
+2025-04-18 13:22:21.006 | WARNING  | src.bindings.worker_bridge:__init__:194 - Using mock implementation for WorkerBridge
+2025-04-18 13:22:21.911 | WARNING  | src.bindings.worker_bridge:__init__:194 - Using mock implementation for WorkerBridge
+2025-04-18 13:22:21.913 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet 0040958c-d91e-4940-90e4-18b719447f58.json: 
+2025-04-18 13:22:21.913 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet 0859aae0-af3c-4440-a338-aab5ebe42fa0.json: 
+2025-04-18 13:22:21.914 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet 0f36a5e1-2978-4dcc-be3d-1e3ed5c83524.json: 
+2025-04-18 13:22:21.914 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet 18325abe-05c5-4a0b-8858-33f01b27f1ed.json: 
+2025-04-18 13:22:21.915 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet 1aaf28a8-aa98-4b82-8d15-fc6a5134698f.json: 
+2025-04-18 13:22:21.915 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet 23999479-49dc-4678-827b-01cf08d11a66.json: 
+2025-04-18 13:22:21.916 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet 3015d50c-72aa-4eac-b95b-8b8b29c46c87.json: 
+2025-04-18 13:22:21.916 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet 33a21d2a-9f45-4b3b-ba44-02f23b2a1afd.json: 
+2025-04-18 13:22:21.917 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet 3a72a8a6-bd1d-447a-a351-3f2ca5b1323f.json: 
+2025-04-18 13:22:21.917 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet 4bc1deac-72ba-496e-a752-41fcdc3d518c.json: 
+2025-04-18 13:22:21.918 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet 5de1f6a0-ca10-4ab4-af70-b6e4b2a46ddf.json: 
+2025-04-18 13:22:21.919 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet 61fa42c8-bbc2-47fa-9070-6d2ca34e87cd.json: 
+2025-04-18 13:22:21.920 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet 65673a2b-904f-40a9-bf86-61559b284921.json: 
+2025-04-18 13:22:21.920 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet 657a6112-59d0-4be1-b85d-a4f881410382.json: 
+2025-04-18 13:22:21.921 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet 75720381-4196-4747-8ae6-b99ec3b56adb.json: 
+2025-04-18 13:22:21.921 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet 7707306d-6f69-4d9e-8e44-6be7f8a3d894.json: 
+2025-04-18 13:22:21.922 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet 8c8529af-af91-4f53-be7a-b01031d3e27e.json: 
+2025-04-18 13:22:21.922 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet 902a1b70-1499-4942-9cb4-0da3f78c93d4.json: 
+2025-04-18 13:22:21.923 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet 99bb3999-0153-45b2-a92a-e9ccf92991a1.json: 
+2025-04-18 13:22:21.924 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet a24bd7e8-f04b-44a7-bd27-75995a462392.json: 
+2025-04-18 13:22:21.924 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet b4d57f98-9e86-4b48-a7e9-fbf6b13a6cd7.json: 
+2025-04-18 13:22:21.925 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet c20770a0-532f-4b12-85a2-27c809bbfd81.json: 
+2025-04-18 13:22:21.936 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet c710cc7a-dd72-4123-a2f1-736562038d9f.json: 
+2025-04-18 13:22:21.937 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet d19a9cf7-caca-4b5c-8e48-de03e668becc.json: 
+2025-04-18 13:22:21.938 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet dbd3316f-f37f-4442-ac4c-64e2a716cd93.json: 
+2025-04-18 13:22:21.938 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet dcb2df46-a292-4095-8774-8534df8ef4d6.json: 
+2025-04-18 13:22:21.939 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet dfeea806-ca0e-4763-b8a3-13ab1131431d.json: 
+2025-04-18 13:22:21.940 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet dff5fb4c-1efe-4886-956f-828e58d4d93f.json: 
+2025-04-18 13:22:21.940 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet f50545ac-7144-4d0f-9657-08427eaac550.json: 
+2025-04-18 13:22:21.941 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet fa3986cf-7cca-47e8-86ca-94156a440396.json: 
+2025-04-18 13:22:21.943 | INFO     | src.models.queen:manage_workers:120 - Colony has 0 workers, below minimum 3. Spawning more...
+2025-04-18 13:22:22.084 | WARNING  | src.models.queen:_spawn_workers:151 - Not enough capital to spawn 3 workers. Need 0.30000000000000004 SOL, have 0.0 SOL
+2025-04-18 13:22:22.232 | INFO     | src.models.worker:start:62 - Worker test_worker_1 starting...
+2025-04-18 13:22:22.233 | ERROR    | src.models.worker:start:77 - Wallet c710cc7a-dd72-4123-a2f1-736562038d9f not found for worker test_worker_1
+2025-04-18 13:22:26.949 | INFO     | src.models.worker:stop:134 - Worker test_worker_1 stopping...
+2025-04-18 13:22:26.950 | WARNING  | src.bindings.worker_bridge:stop_worker:286 - Worker test_worker_1 is not running
+2025-04-18 13:22:26.952 | ERROR    | src.models.worker:stop:142 - Failed to stop worker test_worker_1 in Rust engine
+2025-04-18 13:22:36.218 | WARNING  | src.bindings.worker_bridge:__init__:194 - Using mock implementation for WorkerBridge
+2025-04-18 13:22:36.219 | INFO     | src.bindings.worker_bridge:start_worker:262 - Started Worker Ant test_worker_1744962756 with 1.0 SOL
+2025-04-18 13:22:36.220 | INFO     | src.bindings.worker_bridge:_monitor_worker:436 - Starting monitor for Worker Ant test_worker_1744962756
+2025-04-18 13:22:43.244 | INFO     | src.bindings.worker_bridge:stop_worker:306 - Stopped Worker Ant test_worker_1744962756
+2025-04-18 13:22:43.246 | WARNING  | src.bindings.worker_bridge:__init__:194 - Using mock implementation for WorkerBridge
+2025-04-18 13:22:43.246 | WARNING  | src.bindings.worker_bridge:__init__:194 - Using mock implementation for WorkerBridge
+2025-04-18 13:22:43.247 | INFO     | src.bindings.worker_bridge:start_worker:262 - Started Worker Ant test_worker_0_1744962763 with 1.0 SOL
+2025-04-18 13:22:43.247 | INFO     | src.bindings.worker_bridge:start_worker:262 - Started Worker Ant test_worker_0_1744962763 with 1.0 SOL
+2025-04-18 13:22:43.248 | INFO     | src.bindings.worker_bridge:start_worker:262 - Started Worker Ant test_worker_1_1744962763 with 2.0 SOL
+2025-04-18 13:22:43.248 | INFO     | src.bindings.worker_bridge:start_worker:262 - Started Worker Ant test_worker_1_1744962763 with 2.0 SOL
+2025-04-18 13:22:43.249 | INFO     | src.bindings.worker_bridge:start_worker:262 - Started Worker Ant test_worker_2_1744962763 with 3.0 SOL
+2025-04-18 13:22:43.249 | INFO     | src.bindings.worker_bridge:start_worker:262 - Started Worker Ant test_worker_2_1744962763 with 3.0 SOL
+2025-04-18 13:22:43.250 | INFO     | src.bindings.worker_bridge:_monitor_worker:436 - Starting monitor for Worker Ant test_worker_0_1744962763
+2025-04-18 13:22:43.250 | INFO     | src.bindings.worker_bridge:_monitor_worker:436 - Starting monitor for Worker Ant test_worker_0_1744962763
+2025-04-18 13:22:43.250 | INFO     | src.bindings.worker_bridge:_monitor_worker:436 - Starting monitor for Worker Ant test_worker_1_1744962763
+2025-04-18 13:22:43.250 | INFO     | src.bindings.worker_bridge:_monitor_worker:436 - Starting monitor for Worker Ant test_worker_1_1744962763
+2025-04-18 13:22:43.251 | INFO     | src.bindings.worker_bridge:_monitor_worker:436 - Starting monitor for Worker Ant test_worker_2_1744962763
+2025-04-18 13:22:43.251 | INFO     | src.bindings.worker_bridge:_monitor_worker:436 - Starting monitor for Worker Ant test_worker_2_1744962763
+2025-04-18 13:22:46.234 | INFO     | src.bindings.worker_bridge:_monitor_worker:467 - Stopped monitor for Worker Ant test_worker_1744962756
+2025-04-18 13:22:46.234 | INFO     | src.bindings.worker_bridge:_monitor_worker:467 - Stopped monitor for Worker Ant test_worker_1744962756
+2025-04-18 13:22:50.259 | INFO     | src.bindings.worker_bridge:stop_worker:306 - Stopped Worker Ant test_worker_0_1744962763
+2025-04-18 13:22:50.259 | INFO     | src.bindings.worker_bridge:stop_worker:306 - Stopped Worker Ant test_worker_0_1744962763
+2025-04-18 13:22:50.259 | INFO     | src.bindings.worker_bridge:stop_worker:306 - Stopped Worker Ant test_worker_1_1744962763
+2025-04-18 13:22:50.259 | INFO     | src.bindings.worker_bridge:stop_worker:306 - Stopped Worker Ant test_worker_1_1744962763
+2025-04-18 13:22:50.260 | INFO     | src.bindings.worker_bridge:stop_worker:306 - Stopped Worker Ant test_worker_2_1744962763
+2025-04-18 13:22:50.260 | INFO     | src.bindings.worker_bridge:stop_worker:306 - Stopped Worker Ant test_worker_2_1744962763
+2025-04-18 14:42:34.127 | INFO     | src.utils.logging.logger:setup_logging:61 - Logging initialized for worker_bridge
+2025-04-18 14:42:34.127 | INFO     | src.bindings.worker_bridge:find_rust_lib:64 - Rust library not found, attempting to build it...
+2025-04-18 14:43:14.319 | ERROR    | src.bindings.worker_bridge:_load_rust_lib:102 - Failed to load Rust library: Failed to build Rust library
+2025-04-18 14:43:14.319 | WARNING  | src.bindings.worker_bridge:__init__:44 - Could not load Rust library: Failed to build Rust library
+2025-04-18 14:43:14.320 | WARNING  | src.bindings.worker_bridge:__init__:45 - Worker bridge will operate in simulation mode
+2025-04-18 14:46:50.649 | INFO     | src.utils.logging.logger:setup_logging:61 - Logging initialized for worker_bridge
+2025-04-18 14:46:50.651 | INFO     | src.bindings.worker_bridge:find_rust_lib:72 - Rust library not found, attempting to build it...
+2025-04-18 14:47:22.292 | ERROR    | src.bindings.worker_bridge:_load_rust_lib:110 - Failed to load Rust library: Failed to build Rust library
+2025-04-18 14:47:22.293 | WARNING  | src.bindings.worker_bridge:__init__:52 - Could not load Rust library: Failed to build Rust library
+2025-04-18 14:47:22.293 | WARNING  | src.bindings.worker_bridge:__init__:53 - Worker bridge will operate in simulation mode
+2025-04-18 14:47:22.321 | INFO     | src.utils.logging.logger:setup_logging:61 - Logging initialized for worker_bridge
+2025-04-18 14:47:22.321 | INFO     | src.bindings.worker_bridge:find_rust_lib:72 - Rust library not found, attempting to build it...
+2025-04-18 14:47:24.194 | ERROR    | src.bindings.worker_bridge:_load_rust_lib:110 - Failed to load Rust library: Failed to build Rust library
+2025-04-18 14:47:24.196 | WARNING  | src.bindings.worker_bridge:__init__:52 - Could not load Rust library: Failed to build Rust library
+2025-04-18 14:47:24.196 | WARNING  | src.bindings.worker_bridge:__init__:53 - Worker bridge will operate in simulation mode
+2025-04-18 14:47:24.204 | INFO     | src.utils.logging.logger:setup_logging:61 - Logging initialized for worker_bridge
+2025-04-18 14:47:24.205 | INFO     | src.bindings.worker_bridge:find_rust_lib:72 - Rust library not found, attempting to build it...
+2025-04-18 14:47:26.021 | ERROR    | src.bindings.worker_bridge:_load_rust_lib:110 - Failed to load Rust library: Failed to build Rust library
+2025-04-18 14:47:26.022 | WARNING  | src.bindings.worker_bridge:__init__:52 - Could not load Rust library: Failed to build Rust library
+2025-04-18 14:47:26.022 | WARNING  | src.bindings.worker_bridge:__init__:53 - Worker bridge will operate in simulation mode
+2025-04-18 14:47:26.031 | INFO     | src.utils.logging.logger:setup_logging:61 - Logging initialized for worker_bridge
+2025-04-18 14:47:26.032 | INFO     | src.bindings.worker_bridge:find_rust_lib:72 - Rust library not found, attempting to build it...
+2025-04-18 14:47:27.840 | ERROR    | src.bindings.worker_bridge:_load_rust_lib:110 - Failed to load Rust library: Failed to build Rust library
+2025-04-18 14:47:27.841 | WARNING  | src.bindings.worker_bridge:__init__:52 - Could not load Rust library: Failed to build Rust library
+2025-04-18 14:47:27.841 | WARNING  | src.bindings.worker_bridge:__init__:53 - Worker bridge will operate in simulation mode
+2025-04-18 14:47:27.849 | INFO     | src.utils.logging.logger:setup_logging:61 - Logging initialized for worker_bridge
+2025-04-18 14:47:27.849 | INFO     | src.bindings.worker_bridge:find_rust_lib:72 - Rust library not found, attempting to build it...
+2025-04-18 14:47:29.660 | ERROR    | src.bindings.worker_bridge:_load_rust_lib:110 - Failed to load Rust library: Failed to build Rust library
+2025-04-18 14:47:29.660 | WARNING  | src.bindings.worker_bridge:__init__:52 - Could not load Rust library: Failed to build Rust library
+2025-04-18 14:47:29.661 | WARNING  | src.bindings.worker_bridge:__init__:53 - Worker bridge will operate in simulation mode
+2025-04-18 14:47:38.298 | INFO     | src.utils.logging.logger:setup_logging:61 - Logging initialized for worker_bridge
+2025-04-18 14:47:38.299 | INFO     | src.bindings.worker_bridge:find_rust_lib:72 - Rust library not found, attempting to build it...
+2025-04-18 14:47:40.227 | ERROR    | src.bindings.worker_bridge:_load_rust_lib:110 - Failed to load Rust library: Failed to build Rust library
+2025-04-18 14:47:40.227 | WARNING  | src.bindings.worker_bridge:__init__:52 - Could not load Rust library: Failed to build Rust library
+2025-04-18 14:47:40.227 | WARNING  | src.bindings.worker_bridge:__init__:53 - Worker bridge will operate in simulation mode
+2025-04-18 14:47:40.237 | INFO     | src.utils.logging.logger:setup_logging:61 - Logging initialized for worker_bridge
+2025-04-18 14:47:40.237 | INFO     | src.bindings.worker_bridge:find_rust_lib:72 - Rust library not found, attempting to build it...
+2025-04-18 14:47:42.288 | ERROR    | src.bindings.worker_bridge:_load_rust_lib:110 - Failed to load Rust library: Failed to build Rust library
+2025-04-18 14:47:42.289 | WARNING  | src.bindings.worker_bridge:__init__:52 - Could not load Rust library: Failed to build Rust library
+2025-04-18 14:47:42.289 | WARNING  | src.bindings.worker_bridge:__init__:53 - Worker bridge will operate in simulation mode
+2025-04-18 14:47:42.297 | INFO     | src.utils.logging.logger:setup_logging:61 - Logging initialized for worker_bridge
+2025-04-18 14:47:42.297 | INFO     | src.bindings.worker_bridge:find_rust_lib:72 - Rust library not found, attempting to build it...
+2025-04-18 14:47:44.319 | ERROR    | src.bindings.worker_bridge:_load_rust_lib:110 - Failed to load Rust library: Failed to build Rust library
+2025-04-18 14:47:44.320 | WARNING  | src.bindings.worker_bridge:__init__:52 - Could not load Rust library: Failed to build Rust library
+2025-04-18 14:47:44.320 | WARNING  | src.bindings.worker_bridge:__init__:53 - Worker bridge will operate in simulation mode
+2025-04-18 14:47:44.326 | INFO     | src.utils.logging.logger:setup_logging:61 - Logging initialized for worker_bridge
+2025-04-18 14:47:44.326 | INFO     | src.bindings.worker_bridge:find_rust_lib:72 - Rust library not found, attempting to build it...
+2025-04-18 14:47:46.513 | ERROR    | src.bindings.worker_bridge:_load_rust_lib:110 - Failed to load Rust library: Failed to build Rust library
+2025-04-18 14:47:46.513 | WARNING  | src.bindings.worker_bridge:__init__:52 - Could not load Rust library: Failed to build Rust library
+2025-04-18 14:47:46.513 | WARNING  | src.bindings.worker_bridge:__init__:53 - Worker bridge will operate in simulation mode
+2025-04-18 14:47:46.522 | INFO     | src.utils.logging.logger:setup_logging:61 - Logging initialized for worker_bridge
+2025-04-18 14:47:46.522 | INFO     | src.bindings.worker_bridge:find_rust_lib:72 - Rust library not found, attempting to build it...
+2025-04-18 14:47:48.526 | ERROR    | src.bindings.worker_bridge:_load_rust_lib:110 - Failed to load Rust library: Failed to build Rust library
+2025-04-18 14:47:48.526 | WARNING  | src.bindings.worker_bridge:__init__:52 - Could not load Rust library: Failed to build Rust library
+2025-04-18 14:47:48.526 | WARNING  | src.bindings.worker_bridge:__init__:53 - Worker bridge will operate in simulation mode
+2025-04-18 14:49:55.105 | INFO     | src.utils.logging.logger:setup_logging:61 - Logging initialized for worker_bridge
+2025-04-18 14:49:55.105 | INFO     | src.bindings.worker_bridge:find_rust_lib:72 - Rust library not found, attempting to build it...
+2025-04-18 14:49:57.040 | ERROR    | src.bindings.worker_bridge:_load_rust_lib:110 - Failed to load Rust library: Failed to build Rust library
+2025-04-18 14:49:57.040 | WARNING  | src.bindings.worker_bridge:__init__:52 - Could not load Rust library: Failed to build Rust library
+2025-04-18 14:49:57.041 | WARNING  | src.bindings.worker_bridge:__init__:53 - Worker bridge will operate in simulation mode
+2025-04-18 14:49:57.051 | INFO     | src.utils.logging.logger:setup_logging:61 - Logging initialized for worker_bridge
+2025-04-18 14:49:57.052 | INFO     | src.bindings.worker_bridge:find_rust_lib:72 - Rust library not found, attempting to build it...
+2025-04-18 14:49:58.966 | ERROR    | src.bindings.worker_bridge:_load_rust_lib:110 - Failed to load Rust library: Failed to build Rust library
+2025-04-18 14:49:58.966 | WARNING  | src.bindings.worker_bridge:__init__:52 - Could not load Rust library: Failed to build Rust library
+2025-04-18 14:49:58.966 | WARNING  | src.bindings.worker_bridge:__init__:53 - Worker bridge will operate in simulation mode
+2025-04-18 14:49:58.975 | INFO     | src.utils.logging.logger:setup_logging:61 - Logging initialized for worker_bridge
+2025-04-18 14:49:58.976 | INFO     | src.bindings.worker_bridge:find_rust_lib:72 - Rust library not found, attempting to build it...
+2025-04-18 14:50:00.817 | ERROR    | src.bindings.worker_bridge:_load_rust_lib:110 - Failed to load Rust library: Failed to build Rust library
+2025-04-18 14:50:00.817 | WARNING  | src.bindings.worker_bridge:__init__:52 - Could not load Rust library: Failed to build Rust library
+2025-04-18 14:50:00.818 | WARNING  | src.bindings.worker_bridge:__init__:53 - Worker bridge will operate in simulation mode
+2025-04-18 14:50:00.824 | INFO     | src.utils.logging.logger:setup_logging:61 - Logging initialized for worker_bridge
+2025-04-18 14:50:00.825 | INFO     | src.bindings.worker_bridge:find_rust_lib:72 - Rust library not found, attempting to build it...
+2025-04-18 14:50:02.521 | ERROR    | src.bindings.worker_bridge:_load_rust_lib:110 - Failed to load Rust library: Failed to build Rust library
+2025-04-18 14:50:02.521 | WARNING  | src.bindings.worker_bridge:__init__:52 - Could not load Rust library: Failed to build Rust library
+2025-04-18 14:50:02.522 | WARNING  | src.bindings.worker_bridge:__init__:53 - Worker bridge will operate in simulation mode
+2025-04-18 14:50:02.534 | INFO     | src.utils.logging.logger:setup_logging:61 - Logging initialized for worker_bridge
+2025-04-18 14:50:02.534 | INFO     | src.bindings.worker_bridge:find_rust_lib:72 - Rust library not found, attempting to build it...
+2025-04-18 14:50:04.416 | ERROR    | src.bindings.worker_bridge:_load_rust_lib:110 - Failed to load Rust library: Failed to build Rust library
+2025-04-18 14:50:04.416 | WARNING  | src.bindings.worker_bridge:__init__:52 - Could not load Rust library: Failed to build Rust library
+2025-04-18 14:50:04.417 | WARNING  | src.bindings.worker_bridge:__init__:53 - Worker bridge will operate in simulation mode
+2025-04-18 14:54:18.898 | INFO     | src.utils.logging.logger:setup_logging:61 - Logging initialized for worker_bridge
+2025-04-18 14:54:18.899 | INFO     | src.bindings.worker_bridge:find_rust_lib:72 - Rust library not found, attempting to build it...
+2025-04-18 14:54:20.861 | ERROR    | src.bindings.worker_bridge:_load_rust_lib:110 - Failed to load Rust library: Failed to build Rust library
+2025-04-18 14:54:20.861 | WARNING  | src.bindings.worker_bridge:__init__:52 - Could not load Rust library: Failed to build Rust library
+2025-04-18 14:54:20.862 | WARNING  | src.bindings.worker_bridge:__init__:53 - Worker bridge will operate in simulation mode
+2025-04-18 14:54:22.027 | INFO     | src.utils.logging.logger:setup_logging:61 - Logging initialized for worker_bridge
+2025-04-18 14:54:22.028 | INFO     | src.bindings.worker_bridge:find_rust_lib:72 - Rust library not found, attempting to build it...
+2025-04-18 14:54:23.878 | ERROR    | src.bindings.worker_bridge:_load_rust_lib:110 - Failed to load Rust library: Failed to build Rust library
+2025-04-18 14:54:23.879 | WARNING  | src.bindings.worker_bridge:__init__:52 - Could not load Rust library: Failed to build Rust library
+2025-04-18 14:54:23.879 | WARNING  | src.bindings.worker_bridge:__init__:53 - Worker bridge will operate in simulation mode
+2025-04-18 14:54:23.880 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet 0040958c-d91e-4940-90e4-18b719447f58.json: 
+2025-04-18 14:54:23.880 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet 0859aae0-af3c-4440-a338-aab5ebe42fa0.json: 
+2025-04-18 14:54:23.881 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet 0f36a5e1-2978-4dcc-be3d-1e3ed5c83524.json: 
+2025-04-18 14:54:23.881 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet 129a668d-98d2-463a-a08f-77d0d5b1e8c5.json: 
+2025-04-18 14:54:23.881 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet 18325abe-05c5-4a0b-8858-33f01b27f1ed.json: 
+2025-04-18 14:54:23.881 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet 1aaf28a8-aa98-4b82-8d15-fc6a5134698f.json: 
+2025-04-18 14:54:23.882 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet 23999479-49dc-4678-827b-01cf08d11a66.json: 
+2025-04-18 14:54:23.882 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet 3015d50c-72aa-4eac-b95b-8b8b29c46c87.json: 
+2025-04-18 14:54:23.882 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet 33a21d2a-9f45-4b3b-ba44-02f23b2a1afd.json: 
+2025-04-18 14:54:23.883 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet 3a72a8a6-bd1d-447a-a351-3f2ca5b1323f.json: 
+2025-04-18 14:54:23.883 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet 4bc1deac-72ba-496e-a752-41fcdc3d518c.json: 
+2025-04-18 14:54:23.896 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet 597c085b-f35c-42aa-8413-b88747420da6.json: 
+2025-04-18 14:54:23.897 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet 5de1f6a0-ca10-4ab4-af70-b6e4b2a46ddf.json: 
+2025-04-18 14:54:23.897 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet 61fa42c8-bbc2-47fa-9070-6d2ca34e87cd.json: 
+2025-04-18 14:54:23.897 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet 65673a2b-904f-40a9-bf86-61559b284921.json: 
+2025-04-18 14:54:23.898 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet 657a6112-59d0-4be1-b85d-a4f881410382.json: 
+2025-04-18 14:54:23.898 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet 6e009dba-3397-4df3-858e-ea2f8bc39a3a.json: 
+2025-04-18 14:54:23.898 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet 75720381-4196-4747-8ae6-b99ec3b56adb.json: 
+2025-04-18 14:54:23.899 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet 76694515-b09c-4fe4-b60d-87b1255c7b08.json: 
+2025-04-18 14:54:23.899 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet 7707306d-6f69-4d9e-8e44-6be7f8a3d894.json: 
+2025-04-18 14:54:23.899 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet 7aa3bc3e-087f-46a4-8c9a-947dded8bc63.json: 
+2025-04-18 14:54:23.900 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet 8c8529af-af91-4f53-be7a-b01031d3e27e.json: 
+2025-04-18 14:54:23.901 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet 902a1b70-1499-4942-9cb4-0da3f78c93d4.json: 
+2025-04-18 14:54:23.901 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet 99bb3999-0153-45b2-a92a-e9ccf92991a1.json: 
+2025-04-18 14:54:23.901 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet a24bd7e8-f04b-44a7-bd27-75995a462392.json: 
+2025-04-18 14:54:23.901 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet b4d57f98-9e86-4b48-a7e9-fbf6b13a6cd7.json: 
+2025-04-18 14:54:23.902 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet c20770a0-532f-4b12-85a2-27c809bbfd81.json: 
+2025-04-18 14:54:23.902 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet c710cc7a-dd72-4123-a2f1-736562038d9f.json: 
+2025-04-18 14:54:23.902 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet d19a9cf7-caca-4b5c-8e48-de03e668becc.json: 
+2025-04-18 14:54:23.903 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet dbd3316f-f37f-4442-ac4c-64e2a716cd93.json: 
+2025-04-18 14:54:23.903 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet dcb2df46-a292-4095-8774-8534df8ef4d6.json: 
+2025-04-18 14:54:23.903 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet dfeea806-ca0e-4763-b8a3-13ab1131431d.json: 
+2025-04-18 14:54:23.904 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet dff5fb4c-1efe-4886-956f-828e58d4d93f.json: 
+2025-04-18 14:54:23.904 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet f50545ac-7144-4d0f-9657-08427eaac550.json: 
+2025-04-18 14:54:23.905 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet fa3986cf-7cca-47e8-86ca-94156a440396.json: 
+2025-04-18 14:54:23.905 | INFO     | src.models.worker:start:62 - Worker test_worker_1 starting...
+2025-04-18 14:54:23.905 | ERROR    | src.models.worker:start:77 - Wallet 597c085b-f35c-42aa-8413-b88747420da6 not found for worker test_worker_1
+2025-04-18 14:54:28.914 | INFO     | src.models.worker:stop:134 - Worker test_worker_1 stopping...
+2025-04-18 14:54:28.915 | WARNING  | src.bindings.worker_bridge:stop_worker:199 - Worker test_worker_1 is not running
+2025-04-18 14:54:28.915 | ERROR    | src.models.worker:stop:142 - Failed to stop worker test_worker_1 in Rust engine
+2025-04-18 14:54:40.711 | INFO     | src.utils.logging.logger:setup_logging:61 - Logging initialized for worker_bridge
+2025-04-18 14:54:40.711 | INFO     | src.bindings.worker_bridge:find_rust_lib:72 - Rust library not found, attempting to build it...
+2025-04-18 14:54:42.545 | ERROR    | src.bindings.worker_bridge:_load_rust_lib:110 - Failed to load Rust library: Failed to build Rust library
+2025-04-18 14:54:42.546 | WARNING  | src.bindings.worker_bridge:__init__:52 - Could not load Rust library: Failed to build Rust library
+2025-04-18 14:54:42.546 | WARNING  | src.bindings.worker_bridge:__init__:53 - Worker bridge will operate in simulation mode
+2025-04-18 14:54:43.701 | INFO     | src.utils.logging.logger:setup_logging:61 - Logging initialized for worker_bridge
+2025-04-18 14:54:43.701 | INFO     | src.bindings.worker_bridge:find_rust_lib:72 - Rust library not found, attempting to build it...
+2025-04-18 14:54:45.717 | ERROR    | src.bindings.worker_bridge:_load_rust_lib:110 - Failed to load Rust library: Failed to build Rust library
+2025-04-18 14:54:45.717 | WARNING  | src.bindings.worker_bridge:__init__:52 - Could not load Rust library: Failed to build Rust library
+2025-04-18 14:54:45.718 | WARNING  | src.bindings.worker_bridge:__init__:53 - Worker bridge will operate in simulation mode
+2025-04-18 14:54:45.719 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet 0040958c-d91e-4940-90e4-18b719447f58.json: 
+2025-04-18 14:54:45.719 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet 0859aae0-af3c-4440-a338-aab5ebe42fa0.json: 
+2025-04-18 14:54:45.720 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet 0f36a5e1-2978-4dcc-be3d-1e3ed5c83524.json: 
+2025-04-18 14:54:45.720 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet 129a668d-98d2-463a-a08f-77d0d5b1e8c5.json: 
+2025-04-18 14:54:45.721 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet 18325abe-05c5-4a0b-8858-33f01b27f1ed.json: 
+2025-04-18 14:54:45.722 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet 1aaf28a8-aa98-4b82-8d15-fc6a5134698f.json: 
+2025-04-18 14:54:45.722 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet 22f21f3a-5af1-4f9a-b967-aef9122be9fb.json: 
+2025-04-18 14:54:45.723 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet 23999479-49dc-4678-827b-01cf08d11a66.json: 
+2025-04-18 14:54:45.723 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet 3015d50c-72aa-4eac-b95b-8b8b29c46c87.json: 
+2025-04-18 14:54:45.723 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet 33a21d2a-9f45-4b3b-ba44-02f23b2a1afd.json: 
+2025-04-18 14:54:45.724 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet 3a72a8a6-bd1d-447a-a351-3f2ca5b1323f.json: 
+2025-04-18 14:54:45.724 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet 4bc1deac-72ba-496e-a752-41fcdc3d518c.json: 
+2025-04-18 14:54:45.724 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet 597c085b-f35c-42aa-8413-b88747420da6.json: 
+2025-04-18 14:54:45.725 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet 5de1f6a0-ca10-4ab4-af70-b6e4b2a46ddf.json: 
+2025-04-18 14:54:45.725 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet 61fa42c8-bbc2-47fa-9070-6d2ca34e87cd.json: 
+2025-04-18 14:54:45.725 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet 65673a2b-904f-40a9-bf86-61559b284921.json: 
+2025-04-18 14:54:45.725 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet 657a6112-59d0-4be1-b85d-a4f881410382.json: 
+2025-04-18 14:54:45.726 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet 6e009dba-3397-4df3-858e-ea2f8bc39a3a.json: 
+2025-04-18 14:54:45.726 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet 75720381-4196-4747-8ae6-b99ec3b56adb.json: 
+2025-04-18 14:54:45.726 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet 76694515-b09c-4fe4-b60d-87b1255c7b08.json: 
+2025-04-18 14:54:45.727 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet 7707306d-6f69-4d9e-8e44-6be7f8a3d894.json: 
+2025-04-18 14:54:45.727 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet 78146cc2-3c43-4557-b74e-8c39ac66c536.json: 
+2025-04-18 14:54:45.727 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet 7aa3bc3e-087f-46a4-8c9a-947dded8bc63.json: 
+2025-04-18 14:54:45.743 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet 7dd3b94e-f80f-47b2-ae1f-0da2496d66c6.json: 
+2025-04-18 14:54:45.743 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet 83515fff-1ddc-4f28-a078-74f13dab7b77.json: 
+2025-04-18 14:54:45.743 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet 8c8529af-af91-4f53-be7a-b01031d3e27e.json: 
+2025-04-18 14:54:45.744 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet 902a1b70-1499-4942-9cb4-0da3f78c93d4.json: 
+2025-04-18 14:54:45.744 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet 99bb3999-0153-45b2-a92a-e9ccf92991a1.json: 
+2025-04-18 14:54:45.744 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet a24bd7e8-f04b-44a7-bd27-75995a462392.json: 
+2025-04-18 14:54:45.745 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet b4d57f98-9e86-4b48-a7e9-fbf6b13a6cd7.json: 
+2025-04-18 14:54:45.745 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet c1db2510-68b6-495e-a3c6-00ee3f6d3a4b.json: 
+2025-04-18 14:54:45.745 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet c20770a0-532f-4b12-85a2-27c809bbfd81.json: 
+2025-04-18 14:54:45.746 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet c710cc7a-dd72-4123-a2f1-736562038d9f.json: 
+2025-04-18 14:54:45.746 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet d19a9cf7-caca-4b5c-8e48-de03e668becc.json: 
+2025-04-18 14:54:45.746 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet dbd3316f-f37f-4442-ac4c-64e2a716cd93.json: 
+2025-04-18 14:54:45.747 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet dcb2df46-a292-4095-8774-8534df8ef4d6.json: 
+2025-04-18 14:54:45.747 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet dfeea806-ca0e-4763-b8a3-13ab1131431d.json: 
+2025-04-18 14:54:45.747 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet dff5fb4c-1efe-4886-956f-828e58d4d93f.json: 
+2025-04-18 14:54:45.748 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet f50545ac-7144-4d0f-9657-08427eaac550.json: 
+2025-04-18 14:54:45.748 | ERROR    | src.core.wallet_manager:_load_wallets:101 - Error loading wallet fa3986cf-7cca-47e8-86ca-94156a440396.json: 
+2025-04-18 14:54:45.748 | INFO     | src.models.worker:start:62 - Worker test_worker_1 starting...
+2025-04-18 14:54:45.748 | ERROR    | src.models.worker:start:77 - Wallet 7dd3b94e-f80f-47b2-ae1f-0da2496d66c6 not found for worker test_worker_1
+2025-04-18 14:54:50.752 | INFO     | src.models.worker:stop:134 - Worker test_worker_1 stopping...
+2025-04-18 14:54:50.753 | WARNING  | src.bindings.worker_bridge:stop_worker:199 - Worker test_worker_1 is not running
+2025-04-18 14:54:50.753 | ERROR    | src.models.worker:stop:142 - Failed to stop worker test_worker_1 in Rust engine
+2025-04-18 14:54:50.868 | INFO     | src.utils.logging.logger:setup_logging:61 - Logging initialized for worker_bridge
+2025-04-18 14:54:50.869 | INFO     | src.bindings.worker_bridge:find_rust_lib:72 - Rust library not found, attempting to build it...
+2025-04-18 14:54:52.831 | ERROR    | src.bindings.worker_bridge:_load_rust_lib:110 - Failed to load Rust library: Failed to build Rust library
+2025-04-18 14:54:52.833 | WARNING  | src.bindings.worker_bridge:__init__:52 - Could not load Rust library: Failed to build Rust library
+2025-04-18 14:54:52.833 | WARNING  | src.bindings.worker_bridge:__init__:53 - Worker bridge will operate in simulation mode
+2025-04-18 14:54:52.842 | INFO     | src.utils.logging.logger:setup_logging:61 - Logging initialized for worker_bridge
+2025-04-18 14:54:52.842 | INFO     | src.bindings.worker_bridge:find_rust_lib:72 - Rust library not found, attempting to build it...
+2025-04-18 14:54:54.813 | ERROR    | src.bindings.worker_bridge:_load_rust_lib:110 - Failed to load Rust library: Failed to build Rust library
+2025-04-18 14:54:54.814 | WARNING  | src.bindings.worker_bridge:__init__:52 - Could not load Rust library: Failed to build Rust library
+2025-04-18 14:54:54.814 | WARNING  | src.bindings.worker_bridge:__init__:53 - Worker bridge will operate in simulation mode
+2025-04-18 14:54:54.822 | INFO     | src.utils.logging.logger:setup_logging:61 - Logging initialized for worker_bridge
+2025-04-18 14:54:54.823 | INFO     | src.bindings.worker_bridge:find_rust_lib:72 - Rust library not found, attempting to build it...
+2025-04-18 14:54:56.684 | ERROR    | src.bindings.worker_bridge:_load_rust_lib:110 - Failed to load Rust library: Failed to build Rust library
+2025-04-18 14:54:56.685 | WARNING  | src.bindings.worker_bridge:__init__:52 - Could not load Rust library: Failed to build Rust library
+2025-04-18 14:54:56.685 | WARNING  | src.bindings.worker_bridge:__init__:53 - Worker bridge will operate in simulation mode
+2025-04-18 14:54:56.692 | INFO     | src.utils.logging.logger:setup_logging:61 - Logging initialized for worker_bridge
+2025-04-18 14:54:56.693 | INFO     | src.bindings.worker_bridge:find_rust_lib:72 - Rust library not found, attempting to build it...
+2025-04-18 14:54:58.593 | ERROR    | src.bindings.worker_bridge:_load_rust_lib:110 - Failed to load Rust library: Failed to build Rust library
+2025-04-18 14:54:58.593 | WARNING  | src.bindings.worker_bridge:__init__:52 - Could not load Rust library: Failed to build Rust library
+2025-04-18 14:54:58.593 | WARNING  | src.bindings.worker_bridge:__init__:53 - Worker bridge will operate in simulation mode
+2025-04-18 14:54:58.602 | INFO     | src.utils.logging.logger:setup_logging:61 - Logging initialized for worker_bridge
+2025-04-18 14:54:58.602 | INFO     | src.bindings.worker_bridge:find_rust_lib:72 - Rust library not found, attempting to build it...
+2025-04-18 14:55:00.513 | ERROR    | src.bindings.worker_bridge:_load_rust_lib:110 - Failed to load Rust library: Failed to build Rust library
+2025-04-18 14:55:00.513 | WARNING  | src.bindings.worker_bridge:__init__:52 - Could not load Rust library: Failed to build Rust library
+2025-04-18 14:55:00.513 | WARNING  | src.bindings.worker_bridge:__init__:53 - Worker bridge will operate in simulation mode

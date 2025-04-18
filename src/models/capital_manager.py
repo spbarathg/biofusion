@@ -1,15 +1,16 @@
 import os
 import yaml
 import asyncio
+import time
 from typing import Dict, List, Optional
 from dataclasses import dataclass
 from pathlib import Path
 from loguru import logger
-# Direct import that works in both development and production
-import sys, os
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from log_config import setup_logging
-from utils.wallet_manager import WalletManager
+
+# Import modules from the correct paths
+from src.core.paths import CONFIG_PATH, LOGS_DIR
+from src.core.wallet_manager import WalletManager
+from src.logging.log_config import setup_logging
 
 def todo(message: str):
     logger.warning(f"TODO: {message}")
@@ -22,15 +23,18 @@ class CapitalConfig:
     compound_frequency: int
     min_savings: float
     max_withdrawal: float
+    emergency_reserve: float
 
 class CapitalManager:
-    def __init__(self, config_path: str = "config/settings.yaml"):
-        self.config = self._load_config(config_path)
+    def __init__(self, config_path: str = None):
+        # Use provided config path or default
+        self.config_path = Path(config_path) if config_path else CONFIG_PATH
+        self.config = self._load_config(self.config_path)
         self.savings_metrics = {
             "total_saved": 0.0,
             "total_reinvested": 0.0,
             "compound_events": 0,
-            "last_compound_time": 0,
+            "last_compound_time": time.time(),
         }
         self._setup_logging()
         self.wallet_manager = WalletManager(config_path)
@@ -41,12 +45,15 @@ class CapitalManager:
     def _load_config(self, config_path: str) -> CapitalConfig:
         with open(config_path, 'r') as f:
             config = yaml.safe_load(f)
+            capital_config = config.get("capital", {})
+            
         return CapitalConfig(
-            savings_ratio=0.90,     # 90% to savings
-            reinvestment_ratio=0.80, # 80% of savings reinvested
-            compound_frequency=24,   # Compound every 24 hours
-            min_savings=1.0,        # Minimum 1 SOL in savings
-            max_withdrawal=0.5,     # Maximum 50% withdrawal at once
+            savings_ratio=capital_config.get("savings_ratio", 0.90),
+            reinvestment_ratio=capital_config.get("reinvestment_ratio", 0.80),
+            compound_frequency=capital_config.get("compound_frequency", 24),
+            min_savings=capital_config.get("min_savings", 1.0),
+            max_withdrawal=capital_config.get("max_withdrawal", 0.5),
+            emergency_reserve=capital_config.get("emergency_reserve", 100.0)
         )
 
     async def process_profits(self, profits: float, source_wallet: str) -> Dict[str, float]:
@@ -60,8 +67,16 @@ class CapitalManager:
         # Update metrics
         self.savings_metrics["total_saved"] += savings_amount
         
+        # Get or create a savings wallet
+        savings_wallet_id = await self._get_savings_wallet_id()
+        if not savings_wallet_id:
+            logger.warning("No savings wallet found, creating one")
+            savings_wallet_id = self.wallet_manager.create_wallet("savings_main", "savings")
+        
         # Send to savings - using the wallet manager
-        await self._send_to_savings(source_wallet, savings_amount)
+        if savings_amount > 0.01:  # Only transfer if significant
+            await self.wallet_manager.transfer_sol(source_wallet, savings_wallet_id, savings_amount)
+            logger.info(f"Transferred {savings_amount} SOL to savings wallet")
         
         logger.info(f"Allocated {savings_amount} SOL to savings, {trading_amount} SOL for trading")
         return {
@@ -71,14 +86,14 @@ class CapitalManager:
 
     async def compound_savings(self, queen_wallet_id: str) -> float:
         """Compound savings by reinvesting a portion back into trading."""
-        current_time = asyncio.get_event_loop().time()
+        current_time = time.time()
         hours_since_last_compound = (current_time - self.savings_metrics["last_compound_time"]) / 3600
         
         if hours_since_last_compound < self.config.compound_frequency:
             logger.info(f"Not time to compound yet. {self.config.compound_frequency - hours_since_last_compound:.1f} hours remaining")
             return 0.0
         
-        # Get current savings balance - get all savings wallets
+        # Get current savings balance
         savings_wallet_id = await self._get_savings_wallet_id()
         if not savings_wallet_id:
             logger.warning("No savings wallet found for compounding")
@@ -91,7 +106,18 @@ class CapitalManager:
             return 0.0
         
         # Calculate compound amount
-        compound_amount = savings_balance * self.config.reinvestment_ratio
+        compound_amount = min(
+            savings_balance * self.config.reinvestment_ratio,
+            savings_balance - self.config.emergency_reserve
+        )
+        
+        # Ensure we're not going below the minimum
+        if savings_balance - compound_amount < self.config.min_savings:
+            compound_amount = savings_balance - self.config.min_savings
+            
+        if compound_amount <= 0:
+            logger.info("No funds available for compounding")
+            return 0.0
         
         # Withdraw from savings and send to queen for redistribution
         await self._withdraw_from_savings(savings_wallet_id, queen_wallet_id, compound_amount)
@@ -118,10 +144,11 @@ class CapitalManager:
             logger.warning(f"Withdrawal amount {amount} exceeds maximum, adjusting")
             amount = savings_balance * self.config.max_withdrawal
         
-        # Ensure minimum savings remains
-        if savings_balance - amount < self.config.min_savings:
+        # Ensure minimum savings remains and respect emergency reserve
+        min_required = max(self.config.min_savings, self.config.emergency_reserve)
+        if savings_balance - amount < min_required:
             logger.warning(f"Withdrawal would leave insufficient savings, adjusting")
-            amount = savings_balance - self.config.min_savings
+            amount = max(0, savings_balance - min_required)
         
         if amount <= 0:
             logger.info("No savings available for withdrawal")
@@ -147,6 +174,9 @@ class CapitalManager:
             "total_reinvested": self.savings_metrics["total_reinvested"],
             "compound_events": self.savings_metrics["compound_events"],
             "compound_rate": self.savings_metrics["total_reinvested"] / max(1, self.savings_metrics["total_saved"]),
+            "last_compound_time": self.savings_metrics["last_compound_time"],
+            "hours_since_last_compound": (time.time() - self.savings_metrics["last_compound_time"]) / 3600,
+            "next_compound_in_hours": max(0, self.config.compound_frequency - (time.time() - self.savings_metrics["last_compound_time"]) / 3600)
         }
 
     async def _send_to_savings(self, source_wallet_id: str, amount: float) -> None:
@@ -154,7 +184,7 @@ class CapitalManager:
         savings_wallet_id = await self._get_savings_wallet_id()
         if not savings_wallet_id:
             logger.warning("No savings wallet found, creating one")
-            savings_wallet_id = await self.wallet_manager.create_wallet("savings_main", "savings")
+            savings_wallet_id = self.wallet_manager.create_wallet("savings_main", "savings")
         
         await self.wallet_manager.transfer_sol(source_wallet_id, savings_wallet_id, amount)
         logger.info(f"Transferred {amount} SOL to savings wallet")
@@ -176,6 +206,69 @@ class CapitalManager:
         
         # Use the first savings wallet
         return savings_wallets[0]["id"]
+        
+    async def redistribute_capital(self, queen_wallet_id: str, worker_allocation: float, princess_allocation: float) -> Dict[str, float]:
+        """
+        Redistribute capital for efficient allocation to workers and princesses
+        
+        Args:
+            queen_wallet_id: Queen wallet ID to distribute from
+            worker_allocation: Percentage to allocate to workers
+            princess_allocation: Percentage to allocate to princesses
+            
+        Returns:
+            Dict with allocated amounts
+        """
+        # Get queen balance
+        queen_balance = await self.wallet_manager.get_balance(queen_wallet_id)
+        
+        # Calculate allocations
+        worker_amount = queen_balance * worker_allocation
+        princess_amount = queen_balance * princess_allocation
+        queen_remaining = queen_balance - worker_amount - princess_amount
+        
+        logger.info(f"Redistributing capital: {worker_amount} SOL to workers, {princess_amount} SOL to princesses")
+        
+        return {
+            "worker_allocation": worker_amount,
+            "princess_allocation": princess_amount,
+            "queen_remaining": queen_remaining
+        }
+        
+    async def emergency_recovery(self, destination_wallet_id: str) -> float:
+        """
+        Emergency recovery to withdraw emergency funds
+        
+        Args:
+            destination_wallet_id: Destination wallet for emergency funds
+            
+        Returns:
+            Amount recovered
+        """
+        # Get savings wallet
+        savings_wallet_id = await self._get_savings_wallet_id()
+        if not savings_wallet_id:
+            logger.error("No savings wallet found for emergency recovery")
+            return 0.0
+            
+        # Get balance
+        savings_balance = await self._get_savings_balance(savings_wallet_id)
+        
+        # Calculate emergency amount (up to 90% of savings in an emergency)
+        emergency_amount = min(
+            savings_balance * 0.9,
+            savings_balance - 0.1  # Leave at least 0.1 SOL
+        )
+        
+        if emergency_amount <= 0:
+            logger.warning("No funds available for emergency recovery")
+            return 0.0
+            
+        # Transfer emergency funds
+        await self._withdraw_from_savings(savings_wallet_id, destination_wallet_id, emergency_amount)
+        
+        logger.warning(f"EMERGENCY RECOVERY: Withdrawn {emergency_amount} SOL from savings")
+        return emergency_amount
 
 if __name__ == "__main__":
     import argparse
@@ -183,7 +276,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Ant Bot Capital Manager")
     parser.add_argument(
         "--action",
-        choices=["process", "compound", "withdraw", "metrics"],
+        choices=["process", "compound", "withdraw", "metrics", "emergency", "redistribute"],
         required=True,
         help="Action to perform"
     )
@@ -201,6 +294,18 @@ if __name__ == "__main__":
         "--destination",
         type=str,
         help="Destination wallet name for withdraw action"
+    )
+    parser.add_argument(
+        "--worker-allocation",
+        type=float,
+        default=0.4,
+        help="Percentage to allocate to workers"
+    )
+    parser.add_argument(
+        "--princess-allocation",
+        type=float,
+        default=0.4,
+        help="Percentage to allocate to princesses"
     )
     args = parser.parse_args()
 
@@ -249,5 +354,33 @@ if __name__ == "__main__":
             print("Savings metrics:")
             for key, value in metrics.items():
                 print(f"  {key}: {value}")
+                
+        elif args.action == "emergency":
+            if not args.destination:
+                print("Destination required for emergency action")
+                return
+                
+            destination_wallet_id = manager.wallet_manager.get_wallet_by_name(args.destination)
+            if not destination_wallet_id:
+                print(f"Destination wallet {args.destination} not found")
+                return
+                
+            amount = await manager.emergency_recovery(destination_wallet_id)
+            print(f"Emergency recovery amount: {amount} SOL")
+            
+        elif args.action == "redistribute":
+            # Find queen wallet
+            queen_wallets = manager.wallet_manager.list_wallets(wallet_type="queen")
+            if not queen_wallets:
+                print("No queen wallet found for redistribution")
+                return
+                
+            queen_wallet_id = queen_wallets[0]["id"]
+            result = await manager.redistribute_capital(
+                queen_wallet_id,
+                args.worker_allocation,
+                args.princess_allocation
+            )
+            print(f"Capital redistribution: {result}")
 
     asyncio.run(main()) 

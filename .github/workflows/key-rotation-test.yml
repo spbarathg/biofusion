@@ -1,0 +1,73 @@
+name: Key Rotation Testing
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'scripts/rotate_keys.py'
+      - 'systemd/antbot-key-rotation.*'
+      - 'src/utils/secrets/**'
+      - 'tests/test_encryption.py'
+  pull_request:
+    branches: [ main, develop ]
+    paths:
+      - 'scripts/rotate_keys.py'
+      - 'systemd/antbot-key-rotation.*'
+      - 'src/utils/secrets/**'
+      - 'tests/test_encryption.py'
+  workflow_dispatch:
+
+jobs:
+  test-key-rotation:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: [3.9]
+
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install pytest pytest-asyncio pytest-cov
+        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+        pip install -e .
+    
+    - name: Run unit tests for encryption
+      run: |
+        pytest tests/test_encryption.py -v
+    
+    - name: Set up test environment
+      run: |
+        mkdir -p /tmp/antbot_key_rotation_test/wallets
+        mkdir -p /tmp/antbot_key_rotation_test/data
+        mkdir -p /tmp/antbot_key_rotation_test/backups
+        
+        # Make scripts executable
+        chmod +x scripts/test_key_rotation.sh
+        chmod +x scripts/install_systemd_services.sh
+    
+    - name: Run key rotation test
+      run: |
+        export DATA_DIR="/tmp/antbot_key_rotation_test/data"
+        export WALLETS_DIR="/tmp/antbot_key_rotation_test/wallets"
+        export BACKUPS_DIR="/tmp/antbot_key_rotation_test/backups"
+        ./scripts/test_key_rotation.sh
+    
+    - name: Validate systemd service files
+      run: |
+        # Install systemd-analyze if needed
+        sudo apt-get update
+        sudo apt-get install -y systemd
+        
+        # Validate service file
+        systemd-analyze verify systemd/antbot-key-rotation.service
+        
+        # Validate timer file
+        systemd-analyze verify systemd/antbot-key-rotation.timer 

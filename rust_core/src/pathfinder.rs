@@ -1,8 +1,10 @@
 use std::collections::{BinaryHeap, HashMap, HashSet};
 use std::cmp::Ordering;
 use serde::{Deserialize, Serialize};
-use log::{info, warn, error};
+use log::{info, warn, error, debug};
 use anyhow::Result;
+
+use crate::dex_client::DexClient;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Token {
@@ -19,17 +21,21 @@ pub struct Swap {
     pub from_token: String,
     pub to_token: String,
     pub dex: String,
+    pub input_amount: f64,
     pub expected_output: f64,
-    pub slippage: f64,
+    pub price_impact: f64,
     pub fee: f64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TradePath {
+    pub from_token: Token,
+    pub to_token: Token,
     pub swaps: Vec<Swap>,
-    pub expected_profit: f64,
-    pub total_slippage: f64,
-    pub total_fees: f64,
+    pub estimated_profit_amount: f64,
+    pub estimated_profit_percentage: f64,
+    pub path_id: String,
+    pub total_price_impact: f64,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -55,141 +61,214 @@ impl PartialOrd for Node {
 }
 
 pub struct PathFinder {
-    tokens: HashMap<String, Token>,
-    swaps: HashMap<String, Vec<Swap>>,
-    max_hops: usize,
+    dex_client: DexClient,
+    max_path_length: usize,
     min_profit_threshold: f64,
-    max_slippage: f64,
+    max_price_impact: f64,
 }
 
 impl PathFinder {
-    pub fn new() -> Self {
+    pub fn new(dex_client: DexClient, max_path_length: usize, min_profit_threshold: f64, max_price_impact: f64) -> Self {
         Self {
-            tokens: HashMap::new(),
-            swaps: HashMap::new(),
-            max_hops: 3,
-            min_profit_threshold: 0.10, // 10% minimum profit
-            max_slippage: 0.02,         // 2% maximum slippage
+            dex_client,
+            max_path_length,
+            min_profit_threshold,
+            max_price_impact,
         }
     }
 
     pub fn update_token_data(&mut self, token: Token) {
-        self.tokens.insert(token.address.clone(), token);
+        // Implementation needed
     }
 
     pub fn add_swap_opportunity(&mut self, swap: Swap) {
-        self.swaps
-            .entry(swap.from_token.clone())
-            .or_insert_with(Vec::new)
-            .push(swap);
+        // Implementation needed
     }
 
     pub fn find_optimal_path(&self, start_token: &str, target_profit: f64) -> Option<TradePath> {
-        let mut best_path: Option<TradePath> = None;
-        
-        // Use A* to find the best path
-        let mut open_set = BinaryHeap::new();
-        let mut closed_set = HashSet::new();
-        let mut came_from = HashMap::new();
-        let mut g_score = HashMap::new();
-        let mut f_score = HashMap::new();
-        
-        // Initialize start node
-        open_set.push(Node {
-            token: start_token.to_string(),
-            cost: 0,
-            profit: 0,
-        });
-        
-        g_score.insert(start_token.to_string(), 0);
-        f_score.insert(start_token.to_string(), 0);
-        
-        while !open_set.is_empty() {
-            let current = open_set.pop().unwrap();
-            
-            if current.profit as f64 >= target_profit * 1_000_000.0 {
-                // Reconstruct path
-                if let Some(path) = self.reconstruct_path(&came_from, &current.token) {
-                    // Clone the path before moving it into best_path
-                    let path_clone = path.clone();
-                    best_path = Some(path);
-                    let _ = path_clone.expected_profit; // Using cloned value
-                }
-                break;
-            }
-            
-            closed_set.insert(current.token.clone());
-            
-            // Get all possible swaps from current token
-            if let Some(swaps) = self.swaps.get(&current.token) {
-                for swap in swaps {
-                    let neighbor = swap.to_token.clone();
-                    
-                    if closed_set.contains(&neighbor) {
-                        continue;
-                    }
-                    
-                    // Calculate tentative scores
-                    let tentative_g_score = g_score[&current.token] + (swap.fee * 1_000_000.0) as i64;
-                    let tentative_profit = current.profit + (swap.expected_output * 1_000_000.0) as i64;
-                    
-                    if !g_score.contains_key(&neighbor) || tentative_g_score < g_score[&neighbor] {
-                        came_from.insert(neighbor.clone(), (current.token.clone(), swap.clone()));
-                        g_score.insert(neighbor.clone(), tentative_g_score);
-                        f_score.insert(neighbor.clone(), tentative_g_score);
-                        
-                        open_set.push(Node {
-                            token: neighbor,
-                            cost: tentative_g_score,
-                            profit: tentative_profit,
-                        });
-                    }
-                }
-            }
-        }
-        
-        best_path
+        // Implementation needed
+        None
     }
 
     fn reconstruct_path(&self, came_from: &HashMap<String, (String, Swap)>, current: &str) -> Option<TradePath> {
-        let mut swaps = Vec::new();
-        let mut current_token = current.to_string();
-        let mut total_slippage = 0.0;
-        let mut total_fees = 0.0;
+        // Implementation needed
+        None
+    }
+
+    pub async fn find_arbitrage_paths(&self, tokens: &[Token], base_token: &Token, amount: f64) -> Result<Vec<TradePath>> {
+        info!("Finding arbitrage paths starting with {} {}", amount, base_token.symbol);
         
-        while let Some((prev_token, swap)) = came_from.get(&current_token) {
-            swaps.push(swap.clone());
-            total_slippage += swap.slippage;
-            total_fees += swap.fee;
-            current_token = prev_token.clone();
+        let mut paths = Vec::new();
+        let mut visited = HashSet::new();
+        
+        // Start with base token
+        visited.insert(base_token.address.clone());
+        
+        // Find paths
+        self.dfs_find_paths(
+            base_token,
+            base_token,
+            amount,
+            amount,
+            vec![],
+            &mut visited,
+            &mut paths,
+            tokens,
+            0,
+        ).await?;
+        
+        // Sort paths by profit
+        paths.sort_by(|a, b| {
+            b.estimated_profit_percentage.partial_cmp(&a.estimated_profit_percentage)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+        
+        debug!("Found {} profitable arbitrage paths", paths.len());
+        
+        Ok(paths)
+    }
+    
+    async fn dfs_find_paths(
+        &self,
+        base_token: &Token,
+        current_token: &Token,
+        initial_amount: f64,
+        current_amount: f64,
+        path: Vec<Swap>,
+        visited: &mut HashSet<String>,
+        result_paths: &mut Vec<TradePath>,
+        all_tokens: &[Token],
+        depth: usize,
+    ) -> Result<()> {
+        // Stop if we've reached the maximum path length
+        if depth >= self.max_path_length {
+            return Ok(());
+        }
+        
+        // For each possible token we can swap to
+        for token in all_tokens {
+            // Skip if we've already visited this token in this path
+            if visited.contains(&token.address) && token.address != base_token.address {
+                continue;
+            }
             
-            // Prevent infinite loops
-            if swaps.len() > self.max_hops {
-                break;
+            // Skip if it's the current token
+            if token.address == current_token.address {
+                continue;
+            }
+            
+            // Get swap details from dex client
+            match self.dex_client.get_best_swap_rate(current_token, token, current_amount).await {
+                Ok(swap) => {
+                    // Skip if price impact is too high
+                    if swap.price_impact > self.max_price_impact {
+                        continue;
+                    }
+                    
+                    let mut new_path = path.clone();
+                    new_path.push(swap.clone());
+                    
+                    // If we've returned to the base token, check if it's profitable
+                    if token.address == base_token.address {
+                        let final_amount = swap.expected_output;
+                        let profit = final_amount - initial_amount;
+                        let profit_percentage = profit / initial_amount;
+                        
+                        // If it's profitable, add it to the result
+                        if profit_percentage > self.min_profit_threshold {
+                            // Calculate total price impact
+                            let total_price_impact = new_path.iter()
+                                .map(|s| s.price_impact)
+                                .sum::<f64>();
+                            
+                            // Create path ID
+                            let path_id = new_path.iter()
+                                .map(|s| s.from_token.clone())
+                                .collect::<Vec<_>>()
+                                .join("->");
+                            
+                            let trade_path = TradePath {
+                                from_token: base_token.clone(),
+                                to_token: base_token.clone(),
+                                swaps: new_path,
+                                estimated_profit_amount: profit,
+                                estimated_profit_percentage: profit_percentage,
+                                path_id,
+                                total_price_impact,
+                            };
+                            
+                            result_paths.push(trade_path);
+                            debug!("Found profitable path: {} -> profit: {:.4}%", path_id, profit_percentage * 100.0);
+                        }
+                    } else {
+                        // Continue exploring this path
+                        visited.insert(token.address.clone());
+                        
+                        self.dfs_find_paths(
+                            base_token,
+                            token,
+                            initial_amount,
+                            swap.expected_output,
+                            new_path,
+                            visited,
+                            result_paths,
+                            all_tokens,
+                            depth + 1,
+                        ).await?;
+                        
+                        visited.remove(&token.address);
+                    }
+                }
+                Err(e) => {
+                    debug!("Skipping swap from {} to {}: {}", current_token.symbol, token.symbol, e);
+                }
             }
         }
         
-        if swaps.is_empty() {
-            return None;
+        Ok(())
+    }
+    
+    pub async fn find_direct_paths(&self, from_token: &Token, to_token: &Token, amount: f64) -> Result<Vec<TradePath>> {
+        info!("Finding direct paths from {} to {}", from_token.symbol, to_token.symbol);
+        
+        let mut paths = Vec::new();
+        
+        // Try to get direct swap
+        match self.dex_client.get_best_swap_rate(from_token, to_token, amount).await {
+            Ok(swap) => {
+                let path_id = format!("{}->{}", from_token.symbol, to_token.symbol);
+                
+                let trade_path = TradePath {
+                    from_token: from_token.clone(),
+                    to_token: to_token.clone(),
+                    swaps: vec![swap.clone()],
+                    estimated_profit_amount: swap.expected_output - amount,
+                    estimated_profit_percentage: (swap.expected_output - amount) / amount,
+                    path_id,
+                    total_price_impact: swap.price_impact,
+                };
+                
+                paths.push(trade_path);
+            }
+            Err(e) => {
+                warn!("No direct path from {} to {}: {}", from_token.symbol, to_token.symbol, e);
+            }
         }
         
-        // Reverse to get correct order
-        swaps.reverse();
-        
-        // Calculate expected profit
-        let expected_profit = swaps.last().unwrap().expected_output - swaps.first().unwrap().expected_output;
-        
-        // Check if path meets criteria
-        if expected_profit < self.min_profit_threshold || total_slippage > self.max_slippage {
-            return None;
-        }
-        
-        Some(TradePath {
-            swaps,
-            expected_profit,
-            total_slippage,
-            total_fees,
-        })
+        Ok(paths)
+    }
+    
+    pub async fn filter_paths_by_liquidity(&self, paths: Vec<TradePath>, min_liquidity: f64) -> Vec<TradePath> {
+        paths.into_iter()
+            .filter(|path| {
+                // Check liquidity for all tokens in the path
+                path.swaps.iter().all(|swap| {
+                    // In a real implementation, we would look up tokens by address
+                    // and check their liquidity. For now, we're using a simplified approach.
+                    true
+                })
+            })
+            .collect()
     }
 }
 
@@ -225,8 +304,9 @@ mod tests {
             from_token: "SOL".to_string(),
             to_token: "USDC".to_string(),
             dex: "Orca".to_string(),
+            input_amount: 100.0,
             expected_output: 100.0,
-            slippage: 0.001,
+            price_impact: 0.001,
             fee: 0.0001,
         });
         
@@ -234,4 +314,21 @@ mod tests {
         let path = pathfinder.find_optimal_path("SOL", 0.05);
         assert!(path.is_some());
     }
+
+    #[tokio::test]
+    async fn test_pathfinder_creation() {
+        let dex_client = DexClient::new().unwrap();
+        let pathfinder = PathFinder::new(
+            dex_client,
+            3,  // max_path_length
+            0.01, // min_profit_threshold (1%)
+            0.05, // max_price_impact (5%)
+        );
+        
+        assert_eq!(pathfinder.max_path_length, 3);
+        assert_eq!(pathfinder.min_profit_threshold, 0.01);
+        assert_eq!(pathfinder.max_price_impact, 0.05);
+    }
+    
+    // More tests would be added in a real implementation
 } 

@@ -1,0 +1,12 @@
+[Unit]
+Description=Run AntBot Wallet Backup Daily
+Requires=antbot-backup.service
+
+[Timer]
+Unit=antbot-backup.service
+OnCalendar=*-*-* 02:00:00
+RandomizedDelaySec=1800
+Persistent=true
+
+[Install]
+WantedBy=timers.target 

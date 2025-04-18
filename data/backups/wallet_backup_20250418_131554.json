@@ -1,0 +1,18 @@
+[
+  {
+    "id": "dbd3316f-f37f-4442-ac4c-64e2a716cd93",
+    "name": "queen_0",
+    "type": "queen",
+    "public_key": "3FVSM2A87h8zsPrserdCqR9Vxm9pRc1YqQM5BoN56mNw",
+    "created_at": 1744962353.158422,
+    "encrypted_private_key": "gAAAAABoAgMyxZH3DQALcyNO90CYeqWu9pz4SfG8kKRqHVL2ybIk-n_G5ep9PnFbiEyFhKp8zgGXNlt4j1jA8UFP3XTBOsnCra87V0zcQEgRRvvHpDNXFIUcJzTuz2cwY28rwfG1rmCf"
+  },
+  {
+    "id": "fa3986cf-7cca-47e8-86ca-94156a440396",
+    "name": "savings_0",
+    "type": "savings",
+    "public_key": "C1gh3gFUNY5hDoF2hsCj1kQi3JngLNv8KRfH9BoiQRWq",
+    "created_at": 1744962353.199862,
+    "encrypted_private_key": "gAAAAABoAgMyvPre-24C3bCAHgLwtEtPSme12k_95uBP9LFfK7s49plgZ6J1buzb19yYuFSCuJ960hU-LW5PSg6hgobJBZ539B781-4EMnYS16UAnWrbhKmmAHwppNs9vVTym9N_IyG-"
+  }
+]

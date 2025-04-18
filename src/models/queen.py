@@ -1,6 +1,7 @@
 import os
 import yaml
 import logging
+import asyncio
 from typing import Dict, List, Optional
 from dataclasses import dataclass
 from pathlib import Path
@@ -10,6 +11,8 @@ from loguru import logger
 from src.logging.log_config import setup_logging
 from src.core.wallet_manager import WalletManager
 from src.core.paths import CONFIG_DIR, QUEEN_CONFIG_PATH
+from src.bindings.worker_bridge import WorkerBridge
+from src.models.capital_manager import CapitalManager
 
 def todo(message: str):
     logger.warning(f"TODO: {message}")
@@ -46,6 +49,11 @@ class Queen:
         }
         self._setup_logging()
         self.wallet_manager = WalletManager(config_path)
+        self.worker_bridge = WorkerBridge(str(self.config_path))
+        self.capital_manager = CapitalManager(str(self.config_path))
+        
+        # Worker state tracking
+        self.active_workers = {}
 
     def _setup_logging(self):
         setup_logging("queen", "queen.log")
@@ -59,11 +67,15 @@ class Queen:
         """Initialize the colony with founding capital."""
         logger.info(f"Initializing colony with {initial_capital} SOL")
         
-        # Create queen wallet
-        self.colony_state["queen_wallet"] = await self._create_wallet("queen")
+        # Create queen wallet if it doesn't exist yet
+        if not self.colony_state["queen_wallet"]:
+            self.colony_state["queen_wallet"] = await self._create_wallet("queen")
+            logger.info(f"Created queen wallet: {self.colony_state['queen_wallet']}")
         
-        # Create savings wallet
-        self.colony_state["savings_wallet"] = await self._create_wallet("savings")
+        # Create savings wallet if it doesn't exist yet
+        if not self.colony_state["savings_wallet"]:
+            self.colony_state["savings_wallet"] = await self._create_wallet("savings")
+            logger.info(f"Created savings wallet: {self.colony_state['savings_wallet']}")
         
         # Fund queen wallet with initial capital
         # In a real scenario, this would be done by transferring from an external wallet
@@ -72,6 +84,9 @@ class Queen:
         
         self.colony_state["total_capital"] = initial_capital
         logger.info("Colony initialized successfully")
+        
+        # Start the health check monitoring
+        asyncio.create_task(self._health_check_loop())
 
     async def spawn_princess(self) -> None:
         """Spawn a new princess wallet when conditions are met."""
@@ -92,36 +107,138 @@ class Queen:
             )
             
             logger.info(f"Spawned new princess wallet: {princess_wallet}")
+            
+            # Start a princess manager for the new wallet
+            # TODO: Implement princess management logic
 
     async def manage_workers(self) -> None:
         """Manage worker ant deployment and scaling."""
         current_workers = len(self.colony_state["worker_wallets"])
         
-        if current_workers < self.config.max_workers_per_vps:
+        # Check if we need to spawn more workers
+        if current_workers < self.config.min_workers:
+            logger.info(f"Colony has {current_workers} workers, below minimum {self.config.min_workers}. Spawning more...")
+            await self._spawn_workers(self.config.min_workers - current_workers)
+        
+        # Check if we can spawn more workers
+        elif current_workers < self.config.max_workers:
             # Check if we have enough capital to spawn new workers
             available_capital = await self._get_available_capital()
+            capital_per_worker = available_capital / (self.config.max_workers - current_workers)
             
-            if available_capital >= self.config.min_princess_capital:
-                worker_wallet = await self._create_wallet("worker")
-                self.colony_state["worker_wallets"].append(worker_wallet)
+            # Only spawn workers if we have enough capital
+            if capital_per_worker >= 0.1:  # Minimum 0.1 SOL per worker
+                logger.info(f"Colony has {current_workers} workers, can spawn more with {available_capital} SOL available")
                 
-                # Allocate capital to worker
-                worker_capital = available_capital * 0.1  # 10% of available capital
-                await self._transfer_capital(
-                    self.colony_state["queen_wallet"],
-                    worker_wallet,
-                    worker_capital
+                # Calculate how many more workers we can spawn
+                additional_workers = min(
+                    self.config.max_workers - current_workers,
+                    int(available_capital / 0.1)  # Minimum 0.1 SOL per worker
                 )
                 
-                logger.info(f"Spawned new worker wallet: {worker_wallet}")
+                if additional_workers > 0:
+                    logger.info(f"Spawning {additional_workers} additional workers")
+                    await self._spawn_workers(additional_workers)
+        
+        # Check if existing workers are healthy
+        await self._check_worker_health()
+
+    async def _spawn_workers(self, count: int) -> None:
+        """Spawn a specified number of worker wallets."""
+        available_capital = await self._get_available_capital()
+        
+        if available_capital < 0.1 * count:
+            logger.warning(f"Not enough capital to spawn {count} workers. Need {0.1 * count} SOL, have {available_capital} SOL")
+            return
+        
+        capital_per_worker = min(1.0, available_capital / count)  # Maximum 1 SOL per worker
+        
+        for i in range(count):
+            worker_wallet = await self._create_wallet("worker")
+            self.colony_state["worker_wallets"].append(worker_wallet)
+            
+            # Allocate capital to worker
+            await self._transfer_capital(
+                self.colony_state["queen_wallet"],
+                worker_wallet,
+                capital_per_worker
+            )
+            
+            logger.info(f"Spawned new worker wallet: {worker_wallet} with {capital_per_worker} SOL")
+            
+            # Start the worker in the Rust engine
+            wallet_info = self.wallet_manager.wallets[worker_wallet]
+            worker_id = f"worker_{len(self.colony_state['worker_wallets'])}"
+            
+            success = await self.worker_bridge.start_worker(
+                worker_id,
+                wallet_info['public_key'],
+                capital_per_worker
+            )
+            
+            if success:
+                logger.info(f"Started worker {worker_id} in Rust engine")
+                # Track active worker
+                self.active_workers[worker_id] = {
+                    "wallet_id": worker_wallet,
+                    "start_time": asyncio.get_event_loop().time(),
+                    "last_check": asyncio.get_event_loop().time()
+                }
+            else:
+                logger.error(f"Failed to start worker {worker_id} in Rust engine")
+
+    async def _check_worker_health(self) -> None:
+        """Check the health of all active workers."""
+        for worker_id, info in list(self.active_workers.items()):
+            try:
+                status = await self.worker_bridge.get_worker_status(worker_id)
+                
+                if not status or not status.get("is_running", False):
+                    logger.warning(f"Worker {worker_id} is not running. Removing from active workers.")
+                    await self.worker_bridge.stop_worker(worker_id)
+                    del self.active_workers[worker_id]
+                else:
+                    # Update last check time
+                    self.active_workers[worker_id]["last_check"] = asyncio.get_event_loop().time()
+                    
+                    # Check profit and update metrics
+                    if "total_profit" in status:
+                        profit = float(status["total_profit"])
+                        if profit > 0:
+                            logger.info(f"Worker {worker_id} has earned {profit} SOL in profit")
+                            
+                            # If profit is significant, collect it
+                            if profit >= 0.05:  # Minimum 0.05 SOL to collect
+                                await self._collect_worker_profits(worker_id, info["wallet_id"])
+            
+            except Exception as e:
+                logger.error(f"Error checking health of worker {worker_id}: {str(e)}")
+
+    async def _health_check_loop(self) -> None:
+        """Run a continuous health check loop."""
+        while True:
+            try:
+                await self.manage_workers()
+                await self.collect_profits()
+                
+                # Check if we should spawn a princess
+                await self.spawn_princess()
+                
+                # Sleep for the configured interval
+                await asyncio.sleep(self.config.health_check_interval)
+                
+            except Exception as e:
+                logger.error(f"Error in health check loop: {str(e)}")
+                await asyncio.sleep(60)  # Wait a minute on error
 
     async def collect_profits(self) -> None:
         """Collect and manage profits from workers and princesses."""
         total_profits = 0.0
         
         # Collect from workers
-        for worker in self.colony_state["worker_wallets"]:
-            profits = await self._collect_wallet_profits(worker)
+        for worker_id, info in self.active_workers.items():
+            wallet_id = info["wallet_id"]
+            profits = await self._collect_wallet_profits(wallet_id)
             total_profits += profits
         
         # Collect from princesses
@@ -129,36 +246,76 @@ class Queen:
             profits = await self._collect_wallet_profits(princess)
             total_profits += profits
         
-        # Split profits between savings and reinvestment
-        savings_amount = total_profits * self.savings_ratio
-        reinvestment = total_profits * (1 - self.savings_ratio)
-        
-        # Send to savings
-        await self._transfer_capital(
-            self.colony_state["queen_wallet"],
-            self.colony_state["savings_wallet"],
-            savings_amount
+        if total_profits > 0:
+            logger.info(f"Collected total profits: {total_profits} SOL")
+            
+            # Process profits through capital manager
+            await self.capital_manager.process_profits(
+                total_profits,
+                self.colony_state["queen_wallet"]
+            )
+            
+            # Update total profits metric
+            self.colony_state["total_profits"] += total_profits
+            
+            # Check if we should compound savings
+            await self._compound_savings()
+
+    async def _compound_savings(self) -> None:
+        """Compound savings by reinvesting a portion back into trading."""
+        compound_amount = await self.capital_manager.compound_savings(
+            self.colony_state["queen_wallet"]
         )
         
-        # Reinvest remainder
-        self.colony_state["total_capital"] += reinvestment
-        self.colony_state["total_profits"] += total_profits
-        
-        logger.info(f"Collected profits: {total_profits} SOL")
+        if compound_amount > 0:
+            logger.info(f"Compounded {compound_amount} SOL from savings")
+            self.colony_state["total_capital"] += compound_amount
+
+    async def _collect_worker_profits(self, worker_id: str, wallet_id: str) -> float:
+        """Collect profits from a specific worker."""
+        try:
+            # Get worker status from Rust engine
+            status = await self.worker_bridge.get_worker_status(worker_id)
+            
+            if not status:
+                logger.warning(f"Worker {worker_id} status not available")
+                return 0.0
+            
+            profit = float(status.get("total_profit", 0))
+            
+            if profit > 0.05:  # Minimum 0.05 SOL to collect
+                # Get current balance
+                balance = await self._get_wallet_balance(wallet_id)
+                
+                # Calculate amount to collect (leave some for gas)
+                collect_amount = balance - 0.05  # Leave 0.05 SOL for gas
+                
+                if collect_amount > 0:
+                    # Transfer to queen wallet
+                    await self._transfer_capital(
+                        wallet_id,
+                        self.colony_state["queen_wallet"],
+                        collect_amount
+                    )
+                    
+                    logger.info(f"Collected {collect_amount} SOL from worker {worker_id}")
+                    
+                    # Reset profit counter in Rust engine
+                    await self.worker_bridge.update_worker_metrics(worker_id, 0, 0.0)
+                    
+                    return collect_amount
+            
+            return 0.0
+                
+        except Exception as e:
+            logger.error(f"Error collecting profits from worker {worker_id}: {str(e)}")
+            return 0.0
 
     async def _create_wallet(self, wallet_type: str) -> str:
         """Create a new wallet of specified type."""
         wallet_name = f"{wallet_type}_{int(self.colony_state['total_profits'])}"
-        wallet_id = await self.wallet_manager.create_wallet(wallet_name, wallet_type)
+        wallet_id = self.wallet_manager.create_wallet(wallet_name, wallet_type)
         return wallet_id
-
-    async def _fund_wallet(self, wallet: str, amount: float) -> None:
-        """Fund a wallet with specified amount."""
-        # In a real scenario, this would involve transferring funds from an external source
-        # For now, we'll just log it
-        logger.info(f"To fund wallet, please transfer {amount} SOL to:")
-        wallet_info = self.wallet_manager.wallets[wallet]
-        logger.info(f"Wallet public key: {wallet_info['public_key']}")
 
     async def _get_wallet_balance(self, wallet: str) -> float:
         """Get balance of specified wallet."""
@@ -180,17 +337,42 @@ class Queen:
 
     async def _collect_wallet_profits(self, wallet: str) -> float:
         """Collect profits from a wallet."""
-        # In a real implementation, this would analyze the wallet's trading history
-        # and determine profits to collect
-        # For now, it's a stub returning 0
-        return 0.0
+        try:
+            # Get current balance
+            balance = await self._get_wallet_balance(wallet)
+            
+            # We consider profit if balance is above initial allocation
+            # This is a simplification - in a real implementation we would track deposits and withdrawals
+            initial_allocation = 0.1  # Assume 0.1 SOL initial allocation
+            profit = max(0, balance - initial_allocation)
+            
+            if profit > 0.01:  # Only collect if profit is significant
+                # Calculate amount to collect (leave some for gas)
+                collect_amount = profit - 0.01  # Leave 0.01 SOL for gas
+                
+                # Transfer to queen wallet
+                await self._transfer_capital(
+                    wallet,
+                    self.colony_state["queen_wallet"],
+                    collect_amount
+                )
+                
+                logger.info(f"Collected {collect_amount} SOL profit from wallet {wallet}")
+                return collect_amount
+            
+            return 0.0
+        
+        except Exception as e:
+            logger.error(f"Error collecting profits from wallet {wallet}: {str(e)}")
+            return 0.0
 
     async def get_colony_state(self) -> Dict:
         """Get current state of the colony including wallet balances."""
         state = {
             "total_capital": self.colony_state["total_capital"],
             "total_profits": self.colony_state["total_profits"],
-            "wallets": {}
+            "wallets": {},
+            "active_workers": len(self.active_workers)
         }
         
         # Queen wallet
@@ -217,17 +399,38 @@ class Queen:
         
         # Worker wallets
         state["wallets"]["workers"] = []
-        for wallet_id in self.colony_state["worker_wallets"]:
-            state["wallets"]["workers"].append({
+        for worker_id, info in self.active_workers.items():
+            wallet_id = info["wallet_id"]
+            status = await self.worker_bridge.get_worker_status(worker_id)
+            
+            worker_state = {
                 "id": wallet_id,
-                "balance": await self._get_wallet_balance(wallet_id)
-            })
+                "worker_id": worker_id,
+                "balance": await self._get_wallet_balance(wallet_id),
+                "is_active": bool(status and status.get("is_running", False)),
+                "trades_executed": status.get("trades_executed", 0) if status else 0,
+                "profit": status.get("total_profit", 0.0) if status else 0.0
+            }
+            
+            state["wallets"]["workers"].append(worker_state)
         
         return state
 
     async def backup_wallets(self, backup_path: Optional[str] = None) -> str:
         """Create a backup of all wallets."""
         return await self.wallet_manager.create_backup(backup_path)
+
+    async def stop_colony(self) -> None:
+        """Stop all workers and prepare for shutdown."""
+        logger.info("Stopping colony...")
+        
+        # Stop all workers
+        for worker_id in list(self.active_workers.keys()):
+            logger.info(f"Stopping worker {worker_id}")
+            await self.worker_bridge.stop_worker(worker_id)
+        
+        self.active_workers = {}
+        logger.info("Colony stopped successfully")
 
 if __name__ == "__main__":
     import asyncio
@@ -250,9 +453,14 @@ if __name__ == "__main__":
         help="Backup wallets"
     )
     parser.add_argument(
-        "--backup-path",
-        type=str,
-        help="Path for wallet backup"
+        "--start",
+        action="store_true",
+        help="Start the queen service"
+    )
+    parser.add_argument(
+        "--stop",
+        action="store_true",
+        help="Stop the queen service"
     )
     args = parser.parse_args()
 
@@ -261,22 +469,24 @@ if __name__ == "__main__":
         
         if args.init_capital:
             await queen.initialize_colony(args.init_capital)
-        
+            
         if args.state:
             state = await queen.get_colony_state()
-            print("Colony State:")
-            print(f"Total Capital: {state['total_capital']} SOL")
-            print(f"Total Profits: {state['total_profits']} SOL")
-            print("Wallets:")
-            if "queen" in state["wallets"]:
-                print(f"  Queen: {state['wallets']['queen']['balance']} SOL")
-            if "savings" in state["wallets"]:
-                print(f"  Savings: {state['wallets']['savings']['balance']} SOL")
-            print(f"  Princesses: {len(state['wallets'].get('princesses', []))}")
-            print(f"  Workers: {len(state['wallets'].get('workers', []))}")
-        
+            print(f"Colony State: {state}")
+            
         if args.backup:
-            backup_path = await queen.backup_wallets(args.backup_path)
-            print(f"Created wallet backup: {backup_path}")
+            backup_path = await queen.backup_wallets()
+            print(f"Backup created at: {backup_path}")
+            
+        if args.start:
+            await queen.initialize_colony(args.init_capital or 1.0)
+            await queen.manage_workers()
+            
+            # Run indefinitely
+            while True:
+                await asyncio.sleep(60)
+                
+        if args.stop:
+            await queen.stop_colony()
 
     asyncio.run(main()) 

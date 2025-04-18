@@ -200,74 +200,129 @@ impl TxExecutor {
             Ok(_) => {
                 info!("Transaction confirmed: {}", signature);
                 Ok(true)
-            }
+            },
             Err(e) => {
-                error!("Error confirming transaction: {}", e);
-                Err(anyhow!("Failed to confirm transaction: {}", e))
+                error!("Failed to confirm transaction {}: {}", signature, e);
+                Ok(false)
             }
         }
     }
-
+    
     pub async fn send_transaction(&self, instructions: Vec<Instruction>) -> Result<Signature> {
+        // Get wallet
         let wallet = self.wallet.lock().await;
         let pubkey = wallet.pubkey();
         
+        // Get recent blockhash
         let recent_blockhash = self.rpc_client.get_latest_blockhash()?;
         
+        // Create transaction
         let mut transaction = Transaction::new_with_payer(
             &instructions,
             Some(&pubkey),
         );
         
+        // Set recent blockhash
         transaction.message.recent_blockhash = recent_blockhash;
         
+        // Sign transaction
         transaction.sign(&[&*wallet], recent_blockhash);
         
-        let signature = self.rpc_client.send_and_confirm_transaction_with_spinner(&transaction)?;
+        // Send transaction
+        let signature = self.rpc_client.send_transaction(&transaction)?;
+        
+        info!("Transaction sent: {}", signature);
         
         Ok(signature)
     }
-
+    
     pub async fn send_transaction_with_retry(&self, instructions: Vec<Instruction>) -> Result<Signature> {
-        let wallet = self.wallet.lock().await;
-        let from_pubkey = wallet.pubkey();
+        const MAX_RETRIES: u8 = 5;
+        let mut attempt = 0;
         
-        let recent_blockhash = self.rpc_client.get_latest_blockhash()?;
+        while attempt < MAX_RETRIES {
+            match self.send_transaction(instructions.clone()).await {
+                Ok(signature) => {
+                    // Wait for confirmation
+                    if self.wait_for_confirmation(&signature.to_string()).await? {
+                        return Ok(signature);
+                    }
+                    
+                    // If not confirmed, retry
+                    attempt += 1;
+                    warn!("Transaction not confirmed, retrying ({}/{})", attempt, MAX_RETRIES);
+                },
+                Err(e) => {
+                    attempt += 1;
+                    error!("Failed to send transaction, retrying ({}/{}): {}", attempt, MAX_RETRIES, e);
+                }
+            }
+            
+            // Back off exponentially
+            tokio::time::sleep(tokio::time::Duration::from_secs(2u64.pow(attempt as u32))).await;
+        }
         
-        let mut transaction = Transaction::new_with_payer(
-            &instructions,
-            Some(&from_pubkey),
-        );
-        
-        transaction.message.recent_blockhash = recent_blockhash;
-        
-        transaction.sign(&[&*wallet], recent_blockhash);
-        
-        let signature = self.rpc_client.send_and_confirm_transaction_with_spinner(&transaction)?;
-        
-        Ok(signature)
+        Err(anyhow!("Failed to send transaction after {} attempts", MAX_RETRIES))
     }
-
+    
     pub async fn confirm_transaction(&self, signature: &Signature) -> Result<bool> {
-        let blockhash = self.rpc_client.get_latest_blockhash()?;
-        match self.rpc_client.confirm_transaction_with_spinner(signature, &blockhash, self.commitment) {
-            Ok(_) => Ok(true),
-            Err(e) => {
-                error!("Failed to confirm transaction: {}", e);
+        let status = self.rpc_client.get_signature_status(signature)?;
+        
+        match status {
+            Some(Ok(_)) => {
+                info!("Transaction confirmed: {}", signature);
+                Ok(true)
+            },
+            Some(Err(e)) => {
+                error!("Transaction failed: {}", e);
+                Ok(false)
+            },
+            None => {
+                warn!("Transaction not found in ledger: {}", signature);
                 Ok(false)
             }
         }
+    }
+    
+    // Set wallet for the executor - useful for testing and worker initialization
+    pub async fn set_wallet(&self, wallet: Keypair) -> Result<()> {
+        let mut current_wallet = self.wallet.lock().await;
+        *current_wallet = wallet;
+        Ok(())
+    }
+    
+    // Get wallet public key
+    pub async fn get_wallet_pubkey(&self) -> Result<Pubkey> {
+        let wallet = self.wallet.lock().await;
+        Ok(wallet.pubkey())
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[tokio::test]
+    use std::str::FromStr;
+    
     async fn test_transfer() {
         let executor = TxExecutor::new().unwrap();
+        
+        // Test wallet with test funds required
+        let wallet = Keypair::new();
+        executor.set_wallet(wallet.clone()).await.unwrap();
+        
+        // Transfer a small amount to another wallet
+        let to_pubkey = Pubkey::from_str("3h1zGmCwsRJnVk5BuRNMLsPaQu1y2aqXqXDWYCgrp5UG").unwrap();
+        
+        let result = executor.transfer_sol(&to_pubkey, 0.001).await;
+        
+        assert!(result.is_err(), "Transfer should fail with no funds");
+    }
+    
+    async fn test_balance() {
+        let executor = TxExecutor::new().unwrap();
+        
+        // Empty wallet should have zero balance
         let balance = executor.get_balance().await.unwrap();
-        assert!(balance >= 0.0);
+        assert_eq!(balance, 0);
     }
 } 
