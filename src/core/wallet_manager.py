@@ -75,7 +75,13 @@ class WalletManager:
     def _load_wallets(self):
         """Load all wallets from file system."""
         try:
-            for wallet_file in self.wallets_dir.glob('*.json'):
+            # Create wallets directory if it doesn't exist
+            self.wallets_dir.mkdir(parents=True, exist_ok=True)
+            
+            # Try to load existing wallets
+            wallet_files = list(self.wallets_dir.glob('*.json'))
+            
+            for wallet_file in wallet_files:
                 try:
                     with open(wallet_file, 'r') as f:
                         wallet_data = json.load(f)
@@ -94,9 +100,19 @@ class WalletManager:
                 
                 except Exception as e:
                     loguru.logger.error(f"Error loading wallet {wallet_file.name}: {str(e)}")
+            
+            # If no wallets exist, create a default queen wallet
+            if not self.wallets:
+                loguru.logger.info("No wallets found. Creating default queen wallet...")
+                self.create_wallet("Default Queen", "queen")
         
         except Exception as e:
             loguru.logger.error(f"Error loading wallets: {str(e)}")
+            # Create a default queen wallet even if there's an error
+            try:
+                self.create_wallet("Default Queen", "queen")
+            except Exception as create_error:
+                loguru.logger.error(f"Failed to create default wallet: {str(create_error)}")
     
     def create_wallet(self, name: str, wallet_type: str) -> str:
         """
@@ -109,55 +125,103 @@ class WalletManager:
         Returns:
             Wallet ID
         """
-        # Generate new keypair
-        keypair = Keypair()
-        private_key = base64.b64encode(keypair.seed).decode('ascii')
-        public_key = str(keypair.public_key)
-        
-        # Generate unique ID
-        wallet_id = str(uuid.uuid4())
-        
-        # Create wallet object
-        wallet = {
-            'id': wallet_id,
-            'name': name,
-            'type': wallet_type,
-            'public_key': public_key,
-            'private_key': private_key,
-            'created_at': time.time()
-        }
-        
-        # Store in memory
-        self.wallets[wallet_id] = wallet
-        
-        # Save to disk (encrypted)
-        self._save_wallet(wallet_id)
-        
-        return wallet_id
+        try:
+            loguru.logger.info(f"Creating new wallet: {name} (type: {wallet_type})")
+            
+            # Generate new keypair
+            keypair = Keypair()
+            private_key = base64.b64encode(keypair.seed).decode('ascii')
+            public_key = str(keypair.public_key)
+            
+            # Generate unique ID
+            wallet_id = str(uuid.uuid4())
+            
+            # Create wallet object
+            wallet = {
+                'id': wallet_id,
+                'name': name,
+                'type': wallet_type,
+                'public_key': public_key,
+                'private_key': private_key,
+                'created_at': time.time()
+            }
+            
+            # Store in memory
+            self.wallets[wallet_id] = wallet
+            
+            # Save to disk (encrypted)
+            self._save_wallet(wallet_id)
+            
+            loguru.logger.info(f"Successfully created wallet {name} with ID {wallet_id}")
+            return wallet_id
+            
+        except Exception as e:
+            loguru.logger.error(f"Failed to create wallet {name}: {str(e)}")
+            raise
     
     def _save_wallet(self, wallet_id: str):
         """
-        Save wallet to disk with encrypted private key.
+        Save wallet to disk with encryption.
         
         Args:
             wallet_id: ID of wallet to save
         """
-        if wallet_id not in self.wallets:
-            raise ValueError(f"Wallet {wallet_id} not found")
-        
-        wallet = self.wallets[wallet_id].copy()
-        
-        # Encrypt private key
-        if 'private_key' in wallet:
-            wallet['encrypted_private_key'] = self.fernet.encrypt(
-                wallet['private_key'].encode()
-            ).decode()
-            del wallet['private_key']  # Don't save unencrypted key
-        
-        # Save to file
-        wallet_path = self.wallets_dir / f"{wallet_id}.json"
-        with open(wallet_path, 'w') as f:
-            json.dump(wallet, f, indent=2)
+        try:
+            if wallet_id not in self.wallets:
+                raise ValueError(f"Wallet {wallet_id} not found in memory")
+                
+            wallet = self.wallets[wallet_id].copy()
+            
+            # Encrypt private key before saving
+            if 'private_key' in wallet:
+                try:
+                    # Use a secure encryption key derived from environment
+                    encryption_key = self._get_encryption_key()
+                    wallet['private_key'] = self._encrypt_data(wallet['private_key'], encryption_key)
+                except Exception as e:
+                    loguru.logger.error(f"Failed to encrypt private key for wallet {wallet_id}: {str(e)}")
+                    raise
+                    
+            # Save to file
+            wallet_file = self.wallets_dir / f"{wallet_id}.json"
+            try:
+                with open(wallet_file, 'w') as f:
+                    json.dump(wallet, f, indent=2)
+                loguru.logger.debug(f"Saved wallet {wallet_id} to {wallet_file}")
+            except Exception as e:
+                loguru.logger.error(f"Failed to save wallet {wallet_id} to disk: {str(e)}")
+                raise
+                
+        except Exception as e:
+            loguru.logger.error(f"Error saving wallet {wallet_id}: {str(e)}")
+            raise
+            
+    def _get_encryption_key(self) -> bytes:
+        """Get encryption key from environment or generate a secure one."""
+        try:
+            # Try to get key from environment
+            env_key = os.getenv('WALLET_ENCRYPTION_KEY')
+            if env_key:
+                return base64.b64decode(env_key)
+                
+            # Generate a secure key if not in environment
+            key = os.urandom(32)  # 256-bit key
+            loguru.logger.warning("No encryption key found in environment. Generated new key.")
+            return key
+            
+        except Exception as e:
+            loguru.logger.error(f"Failed to get encryption key: {str(e)}")
+            raise
+            
+    def _encrypt_data(self, data: str, key: bytes) -> str:
+        """Encrypt data using Fernet symmetric encryption."""
+        try:
+            f = Fernet(base64.b64encode(key))
+            encrypted_data = f.encrypt(data.encode())
+            return base64.b64encode(encrypted_data).decode('ascii')
+        except Exception as e:
+            loguru.logger.error(f"Failed to encrypt data: {str(e)}")
+            raise
     
     def list_wallets(self, wallet_type: Optional[str] = None) -> List[Dict]:
         """
