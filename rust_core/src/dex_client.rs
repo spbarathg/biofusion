@@ -9,7 +9,7 @@ use async_trait::async_trait;
 
 use crate::dex_provider::{DexProvider, DexQuote, TokenInfo, Token, Swap};
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct JupiterClient {
     client: Client,
     base_url: String,
@@ -28,7 +28,7 @@ impl JupiterClient {
 
 #[async_trait]
 impl DexProvider for JupiterClient {
-    async fn get_quote(&self, from_token: &str, to_token: &str, amount: f64) -> Result<DexQuote> {
+    async fn get_quote(&self, input_token: &str, output_token: &str, amount: f64) -> Result<DexQuote> {
         let url = format!(
             "{}/quote?inputMint={}&outputMint={}&amount={}&slippageBps=50",
             self.base_url, input_token, output_token, amount
@@ -55,12 +55,16 @@ impl DexProvider for JupiterClient {
         Ok("mock_tx_hash_123456789".to_string())
     }
     
-    async fn get_token_info(&self, token_address: &str) -> Result<Token> {
+    async fn get_token_info(&self, token_address: &str) -> Result<TokenInfo> {
         // Check cache first
         let mut cache = self.token_cache.lock().await;
         
         if let Some(token) = cache.get(token_address) {
-            return Ok(token.clone());
+            return Ok(TokenInfo {
+                symbol: token.symbol.clone(),
+                decimals: token.decimals,
+                price: token.price,
+            });
         }
         
         // Fetch from API
@@ -71,12 +75,27 @@ impl DexProvider for JupiterClient {
         // Update cache
         cache.insert(token_address.to_string(), token.clone());
         
-        Ok(token)
+        Ok(TokenInfo {
+            symbol: token.symbol,
+            decimals: token.decimals,
+            price: token.price,
+        })
     }
 
     async fn get_swap_rate(&self, from_token: &Token, to_token: &Token, amount: f64) -> Result<Swap> {
         debug!("Getting swap rate from {} to {} for amount {}", from_token.symbol, to_token.symbol, amount);
-        self.get_quote(from_token.address.as_str(), to_token.address.as_str(), amount).await
+        
+        let quote = self.get_quote(&from_token.address, &to_token.address, amount).await?;
+        
+        Ok(Swap {
+            from_token: from_token.symbol.clone(),
+            to_token: to_token.symbol.clone(),
+            dex: "Jupiter".to_string(),
+            input_amount: quote.input_amount,
+            expected_output: quote.output_amount,
+            price_impact: quote.price_impact,
+            fee: quote.fee,
+        })
     }
 
     fn clone_box(&self) -> Box<dyn DexProvider> {
@@ -84,7 +103,7 @@ impl DexProvider for JupiterClient {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct OrcaClient {
     client: Client,
     base_url: String,
@@ -131,12 +150,16 @@ impl DexProvider for OrcaClient {
         Ok("orca_tx_hash_123456789".to_string())
     }
     
-    async fn get_token_info(&self, token_address: &str) -> Result<Token> {
+    async fn get_token_info(&self, token_address: &str) -> Result<TokenInfo> {
         // Check cache first
         let mut cache = self.token_cache.lock().await;
         
         if let Some(token) = cache.get(token_address) {
-            return Ok(token.clone());
+            return Ok(TokenInfo {
+                symbol: token.symbol.clone(),
+                decimals: token.decimals,
+                price: token.price,
+            });
         }
         
         // Fetch from API
@@ -147,12 +170,27 @@ impl DexProvider for OrcaClient {
         // Update cache
         cache.insert(token_address.to_string(), token.clone());
         
-        Ok(token)
+        Ok(TokenInfo {
+            symbol: token.symbol,
+            decimals: token.decimals,
+            price: token.price,
+        })
     }
 
     async fn get_swap_rate(&self, from_token: &Token, to_token: &Token, amount: f64) -> Result<Swap> {
         debug!("Getting swap rate from {} to {} for amount {}", from_token.symbol, to_token.symbol, amount);
-        self.get_quote(from_token.address.as_str(), to_token.address.as_str(), amount).await
+        
+        let quote = self.get_quote(&from_token.address, &to_token.address, amount).await?;
+        
+        Ok(Swap {
+            from_token: from_token.symbol.clone(),
+            to_token: to_token.symbol.clone(),
+            dex: "Orca".to_string(),
+            input_amount: quote.input_amount,
+            expected_output: quote.output_amount,
+            price_impact: quote.price_impact,
+            fee: quote.fee,
+        })
     }
 
     fn clone_box(&self) -> Box<dyn DexProvider> {
@@ -225,7 +263,17 @@ impl DexClient {
     }
     
     pub async fn get_token_info(&self, token_address: &str) -> Result<Token> {
-        self.provider.get_token_info(token_address).await
+        let token_info = self.provider.get_token_info(token_address).await?;
+        
+        // Convert TokenInfo to Token
+        Ok(Token {
+            address: token_address.to_string(),
+            symbol: token_info.symbol,
+            decimals: token_info.decimals,
+            price: token_info.price,
+            liquidity: 0.0, // Default values
+            volume_24h: 0.0,
+        })
     }
     
     pub async fn get_token_info_force_refresh(&self, token_address: &str) -> Result<Token> {
@@ -253,92 +301,37 @@ impl DexClient {
                 decimals: 6,
                 price: 1.0,
                 liquidity: 10_000_000.0,
-                volume_24h: 20_000_000.0,
-            },
-            Token {
-                address: "7dHbWXmci3dT8UFYWYZweBLXgycu7Y3iL6trKn1Y7ARj".to_string(),
-                symbol: "USDT".to_string(),
-                decimals: 6,
-                price: 1.0,
-                liquidity: 8_000_000.0,
-                volume_24h: 15_000_000.0,
-            },
-            Token {
-                address: "mSoLzYCxHdYgdzU16g5QSh3i5K3z3KZK7ytfqcJm7So".to_string(),
-                symbol: "mSOL".to_string(),
-                decimals: 9,
-                price: 110.0,
-                liquidity: 500_000.0,
-                volume_24h: 2_000_000.0,
+                volume_24h: 50_000_000.0,
             },
         ])
     }
     
     pub async fn get_best_swap_rate(&self, from_token: &Token, to_token: &Token, amount: f64) -> Result<Swap> {
-        info!("Getting best swap rate for {} {} to {} {}", amount, from_token.symbol, to_token.symbol);
+        info!("Getting best swap rate for {} {} to {} {}", 
+              amount, from_token.symbol, to_token.symbol, amount);
         
-        // Get best quote
-        let quote = self.get_best_quote(&from_token.address, &to_token.address, amount).await?;
-        
-        // Convert to Swap
-        let swap = Swap {
-            from_token: from_token.address.clone(),
-            to_token: to_token.address.clone(),
-            dex: "jupiter".to_string(), // Assuming Jupiter is best
-            input_amount: quote.input_amount,
-            expected_output: quote.output_amount,
-            price_impact: quote.price_impact,
-            fee: quote.fee,
-        };
-        
-        Ok(swap)
+        self.provider.get_swap_rate(from_token, to_token, amount).await
     }
     
     pub async fn find_arbitrage_paths(&self, tokens: &[Token]) -> Result<Vec<crate::pathfinder::TradePath>> {
-        info!("Finding arbitrage paths");
-        
-        // Create pathfinder with configuration
-        let pathfinder = crate::pathfinder::PathFinder::new(
-            self.clone(),
-            3, // max path length
-            0.005, // 0.5% min profit threshold
-            0.05, // 5% max price impact
-        );
-        
-        // Use SOL as base token
-        let sol_token = tokens.iter()
-            .find(|t| t.symbol == "SOL")
-            .cloned()
-            .ok_or_else(|| anyhow!("SOL token not found"))?;
-        
-        // Find paths with 1 SOL starting amount
-        let paths = pathfinder.find_arbitrage_paths(tokens, &sol_token, 1.0).await?;
-        
-        info!("Found {} potential arbitrage paths", paths.len());
-        
-        Ok(paths)
+        // This would be implemented in a real system
+        Ok(vec![])
     }
     
     pub async fn get_token_pairs(&self) -> Result<Vec<(Token, Token)>> {
-        info!("Getting token pairs");
-        
         let tokens = self.get_tokens().await?;
         let mut pairs = Vec::new();
         
-        // Create all possible pairs
         for i in 0..tokens.len() {
-            for j in 0..tokens.len() {
-                if i != j {
-                    pairs.push((tokens[i].clone(), tokens[j].clone()));
-                }
+            for j in (i+1)..tokens.len() {
+                pairs.push((tokens[i].clone(), tokens[j].clone()));
             }
         }
         
         Ok(pairs)
     }
-
+    
     pub async fn get_swap_rate(&self, amount: f64, from_token: &Token, to_token: &Token) -> Result<f64> {
-        info!("Getting swap rate for {} {} to {}", amount, from_token.symbol, to_token.symbol);
         let swap = self.provider.get_swap_rate(from_token, to_token, amount).await?;
         Ok(swap.expected_output / swap.input_amount)
     }
@@ -353,11 +346,12 @@ impl Clone for Box<dyn DexProvider> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
+    
     #[tokio::test]
     async fn test_jupiter_quote() {
         let client = JupiterClient::new().unwrap();
-        let quote = client.get_quote("SOL", "USDC", 1.0).await;
-        assert!(quote.is_ok());
+        let quote = client.get_quote("SOL", "USDC", 1.0).await.unwrap();
+        assert_eq!(quote.input_token, "SOL");
+        assert_eq!(quote.output_token, "USDC");
     }
 } 

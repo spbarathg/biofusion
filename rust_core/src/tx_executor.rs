@@ -15,10 +15,8 @@ use async_trait::async_trait;
 use serde::{Serialize, Deserialize};
 use std::fmt;
 
-use crate::dex_client::DexQuote;
+use crate::dex_provider::{DexQuote, Token, Swap};
 use crate::config::RpcConfig;
-use crate::dex_client::DexClient;
-use crate::pathfinder::{Token, Swap};
 
 pub struct TxExecutor {
     rpc_client: Arc<RpcClient>,
