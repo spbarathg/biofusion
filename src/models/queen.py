@@ -13,6 +13,9 @@ from src.core.wallet_manager import WalletManager
 from src.core.paths import CONFIG_DIR, QUEEN_CONFIG_PATH
 from src.bindings.worker_bridge import WorkerBridge
 from src.models.capital_manager import CapitalManager
+from src.core.agents.worker_distribution import WorkerDistribution
+from src.core.agents.load_balancer import LoadBalancer
+from src.core.agents.failover import FailoverManager
 
 def todo(message: str):
     logger.warning(f"TODO: {message}")
@@ -52,6 +55,15 @@ class Queen:
         self.worker_bridge = WorkerBridge(str(self.config_path))
         self.capital_manager = CapitalManager(str(self.config_path))
         
+        # Initialize worker distribution system
+        self.worker_distribution = WorkerDistribution(str(self.config_path))
+        
+        # Initialize load balancer
+        self.load_balancer = LoadBalancer(self.worker_distribution, str(self.config_path))
+        
+        # Initialize failover manager
+        self.failover_manager = FailoverManager(str(self.config_path))
+        
         # Worker state tracking
         self.active_workers = {}
 
@@ -87,6 +99,42 @@ class Queen:
         
         # Start the health check monitoring
         asyncio.create_task(self._health_check_loop())
+        
+        # Start the worker distribution and load balancing system
+        await self._initialize_cloud_infrastructure()
+
+    async def _initialize_cloud_infrastructure(self) -> None:
+        """Initialize cloud infrastructure for worker distribution"""
+        logger.info("Initializing cloud infrastructure for worker distribution")
+        
+        # Start worker distribution monitoring
+        asyncio.create_task(self.worker_distribution.start_monitoring())
+        
+        # Start load balancer
+        await self.load_balancer.start()
+        
+        # Start failover monitoring
+        await self.failover_manager.start_monitoring()
+        
+        # Register any existing VPS instances
+        # In a real implementation, this would discover existing instances
+        # For now, we'll just create a simulated instance
+        vps_data = {
+            "id": "vps-1",
+            "hostname": "primary-worker-host",
+            "ip_address": "10.0.0.1",
+            "max_workers": self.config.max_workers_per_vps,
+            "active_workers": 0,
+            "cpu_usage": 20.0,
+            "memory_usage": 30.0,
+            "performance_score": 0.9,
+            "is_available": True,
+            "region": "us-east",
+            "cost_per_hour": 0.0416
+        }
+        
+        await self.worker_distribution.register_vps(vps_data)
+        logger.info("Registered primary VPS instance")
 
     async def spawn_princess(self) -> None:
         """Spawn a new princess wallet when conditions are met."""
@@ -170,6 +218,25 @@ class Queen:
             wallet_info = self.wallet_manager.wallets[worker_wallet]
             worker_id = f"worker_{len(self.colony_state['worker_wallets'])}"
             
+            # First, get VPS assignment from worker distribution system
+            vps_id = await self.worker_distribution.assign_worker(worker_id)
+            
+            if not vps_id:
+                logger.error(f"Failed to assign worker {worker_id} to a VPS instance")
+                continue
+                
+            # Create and start the worker
+            from src.models.worker import Worker
+            worker = Worker(
+                worker_id=worker_id,
+                config_path=str(self.config_path),
+                wallet_id=worker_wallet
+            )
+            
+            # Register worker with failover manager
+            await self.failover_manager.register_worker(worker_id, worker)
+            
+            # Start the worker
             success = await self.worker_bridge.start_worker(
                 worker_id,
                 wallet_info['public_key'],
@@ -177,13 +244,20 @@ class Queen:
             )
             
             if success:
-                logger.info(f"Started worker {worker_id} in Rust engine")
+                logger.info(f"Started worker {worker_id} in Rust engine on VPS {vps_id}")
                 # Track active worker
                 self.active_workers[worker_id] = {
                     "wallet_id": worker_wallet,
                     "start_time": asyncio.get_event_loop().time(),
-                    "last_check": asyncio.get_event_loop().time()
+                    "last_check": asyncio.get_event_loop().time(),
+                    "vps_id": vps_id
                 }
+                
+                # Update failover manager with VPS assignment
+                await self.failover_manager.update_worker_state(worker_id, {
+                    "vps_id": vps_id,
+                    "capital": capital_per_worker
+                })
             else:
                 logger.error(f"Failed to start worker {worker_id} in Rust engine")
 
@@ -191,25 +265,32 @@ class Queen:
         """Check the health of all active workers."""
         for worker_id, info in list(self.active_workers.items()):
             try:
-                status = await self.worker_bridge.get_worker_status(worker_id)
+                # Use the failover manager to check worker health
+                worker_status = await self.failover_manager.get_worker_status(worker_id)
                 
-                if not status or not status.get("is_running", False):
-                    logger.warning(f"Worker {worker_id} is not running. Removing from active workers.")
-                    await self.worker_bridge.stop_worker(worker_id)
-                    del self.active_workers[worker_id]
-                else:
+                if worker_status.get("is_healthy", False):
                     # Update last check time
                     self.active_workers[worker_id]["last_check"] = asyncio.get_event_loop().time()
                     
                     # Check profit and update metrics
+                    status = await self.worker_bridge.get_worker_status(worker_id)
                     if "total_profit" in status:
                         profit = float(status["total_profit"])
+                        
+                        # Update failover manager with latest metrics
+                        await self.failover_manager.update_worker_state(worker_id, {
+                            "trades_executed": status.get("trades_executed", 0),
+                            "total_profit": profit
+                        })
+                        
                         if profit > 0:
                             logger.info(f"Worker {worker_id} has earned {profit} SOL in profit")
                             
                             # If profit is significant, collect it
                             if profit >= 0.05:  # Minimum 0.05 SOL to collect
                                 await self._collect_worker_profits(worker_id, info["wallet_id"])
+                else:
+                    logger.warning(f"Worker {worker_id} is not healthy according to failover manager")
             
             except Exception as e:
                 logger.error(f"Error checking health of worker {worker_id}: {str(e)}")
@@ -223,6 +304,14 @@ class Queen:
                 
                 # Check if we should spawn a princess
                 await self.spawn_princess()
+                
+                # Get cloud infrastructure status
+                vps_list = self.worker_distribution.get_vps_list()
+                load_balancer_info = self.load_balancer.get_load_balancer_info()
+                failover_stats = self.failover_manager.get_failover_stats()
+                
+                logger.info(f"Cloud infrastructure status: {len(vps_list)} VPS instances, "
+                           f"{failover_stats['active_workers']}/{failover_stats['total_workers']} active workers")
                 
                 # Sleep for the configured interval
                 await asyncio.sleep(self.config.health_check_interval)
@@ -262,14 +351,16 @@ class Queen:
             await self._compound_savings()
 
     async def _compound_savings(self) -> None:
-        """Compound savings by reinvesting a portion back into trading."""
+        """Compound savings by reinvesting a portion back into workers."""
         compound_amount = await self.capital_manager.compound_savings(
             self.colony_state["queen_wallet"]
         )
         
         if compound_amount > 0:
-            logger.info(f"Compounded {compound_amount} SOL from savings")
-            self.colony_state["total_capital"] += compound_amount
+            logger.info(f"Compounded {compound_amount} SOL from savings back into trading capital")
+            
+            # After compounding, check if we can spawn more workers
+            await self.manage_workers()
 
     async def _collect_worker_profits(self, worker_id: str, wallet_id: str) -> float:
         """Collect profits from a specific worker."""
@@ -420,16 +511,59 @@ class Queen:
         """Create a backup of all wallets."""
         return await self.wallet_manager.create_backup(backup_path)
 
+    async def get_cloud_infrastructure_status(self) -> Dict:
+        """Get the status of the cloud infrastructure."""
+        vps_list = self.worker_distribution.get_vps_list()
+        load_balancer_info = self.load_balancer.get_load_balancer_info()
+        failover_stats = self.failover_manager.get_failover_stats()
+        
+        # Format VPS usage information
+        vps_info = []
+        for vps in vps_list:
+            vps_stats = self.load_balancer.get_vps_stats()
+            vps_info.append({
+                "id": vps["id"],
+                "hostname": vps["hostname"],
+                "region": vps["region"],
+                "active_workers": vps["active_workers"],
+                "max_workers": vps["max_workers"],
+                "cpu_usage": vps["cpu_usage"],
+                "memory_usage": vps["memory_usage"],
+                "cost_per_hour": vps["cost_per_hour"],
+                "is_healthy": vps["id"] not in vps_stats.get("unhealthy_vps", []),
+                "connections": vps_stats.get("connection_counts", {}).get(vps["id"], 0)
+            })
+        
+        return {
+            "vps_instances": vps_info,
+            "load_balancer": load_balancer_info,
+            "failover": failover_stats,
+            "total_workers": failover_stats["total_workers"],
+            "active_workers": failover_stats["active_workers"],
+            "distribution_strategy": self.worker_distribution.config.distribution_strategy
+        }
+
     async def stop_colony(self) -> None:
-        """Stop all workers and prepare for shutdown."""
+        """Stop the colony and all its workers."""
         logger.info("Stopping colony...")
         
-        # Stop all workers
-        for worker_id in list(self.active_workers.keys()):
-            logger.info(f"Stopping worker {worker_id}")
-            await self.worker_bridge.stop_worker(worker_id)
+        # Stop all workers through the failover manager
+        await self.failover_manager.cleanup()
         
-        self.active_workers = {}
+        # Additional cleanup for cloud infrastructure
+        # In a real implementation, this would properly shut down VPS instances
+        # For now, we'll just log the intention
+        logger.info("Cloud infrastructure shutdown initiated")
+        
+        # Original worker shutdown logic from the bridge
+        for worker_id in list(self.active_workers.keys()):
+            try:
+                logger.info(f"Stopping worker {worker_id}")
+                await self.worker_bridge.stop_worker(worker_id)
+            except Exception as e:
+                logger.error(f"Error stopping worker {worker_id}: {str(e)}")
+        
+        self.active_workers.clear()
         logger.info("Colony stopped successfully")
 
 if __name__ == "__main__":
