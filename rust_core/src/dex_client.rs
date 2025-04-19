@@ -224,12 +224,13 @@ impl Serialize for DexClient {
 }
 
 impl<'de> Deserialize<'de> for DexClient {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    fn deserialize<D>(_deserializer: D) -> Result<Self, D::Error>
     where
         D: serde::Deserializer<'de>,
     {
+        // For now, return a default client
         Ok(DexClient {
-            provider: Box::new(OrcaClient::new().map_err(serde::de::Error::custom)?),
+            provider: Box::new(JupiterClient::new().unwrap()),
         })
     }
 }

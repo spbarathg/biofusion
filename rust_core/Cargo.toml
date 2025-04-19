@@ -7,7 +7,7 @@ description = "High-performance trading core for Ant Bot"
 
 [lib]
 name = "ant_bot_core"
-crate-type = ["cdylib", "rlib"]
+crate-type = ["rlib"]
 
 [[bin]]
 name = "ant_bot_cli"
@@ -40,4 +40,24 @@ libc = "0.2" # For FFI
 base64 = "0.21"
 
 [build-dependencies]
-cbindgen = "0.24" 
+cbindgen = "0.24"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+panic = "abort"
+strip = true
+debug = false
+
+[profile.dev]
+opt-level = 0
+debug = true
+split-debuginfo = "unpacked"
+debug-assertions = true
+overflow-checks = true
+lto = false
+panic = "unwind"
+incremental = true
+codegen-units = 256
+rpath = false 

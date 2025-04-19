@@ -17,6 +17,7 @@ pub struct WorkerAnt {
     pub dex_client: Arc<Mutex<DexClient>>,
     pub tx_executor: Arc<TxExecutor>,
     pub pathfinder: Arc<PathFinder>,
+    #[allow(dead_code)]
     wallet: Arc<Mutex<Keypair>>,
     pub is_running: Arc<Mutex<bool>>,
     config: WorkerConfig,
@@ -286,24 +287,13 @@ mod tests {
     
     #[tokio::test]
     async fn test_worker_creation() {
-        let worker_config = WorkerConfig {
-            max_trades_per_hour: 10,
-            min_profit_threshold: 0.01,
-            max_slippage: 0.02,
-            max_trade_size: 1.0,
-            min_liquidity: 1000.0,
-            max_hold_time: 3600,
-            target_trades_per_minute: 1,
-            max_concurrent_trades: 3,
-        };
-        
         let dex_client = Arc::new(Mutex::new(DexClient::new().unwrap()));
         let tx_executor = Arc::new(TxExecutor::new().unwrap());
         let wallet = Keypair::new();
         
         let worker = WorkerAnt::new(
             "test_worker".to_string(),
-            worker_config,
+            WorkerConfig::default(),
             dex_client,
             tx_executor,
             wallet,
@@ -314,24 +304,13 @@ mod tests {
     
     #[tokio::test]
     async fn test_worker_metrics() {
-        let worker_config = WorkerConfig {
-            max_trades_per_hour: 10,
-            min_profit_threshold: 0.01,
-            max_slippage: 0.02,
-            max_trade_size: 1.0,
-            min_liquidity: 1000.0,
-            max_hold_time: 3600,
-            target_trades_per_minute: 1,
-            max_concurrent_trades: 3,
-        };
-        
         let dex_client = Arc::new(Mutex::new(DexClient::new().unwrap()));
         let tx_executor = Arc::new(TxExecutor::new().unwrap());
         let wallet = Keypair::new();
         
         let worker = WorkerAnt::new(
             "test_worker".to_string(),
-            worker_config,
+            WorkerConfig::default(),
             dex_client,
             tx_executor,
             wallet,

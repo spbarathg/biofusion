@@ -19,6 +19,7 @@ pub mod worker_ant;
 #[derive(Debug)]
 pub struct Colony {
     workers: HashMap<String, Arc<WorkerAnt>>,
+    #[allow(dead_code)]
     metrics: Arc<Mutex<HashMap<String, serde_json::Value>>>,
 }
 

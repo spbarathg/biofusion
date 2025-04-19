@@ -19,6 +19,7 @@ pub struct TradePath {
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
+#[allow(dead_code)]
 struct Node {
     token: String,
     cost: i64,
@@ -43,7 +44,9 @@ impl PartialOrd for Node {
 pub struct PathFinder {
     dex_client: DexClient,
     max_path_length: usize,
+    #[allow(dead_code)]
     min_profit_threshold: f64,
+    #[allow(dead_code)]
     max_price_impact: f64,
     swaps: Vec<Swap>,
 }
@@ -103,6 +106,7 @@ impl PathFinder {
         Ok(paths)
     }
     
+    #[allow(dead_code)]
     async fn dfs_find_paths_boxed(
         &self,
         base_token: &Token,
