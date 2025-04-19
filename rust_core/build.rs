@@ -1,6 +1,6 @@
 fn main() {
-    // Tell Cargo to build a dynamic library that can be used as a C library
-    println!("cargo:rustc-link-lib=dylib=ant_bot_core");
+    // Comment out this line that creates a circular dependency
+    // println!("cargo:rustc-link-lib=dylib=ant_bot_core");
     
     // Make sure to rebuild if these files change
     println!("cargo:rerun-if-changed=src/main.rs");
