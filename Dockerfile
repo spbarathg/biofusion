@@ -4,6 +4,7 @@ FROM python:3.9-slim as python-base
 FROM python-base as builder
 RUN apt-get update && apt-get install -y \
     curl build-essential pkg-config libssl-dev \
+    binutils lld \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Rust
