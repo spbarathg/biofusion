@@ -6,6 +6,7 @@ from typing import Dict, List, Optional
 from dataclasses import dataclass
 from pathlib import Path
 from loguru import logger
+import time
 
 # Fix imports
 from src.logging.log_config import setup_logging
@@ -161,36 +162,31 @@ class Queen:
             # TODO: Implement princess management logic
 
     async def manage_workers(self) -> None:
-        """Manage worker ant deployment and scaling."""
-        current_workers = len(self.colony_state["worker_wallets"])
-        
-        # Check if we need to spawn more workers
-        if current_workers < self.config.min_workers:
-            logger.info(f"Colony has {current_workers} workers, below minimum {self.config.min_workers}. Spawning more...")
-            await self._spawn_workers(self.config.min_workers - current_workers)
-        
-        # Check if we can spawn more workers
-        elif current_workers < self.config.max_workers:
-            # Check if we have enough capital to spawn new workers
-            available_capital = await self._get_available_capital()
-            capital_per_worker = available_capital / (self.config.max_workers - current_workers)
+        """Manage worker count based on colony state."""
+        try:
+            # Get current worker count
+            worker_count = len(self.colony_state["worker_wallets"])
             
-            # Only spawn workers if we have enough capital
-            if capital_per_worker >= 0.1:  # Minimum 0.1 SOL per worker
-                logger.info(f"Colony has {current_workers} workers, can spawn more with {available_capital} SOL available")
+            # Check if we need more workers
+            if worker_count < self.config.min_workers:
+                logger.info(f"Colony has {worker_count} workers, below minimum {self.config.min_workers}. Spawning more...")
+                await self._spawn_workers(self.config.min_workers - worker_count)
+            
+            # Check if we have too many workers
+            elif worker_count > self.config.max_workers:
+                logger.info(f"Colony has {worker_count} workers, above maximum {self.config.max_workers}. Reducing...")
+                # TODO: Implement worker reduction logic
+                pass
+            
+            # Check if we can spawn more workers based on capital
+            else:
+                available_capital = await self._get_available_capital()
+                if available_capital >= self.config.min_princess_capital:
+                    logger.info(f"Colony has {worker_count} workers, can spawn more with {available_capital} SOL available")
+                    await self._spawn_workers(1)  # Spawn one worker at a time
                 
-                # Calculate how many more workers we can spawn
-                additional_workers = min(
-                    self.config.max_workers - current_workers,
-                    int(available_capital / 0.1)  # Minimum 0.1 SOL per worker
-                )
-                
-                if additional_workers > 0:
-                    logger.info(f"Spawning {additional_workers} additional workers")
-                    await self._spawn_workers(additional_workers)
-        
-        # Check if existing workers are healthy
-        await self._check_worker_health()
+        except Exception as e:
+            logger.error(f"Error managing workers: {str(e)}")
 
     async def _spawn_workers(self, count: int) -> None:
         """Spawn a specified number of worker wallets."""
@@ -263,63 +259,52 @@ class Queen:
                 logger.error(f"Failed to start worker {worker_id} in Rust engine")
 
     async def _check_worker_health(self) -> None:
-        """Check the health of all active workers."""
-        for worker_id, info in list(self.active_workers.items()):
-            try:
-                # Use the failover manager to check worker health
-                worker_status = await self.failover_manager.get_worker_status(worker_id)
+        """Check health of all workers."""
+        try:
+            for worker_id, worker_data in list(self.active_workers.items()):
+                # Check if worker has timed out
+                if time.time() - worker_data.get('last_seen', 0) > self.config.worker_timeout:
+                    logger.warning(f"Worker {worker_id} has timed out")
+                    # Remove from active workers
+                    self.active_workers.pop(worker_id, None)
+                    # Remove from worker wallets
+                    if worker_id in self.colony_state["worker_wallets"]:
+                        self.colony_state["worker_wallets"].remove(worker_id)
                 
-                if worker_status.get("is_healthy", False):
-                    # Update last check time
-                    self.active_workers[worker_id]["last_check"] = asyncio.get_event_loop().time()
-                    
-                    # Check profit and update metrics
-                    status = await self.worker_bridge.get_worker_status(worker_id)
-                    if "total_profit" in status:
-                        profit = float(status["total_profit"])
-                        
-                        # Update failover manager with latest metrics
-                        await self.failover_manager.update_worker_state(worker_id, {
-                            "trades_executed": status.get("trades_executed", 0),
-                            "total_profit": profit
-                        })
-                        
-                        if profit > 0:
-                            logger.info(f"Worker {worker_id} has earned {profit} SOL in profit")
-                            
-                            # If profit is significant, collect it
-                            if profit >= 0.05:  # Minimum 0.05 SOL to collect
-                                await self._collect_worker_profits(worker_id, info["wallet_id"])
-                else:
-                    logger.warning(f"Worker {worker_id} is not healthy according to failover manager")
-            
-            except Exception as e:
-                logger.error(f"Error checking health of worker {worker_id}: {str(e)}")
+        except Exception as e:
+            logger.error(f"Error checking worker health: {str(e)}")
 
     async def _health_check_loop(self) -> None:
-        """Run a continuous health check loop."""
+        """Monitor colony health and manage resources."""
         while True:
             try:
+                # Get queen wallet balance
+                queen_balance = await self._get_wallet_balance(
+                    self.colony_state["queen_wallet"]
+                )
+                
+                # Update total capital
+                self.colony_state["total_capital"] = queen_balance
+                
+                # Check worker health
+                await self._check_worker_health()
+                
+                # Manage worker count
                 await self.manage_workers()
+                
+                # Collect profits periodically
                 await self.collect_profits()
                 
-                # Check if we should spawn a princess
-                await self.spawn_princess()
+                # Compound savings if needed
+                await self._compound_savings()
                 
-                # Get cloud infrastructure status
-                vps_list = self.worker_distribution.get_vps_list()
-                load_balancer_info = self.load_balancer.get_load_balancer_info()
-                failover_stats = self.failover_manager.get_failover_stats()
-                
-                logger.info(f"Cloud infrastructure status: {len(vps_list)} VPS instances, "
-                           f"{failover_stats['active_workers']}/{failover_stats['total_workers']} active workers")
-                
-                # Sleep for the configured interval
+                # Wait for next check
                 await asyncio.sleep(self.config.health_check_interval)
                 
             except Exception as e:
                 logger.error(f"Error in health check loop: {str(e)}")
-                await asyncio.sleep(60)  # Wait a minute on error
+                # Wait a bit before retrying
+                await asyncio.sleep(5)
 
     async def collect_profits(self) -> None:
         """Collect and manage profits from workers and princesses."""
@@ -363,71 +348,7 @@ class Queen:
             # After compounding, check if we can spawn more workers
             await self.manage_workers()
 
-    async def _collect_worker_profits(self, worker_id: str, wallet_id: str) -> float:
-        """Collect profits from a specific worker."""
-        try:
-            # Get worker status from Rust engine
-            status = await self.worker_bridge.get_worker_status(worker_id)
-            
-            if not status:
-                logger.warning(f"Worker {worker_id} status not available")
-                return 0.0
-            
-            profit = float(status.get("total_profit", 0))
-            
-            if profit > 0.05:  # Minimum 0.05 SOL to collect
-                # Get current balance
-                balance = await self._get_wallet_balance(wallet_id)
-                
-                # Calculate amount to collect (leave some for gas)
-                collect_amount = balance - 0.05  # Leave 0.05 SOL for gas
-                
-                if collect_amount > 0:
-                    # Transfer to queen wallet
-                    await self._transfer_capital(
-                        wallet_id,
-                        self.colony_state["queen_wallet"],
-                        collect_amount
-                    )
-                    
-                    logger.info(f"Collected {collect_amount} SOL from worker {worker_id}")
-                    
-                    # Reset profit counter in Rust engine
-                    await self.worker_bridge.update_worker_metrics(worker_id, 0, 0.0)
-                    
-                    return collect_amount
-            
-            return 0.0
-                
-        except Exception as e:
-            logger.error(f"Error collecting profits from worker {worker_id}: {str(e)}")
-            return 0.0
-
-    async def _create_wallet(self, wallet_type: str) -> str:
-        """Create a new wallet of specified type."""
-        wallet_name = f"{wallet_type}_{int(self.colony_state['total_profits'])}"
-        wallet_id = self.wallet_manager.create_wallet(wallet_name, wallet_type)
-        return wallet_id
-
-    async def _get_wallet_balance(self, wallet: str) -> float:
-        """Get balance of specified wallet."""
-        return await self.wallet_manager.get_balance(wallet)
-
-    async def _transfer_capital(
-        self,
-        from_wallet: str,
-        to_wallet: str,
-        amount: float
-    ) -> None:
-        """Transfer capital between wallets."""
-        await self.wallet_manager.transfer_sol(from_wallet, to_wallet, amount)
-
-    async def _get_available_capital(self) -> float:
-        """Get total available capital for new workers."""
-        queen_balance = await self._get_wallet_balance(self.colony_state["queen_wallet"])
-        return queen_balance * 0.5  # Use 50% of queen's balance for worker allocation
-
-    async def _collect_wallet_profits(self, wallet: str) -> float:
+    async def _collect_worker_profits(self, wallet: str) -> float:
         """Collect profits from a wallet."""
         try:
             # Get current balance
@@ -456,6 +377,40 @@ class Queen:
         
         except Exception as e:
             logger.error(f"Error collecting profits from wallet {wallet}: {str(e)}")
+            return 0.0
+
+    async def _create_wallet(self, wallet_type: str) -> str:
+        """Create a new wallet of specified type."""
+        wallet_name = f"{wallet_type}_{int(self.colony_state['total_profits'])}"
+        wallet_id = self.wallet_manager.create_wallet(wallet_name, wallet_type)
+        return wallet_id
+
+    async def _get_wallet_balance(self, wallet: str) -> float:
+        """Get balance of a wallet in SOL."""
+        try:
+            return await self.wallet_manager.get_balance(wallet)
+        except Exception as e:
+            logger.error(f"Error getting balance for wallet {wallet}: {str(e)}")
+            return 0.0
+
+    async def _transfer_capital(
+        self,
+        from_wallet: str,
+        to_wallet: str,
+        amount: float
+    ) -> None:
+        """Transfer capital between wallets."""
+        await self.wallet_manager.transfer_sol(from_wallet, to_wallet, amount)
+
+    async def _get_available_capital(self) -> float:
+        """Get available capital for worker spawning."""
+        try:
+            queen_balance = await self._get_wallet_balance(
+                self.colony_state["queen_wallet"]
+            )
+            return queen_balance
+        except Exception as e:
+            logger.error(f"Error getting available capital: {str(e)}")
             return 0.0
 
     async def get_colony_state(self) -> Dict:
