@@ -3,14 +3,19 @@ use std::path::Path;
 use std::sync::Arc;
 use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
-use anyhow::{Result, anyhow};
-use log::{info, warn, error};
+use anyhow::Result;
+use log::{info, warn};
 use serde_yaml::Value;
 use solana_sdk::commitment_config;
 
 /// Worker configuration settings
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WorkerConfig {
+    pub id: String,
+    pub rpc_url: String,
+    pub commitment: String,
+    pub max_retries: u8,
+    pub retry_delay: u64,
     pub max_trades_per_hour: u32,
     pub min_profit_threshold: f64,
     pub max_slippage: f64,
@@ -19,6 +24,26 @@ pub struct WorkerConfig {
     pub max_hold_time: u64,
     pub target_trades_per_minute: u32,
     pub max_concurrent_trades: u32,
+}
+
+impl Default for WorkerConfig {
+    fn default() -> Self {
+        Self {
+            id: "default".to_string(),
+            rpc_url: "https://api.mainnet-beta.solana.com".to_string(),
+            commitment: "confirmed".to_string(),
+            max_retries: 5,
+            retry_delay: 1000,
+            max_trades_per_hour: 10,
+            min_profit_threshold: 0.01,
+            max_slippage: 0.02,
+            max_trade_size: 1.0,
+            min_liquidity: 1000.0,
+            max_hold_time: 30,
+            target_trades_per_minute: 60,
+            max_concurrent_trades: 5,
+        }
+    }
 }
 
 /// RPC configuration settings
@@ -69,6 +94,11 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             worker: WorkerConfig {
+                id: "default".to_string(),
+                rpc_url: "https://api.mainnet-beta.solana.com".to_string(),
+                commitment: "confirmed".to_string(),
+                max_retries: 5,
+                retry_delay: 1000,
                 max_trades_per_hour: 10,
                 min_profit_threshold: 0.01,
                 max_slippage: 0.02,

@@ -3,11 +3,12 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 use serde::{Deserialize, Serialize};
 use reqwest::Client;
-use log::{info, warn, error, debug};
-use anyhow::{Result, anyhow};
+use log::{info, debug};
+use anyhow::Result;
 use async_trait::async_trait;
 
 use crate::dex_provider::{DexProvider, DexQuote, TokenInfo, Token, Swap};
+use crate::pathfinder::TradePath;
 
 #[derive(Debug, Clone)]
 pub struct JupiterClient {
@@ -217,7 +218,7 @@ impl Serialize for DexClient {
         S: serde::Serializer,
     {
         use serde::ser::SerializeStruct;
-        let mut state = serializer.serialize_struct("DexClient", 1)?;
+        let state = serializer.serialize_struct("DexClient", 1)?;
         state.end()
     }
 }
@@ -311,7 +312,7 @@ impl DexClient {
         self.provider.get_swap_rate(from_token, to_token, amount).await
     }
     
-    pub async fn find_arbitrage_paths(&self, tokens: &[Token]) -> Result<Vec<crate::pathfinder::TradePath>> {
+    pub async fn find_arbitrage_paths(&self, tokens: &[Token]) -> Result<Vec<TradePath>> {
         // This would be implemented in a real system
         Ok(vec![])
     }

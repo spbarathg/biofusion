@@ -1,9 +1,8 @@
-use crate::config::{init_config, get_worker_config};
+use crate::config::get_worker_config;
 use crate::dex_client::DexClient;
 use crate::tx_executor::TxExecutor;
 use crate::worker_ant::WorkerAnt;
 use anyhow::Result;
-use log::{info, error};
 use serde::{Deserialize, Serialize};
 use solana_sdk::signature::Keypair;
 use std::collections::HashMap;
@@ -64,8 +63,11 @@ impl Colony {
 
     pub async fn add_worker(&mut self, worker_id: String) -> Result<()> {
         let config = get_worker_config().await;
-        let dex_client = Arc::new(DexClient::new()?);
+        let dex_client = Arc::new(Mutex::new(DexClient::new()?));
         let tx_executor = Arc::new(TxExecutor::new()?);
+        
+        // Initialize dex_client
+        dex_client.lock().await.initialize().await?;
         
         let worker = WorkerAnt::new(
             worker_id.clone(),
@@ -73,7 +75,7 @@ impl Colony {
             dex_client,
             tx_executor,
             Keypair::new(),
-        );
+        ).await;
         
         self.workers.insert(worker_id, Arc::new(worker));
         

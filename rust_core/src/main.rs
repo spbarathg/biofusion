@@ -3,29 +3,27 @@ use std::os::raw::c_int;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::Mutex;
+use tokio::time::sleep;
 use log::{info, error, LevelFilter};
 use anyhow::Result;
 use lazy_static::lazy_static;
+use std::time::Duration;
 
-use crate::config::init_config;
+use crate::config::{init_config, get_worker_config, get_network_config};
 use crate::worker_ant::WorkerAnt;
 use crate::dex_client::DexClient;
 use crate::tx_executor::TxExecutor;
+use crate::pathfinder::PathFinder;
+use crate::wallet::WalletManager;
 use solana_sdk::signature::Keypair;
 
+mod config;
 mod worker_ant;
-mod pathfinder;
 mod dex_client;
 mod tx_executor;
+mod pathfinder;
 mod wallet;
-mod config;
-
-use worker_ant::WorkerAnt;
-use pathfinder::PathFinder;
-use dex_client::DexClient;
-use tx_executor::TxExecutor;
-use wallet::WalletManager;
-use config::{init_config, get_worker_config, get_network_config};
+mod dex_provider;
 
 // Shared state for workers
 lazy_static! {
@@ -96,11 +94,15 @@ async fn create_worker(
     info!("Creating worker {} with {} SOL", worker_id, capital);
     
     // Initialize configuration
-    let config = init_config(Some(config_path.to_string())).await?;
+    let _ = init_config().await?;
+    let worker_config = get_worker_config().await;
     
     // Create components
-    let dex_client = Arc::new(DexClient::new()?);
+    let dex_client = Arc::new(Mutex::new(DexClient::new()?));
     let tx_executor = Arc::new(TxExecutor::new()?);
+    
+    // Initialize components
+    dex_client.lock().await.initialize().await?;
     
     // Create a new keypair
     // In a real implementation, we would import from wallet_address
@@ -109,11 +111,11 @@ async fn create_worker(
     // Create worker
     let worker = WorkerAnt::new(
         worker_id.to_string(),
-        config.worker_config.clone(),
+        worker_config,
         dex_client,
         tx_executor,
         keypair,
-    );
+    ).await;
     
     // Get next available ID
     let mut next_id = NEXT_ID.lock().await;
@@ -258,22 +260,24 @@ async fn main() -> Result<()> {
     info!("Starting AntBot Core");
     
     // Initialize configuration
-    let config = init_config(None).await?;
+    let _ = init_config().await?;
+    let worker_config = get_worker_config().await;
     
     // Create components
-    let dex_client = Arc::new(DexClient::new()?);
-    dex_client.initialize().await?;
-    
+    let dex_client = Arc::new(Mutex::new(DexClient::new()?));
     let tx_executor = Arc::new(TxExecutor::new()?);
+    
+    // Initialize components
+    dex_client.lock().await.initialize().await?;
     
     // Create worker
     let worker = WorkerAnt::new(
-        "test_worker".to_string(),
-        config.worker_config.clone(),
-        dex_client.clone(),
-        tx_executor.clone(),
+        "worker_1".to_string(),
+        worker_config,
+        dex_client,
+        tx_executor,
         Keypair::new(),
-    );
+    ).await;
     
     // Start worker
     info!("Starting worker...");
@@ -292,7 +296,7 @@ mod tests {
     use config::WorkerConfig;
 
     #[tokio::test]
-    async fn test_worker_initialization() {
+    async fn test_worker_creation() {
         let worker_config = WorkerConfig {
             max_trades_per_hour: 10,
             min_profit_threshold: 0.01,
@@ -304,16 +308,17 @@ mod tests {
             max_concurrent_trades: 3,
         };
         
-        let dex_client = Arc::new(DexClient::new().unwrap());
+        let dex_client = Arc::new(Mutex::new(DexClient::new().unwrap()));
         let tx_executor = Arc::new(TxExecutor::new().unwrap());
+        let wallet = Keypair::new();
         
         let worker = WorkerAnt::new(
             "test_worker".to_string(),
             worker_config,
             dex_client,
             tx_executor,
-            Keypair::new(),
-        );
+            wallet,
+        ).await;
         
         assert_eq!(worker.id, "test_worker");
     }

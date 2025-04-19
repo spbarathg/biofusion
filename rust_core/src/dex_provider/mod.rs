@@ -1,5 +1,4 @@
 use serde::{Serialize, Deserialize};
-use std::fmt;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DexQuote {
