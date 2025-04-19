@@ -88,8 +88,8 @@ impl DexProvider for JupiterClient {
         let quote = self.get_quote(&from_token.address, &to_token.address, amount).await?;
         
         Ok(Swap {
-            from_token: from_token.symbol.clone(),
-            to_token: to_token.symbol.clone(),
+            from_token: from_token.clone(),
+            to_token: to_token.clone(),
             dex: "Jupiter".to_string(),
             input_amount: quote.input_amount,
             expected_output: quote.output_amount,

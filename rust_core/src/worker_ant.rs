@@ -1,6 +1,7 @@
 use crate::config::WorkerConfig;
 use crate::dex_client::DexClient;
-use crate::pathfinder::{Token, TradePath};
+use crate::dex_provider::Token;
+use crate::pathfinder::{TradePath};
 use crate::tx_executor::TxExecutor;
 use anyhow::{Result, anyhow};
 use log::{info, error, debug, warn};

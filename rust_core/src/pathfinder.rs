@@ -176,14 +176,56 @@ impl PathFinder {
         paths: &mut Vec<TradePath>,
         depth: usize,
     ) -> Result<()> {
-        Box::pin(self.dfs_find_paths_boxed(
-            base_token,
-            current_token,
-            visited,
-            current_path,
-            paths,
-            depth,
-        )).await
+        if depth == 0 {
+            return Ok(());
+        }
+
+        visited.insert(current_token.symbol.clone());
+        
+        // Get available swaps from dex_client
+        let swaps = self.dex_client.get_swap_rate(current_token, base_token, 1.0).await?;
+        
+        for swap in &[swaps] {
+            if !visited.contains(&swap.to_token.symbol) {
+                current_path.push(swap.clone());
+                
+                if swap.to_token.symbol == base_token.symbol {
+                    let path_id = current_path.iter()
+                        .map(|s| format!("{}->{}", s.from_token.symbol, s.to_token.symbol))
+                        .collect::<Vec<String>>()
+                        .join("->");
+                        
+                    let profit_percentage = (swap.expected_output - swap.input_amount) / swap.input_amount;
+                    
+                    paths.push(TradePath {
+                        path_id: path_id.clone(),
+                        swaps: current_path.clone(),
+                        profit_percentage,
+                        estimated_profit_amount: swap.expected_output - swap.input_amount,
+                        estimated_profit_percentage: profit_percentage,
+                        total_price_impact: swap.price_impact,
+                        from_token: base_token.clone(),
+                        to_token: base_token.clone(),
+                    });
+                    
+                    debug!("Found profitable path: {} -> profit: {:.4}%", path_id, profit_percentage);
+                } else {
+                    self.dfs_find_paths(
+                        base_token,
+                        &swap.to_token,
+                        visited,
+                        current_path,
+                        paths,
+                        depth - 1,
+                    ).await?;
+                }
+                
+                current_path.pop();
+            }
+        }
+        
+        visited.remove(&current_token.symbol);
+        Ok(())
     }
     
     pub async fn find_direct_paths(&self, from_token: &Token, to_token: &Token, amount: f64) -> Result<Vec<TradePath>> {
