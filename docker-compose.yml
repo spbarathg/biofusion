@@ -10,6 +10,7 @@ services:
       - ./config:/app/config
       - ./data:/app/data
       - ./logs:/app/logs
+      - ./rust_core:/app/rust_core
     env_file: .env
     environment:
       - ENCRYPTION_KEY_PATH=/app/config/secrets/.encryption_key
@@ -26,6 +27,7 @@ services:
       - ./config:/app/config
       - ./data:/app/data
       - ./logs:/app/logs
+      - ./rust_core:/app/rust_core
     env_file: .env
     environment:
       - ENCRYPTION_KEY_PATH=/app/config/secrets/.encryption_key
@@ -44,10 +46,11 @@ services:
       - ./config:/app/config
       - ./data:/app/data
       - ./logs:/app/logs
+      - ./rust_core:/app/rust_core
     env_file: .env
     environment:
       - ENCRYPTION_KEY_PATH=/app/config/secrets/.encryption_key
-    command: python -m src.models.worker --name worker-1
+    command: python -m src.models.worker --id worker-1
     depends_on:
       - queen
 
@@ -60,10 +63,11 @@ services:
       - ./config:/app/config
       - ./data:/app/data
       - ./logs:/app/logs
+      - ./rust_core:/app/rust_core
     env_file: .env
     environment:
       - ENCRYPTION_KEY_PATH=/app/config/secrets/.encryption_key
-    command: python -m src.models.worker --name worker-2
+    command: python -m src.models.worker --id worker-2
     depends_on:
       - queen
 
