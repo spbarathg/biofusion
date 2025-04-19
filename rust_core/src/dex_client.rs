@@ -183,8 +183,8 @@ impl DexProvider for OrcaClient {
         let quote = self.get_quote(&from_token.address, &to_token.address, amount).await?;
         
         Ok(Swap {
-            from_token: from_token.symbol.clone(),
-            to_token: to_token.symbol.clone(),
+            from_token: from_token.clone(),
+            to_token: to_token.clone(),
             dex: "Orca".to_string(),
             input_amount: quote.input_amount,
             expected_output: quote.output_amount,
@@ -201,7 +201,14 @@ impl DexProvider for OrcaClient {
 #[derive(Clone, Debug)]
 pub struct DexClient {
     pub provider: Box<dyn DexProvider>,
-    pub base_url: String,
+}
+
+impl DexClient {
+    pub fn new() -> anyhow::Result<Self> {
+        Ok(Self {
+            provider: Box::new(OrcaClient::new()?),
+        })
+    }
 }
 
 impl Serialize for DexClient {
@@ -210,8 +217,7 @@ impl Serialize for DexClient {
         S: serde::Serializer,
     {
         use serde::ser::SerializeStruct;
-        let mut state = serializer.serialize_struct("DexClient", 2)?;
-        state.serialize_field("base_url", &self.base_url)?;
+        let mut state = serializer.serialize_struct("DexClient", 1)?;
         state.end()
     }
 }
@@ -221,16 +227,8 @@ impl<'de> Deserialize<'de> for DexClient {
     where
         D: serde::Deserializer<'de>,
     {
-        #[derive(Deserialize)]
-        struct Helper {
-            base_url: String,
-        }
-        
-        let helper = Helper::deserialize(deserializer)?;
-        
         Ok(DexClient {
-            provider: Box::new(JupiterClient::new().map_err(serde::de::Error::custom)?),
-            base_url: helper.base_url,
+            provider: Box::new(OrcaClient::new().map_err(serde::de::Error::custom)?),
         })
     }
 }

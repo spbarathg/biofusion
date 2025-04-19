@@ -5,33 +5,18 @@ use log::{info, warn, error, debug};
 use anyhow::Result;
 
 use crate::dex_client::DexClient;
+use crate::dex_provider::{Token, Swap};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Token {
-    pub address: String,
-    pub symbol: String,
-    pub decimals: u8,
-    pub price: f64,
-    pub liquidity: f64,
-    pub volume_24h: f64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Swap {
-    pub from_token: String,
-    pub to_token: String,
-    pub dex: String,
-    pub input_amount: f64,
-    pub expected_output: f64,
-    pub price_impact: f64,
-    pub fee: f64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct TradePath {
     pub path_id: String,
     pub swaps: Vec<Swap>,
     pub profit_percentage: f64,
+    pub estimated_profit_amount: f64,
+    pub estimated_profit_percentage: f64,
+    pub total_price_impact: f64,
+    pub from_token: Token,
+    pub to_token: Token,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -155,6 +140,11 @@ impl PathFinder {
                         path_id: path_id.clone(),
                         swaps: current_path.clone(),
                         profit_percentage,
+                        estimated_profit_amount: 0.0,
+                        estimated_profit_percentage: 0.0,
+                        total_price_impact: 0.0,
+                        from_token: base_token.clone(),
+                        to_token: base_token.clone(),
                     });
                     
                     debug!("Found profitable path: {} -> profit: {:.4}%", path_id, profit_percentage);
@@ -207,13 +197,14 @@ impl PathFinder {
                 let path_id = format!("{}->{}", from_token.symbol, to_token.symbol);
                 
                 let trade_path = TradePath {
-                    from_token: from_token.clone(),
-                    to_token: to_token.clone(),
+                    path_id,
                     swaps: vec![swap.clone()],
+                    profit_percentage: 0.0,
                     estimated_profit_amount: swap.expected_output - amount,
                     estimated_profit_percentage: (swap.expected_output - amount) / amount,
-                    path_id,
                     total_price_impact: swap.price_impact,
+                    from_token: from_token.clone(),
+                    to_token: to_token.clone(),
                 };
                 
                 paths.push(trade_path);

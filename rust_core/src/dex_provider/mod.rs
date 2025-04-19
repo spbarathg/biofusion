@@ -31,8 +31,8 @@ pub struct TokenInfo {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Swap {
-    pub from_token: String,
-    pub to_token: String,
+    pub from_token: Token,
+    pub to_token: Token,
     pub dex: String,
     pub input_amount: f64,
     pub expected_output: f64,
@@ -41,7 +41,7 @@ pub struct Swap {
 }
 
 #[async_trait::async_trait]
-pub trait DexProvider: Send + Sync {
+pub trait DexProvider: Send + Sync + std::fmt::Debug {
     async fn get_quote(&self, input_token: &str, output_token: &str, amount: f64) -> anyhow::Result<DexQuote>;
     async fn execute_swap(&self, quote: &DexQuote) -> anyhow::Result<String>;
     async fn get_token_info(&self, token_address: &str) -> anyhow::Result<TokenInfo>;
