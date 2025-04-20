@@ -16,6 +16,10 @@ pub mod pathfinder;
 pub mod tx_executor;
 pub mod worker_ant;
 
+// FFI exports for Python bindings
+use std::ffi::{CStr, CString};
+use std::os::raw::{c_char, c_double, c_int};
+
 #[derive(Debug)]
 pub struct Colony {
     workers: HashMap<String, Arc<WorkerAnt>>,
@@ -118,4 +122,51 @@ impl Colony {
         
         Ok(serde_json::to_string_pretty(&metrics)?)
     }
+}
+
+#[no_mangle]
+pub extern "C" fn worker_create(
+    worker_id: *const c_char,
+    wallet_address: *const c_char,
+    capital: c_double,
+    config_path: *const c_char
+) -> c_int {
+    // Convert C strings to Rust strings
+    let worker_id = unsafe { CStr::from_ptr(worker_id).to_string_lossy().into_owned() };
+    let wallet_address = unsafe { CStr::from_ptr(wallet_address).to_string_lossy().into_owned() };
+    let config_path = unsafe { CStr::from_ptr(config_path).to_string_lossy().into_owned() };
+    
+    // Implement worker creation logic here
+    println!("Creating worker {} with {} SOL", worker_id, capital);
+    
+    // Return a dummy handle
+    42
+}
+
+#[no_mangle]
+pub extern "C" fn worker_start(handle: c_int) -> c_int {
+    println!("Starting worker with handle {}", handle);
+    0 // Success
+}
+
+#[no_mangle]
+pub extern "C" fn worker_stop(handle: c_int) -> c_int {
+    println!("Stopping worker with handle {}", handle);
+    0 // Success
+}
+
+#[no_mangle]
+pub extern "C" fn worker_get_status(handle: c_int, buffer: *mut c_char, buffer_size: c_int) -> c_int {
+    let status = r#"{"status": "active", "trades": 0, "profit": 0.0}"#;
+    let c_status = CString::new(status).unwrap();
+    unsafe {
+        libc::strncpy(buffer, c_status.as_ptr(), buffer_size as usize);
+    }
+    0 // Success
+}
+
+#[no_mangle]
+pub extern "C" fn worker_update_metrics(handle: c_int, trades: c_int, profit: c_double) -> c_int {
+    println!("Updating metrics for worker {}: {} trades, ${} profit", handle, trades, profit);
+    0 // Success
 } 
