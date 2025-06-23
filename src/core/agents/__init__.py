@@ -1,3 +1,0 @@
-"""
-AntBot agent implementations
-""" 

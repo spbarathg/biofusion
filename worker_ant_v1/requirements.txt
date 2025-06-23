@@ -1,4 +1,4 @@
-# Worker Ant V1 MVP Requirements
+# Worker Ant V1 Requirements
 # ===========================
 
 # Core Solana SDK
@@ -17,4 +17,4 @@ asyncio-mqtt>=0.11.0  # For real-time data if needed
 
 # Optional: Enhanced APIs
 # birdeye-sdk  # Uncomment if using paid Birdeye
-# dexscreener-py  # Uncomment if available
+# dexscreener-py  # Uncomment if available 

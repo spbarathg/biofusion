@@ -1,2 +1,0 @@
-# This directory is required for the Rust core library
-# It will be mounted into the Docker containers at /app/rust_core 
