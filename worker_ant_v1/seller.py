@@ -11,9 +11,9 @@ from typing import Optional, Dict, List
 from dataclasses import dataclass
 from datetime import datetime
 
-from .config import config
-from .logger import trading_logger, TradeResult
-from .buyer import trade_buyer, BuyResult
+from worker_ant_v1.config import trading_config as config
+from worker_ant_v1.logger import trading_logger, TradeResult
+from worker_ant_v1.buyer import trade_buyer, BuyResult
 
 
 @dataclass

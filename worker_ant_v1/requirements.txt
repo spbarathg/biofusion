@@ -1,20 +1,75 @@
-# Worker Ant V1 Requirements
-# ===========================
+# HYPER-COMPOUNDING SWARM REQUIREMENTS
+# ===================================
+# Requirements for the 3-hour flywheel compounding trading swarm
 
-# Core Solana SDK
-solana>=0.30.2
-spl-token>=0.2.0
+# Core async framework
+asyncio-mqtt>=0.11.0
 
-# HTTP client for API calls
+# HTTP clients for API calls
 aiohttp>=3.8.0
 requests>=2.28.0
+httpx>=0.24.0
 
-# Base58 encoding for wallet keys
+# Solana and crypto libraries
 base58>=2.1.0
+solders>=0.20.0
 
-# Data handling
-asyncio-mqtt>=0.11.0  # For real-time data if needed
+# Data analysis and optimization
+pandas>=2.0.0
+numpy>=1.24.0
 
-# Optional: Enhanced APIs
-# birdeye-sdk  # Uncomment if using paid Birdeye
-# dexscreener-py  # Uncomment if available 
+# Environment and configuration
+python-dotenv>=1.0.0
+
+# Performance monitoring and system resources
+psutil>=5.9.0
+
+# Enhanced logging and utilities
+colorama>=0.4.6
+rich>=13.0.0
+
+# Optional: Discord/Telegram notifications
+discord-webhook>=1.0.0  # For Discord alerts
+python-telegram-bot>=20.0  # For Telegram notifications
+
+# Development and testing
+pytest>=7.0.0
+pytest-asyncio>=0.21.0
+
+# AGGRESSIVE MEMECOIN STRATEGY DEPENDENCIES
+# =========================================
+
+# Social Media APIs
+tweepy>=4.14.0                 # Twitter API v2 for sentiment analysis
+praw>=7.7.1                    # Reddit API for sentiment analysis
+
+# Sentiment Analysis
+textblob>=0.17.1              # Basic sentiment analysis
+vaderSentiment>=3.3.2         # VADER sentiment analyzer
+transformers>=4.34.0          # Hugging Face transformers for crypto-specific models
+
+# Technical Analysis
+TA-Lib>=0.4.24               # Technical analysis indicators (RSI, MACD, Bollinger Bands)
+scipy>=1.11.3                # Scientific computing for advanced calculations
+
+# Machine Learning
+torch>=2.0.1                 # PyTorch for LSTM models
+gym>=0.26.0                  # Reinforcement learning environment (replacing gymnasium)
+stable-baselines3>=2.0.0     # PPO and other RL algorithms
+scikit-learn>=1.3.0          # Traditional ML algorithms and preprocessing
+
+# Optional: Additional libraries for enhanced functionality
+matplotlib>=3.5.0            # For plotting and visualization
+seaborn>=0.11.0              # Statistical visualization
+jupyter>=1.0.0               # For analysis notebooks
+
+# Database and caching
+sqlite3                      # Built-in SQLite support
+redis>=4.3.0                 # For caching (optional)
+
+# Security
+cryptography>=3.4.8          # For encryption and secure operations
+
+# Web framework (if API needed)
+fastapi>=0.68.0              # For creating REST APIs
+uvicorn>=0.15.0              # ASGI server for FastAPI 

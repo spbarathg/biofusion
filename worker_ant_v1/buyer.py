@@ -11,18 +11,24 @@ from typing import Optional, Tuple
 from dataclasses import dataclass
 from datetime import datetime
 
-import solana
-from solana.rpc.async_api import AsyncClient
-from solana.rpc.commitment import Confirmed
-from solana.transaction import Transaction
-from solana.keypair import Keypair
-from solana.publickey import PublicKey
-from spl.token.constants import TOKEN_PROGRAM_ID
-from spl.token.instructions import get_associated_token_address
+try:
+    import solana
+    from solana.rpc.async_api import AsyncClient
+    from solana.rpc.commitment import Confirmed
+    from solana.transaction import Transaction
+    from solders.keypair import Keypair  # Updated import path
+    from solders.pubkey import Pubkey as PublicKey  # Updated import path
+    from spl.token.constants import TOKEN_PROGRAM_ID
+    from spl.token.instructions import get_associated_token_address
+    SOLANA_AVAILABLE = True
+except ImportError:
+    # Fallback for systems without Solana SDK
+    SOLANA_AVAILABLE = False
+    print("Warning: Solana SDK not available - using simulation mode")
 
-from .config import config, wallet_config
-from .logger import trading_logger, TradeResult
-from .scanner import TokenOpportunity
+from worker_ant_v1.config import trading_config, wallet_config
+from worker_ant_v1.logger import trading_logger, TradeResult
+from worker_ant_v1.scanner import TokenOpportunity
 
 
 @dataclass
@@ -59,9 +65,9 @@ class TradeBuyer:
         
         # Setup Solana RPC client
         self.client = AsyncClient(
-            config.rpc_url,
+            trading_config.rpc_url,
             commitment=Confirmed,
-            timeout=config.rpc_timeout_seconds
+            timeout=trading_config.rpc_timeout_seconds
         )
         
         # Load or create wallet
@@ -105,9 +111,9 @@ class TradeBuyer:
             balance = await self.get_sol_balance()
             trading_logger.logger.info(f"Wallet balance: {balance:.4f} SOL")
             
-            if balance < config.trade_amount_sol:
+            if balance < trading_config.trade_amount_sol:
                 trading_logger.logger.warning(
-                    f"Low wallet balance: {balance:.4f} SOL < {config.trade_amount_sol:.4f} SOL"
+                    f"Low wallet balance: {balance:.4f} SOL < {trading_config.trade_amount_sol:.4f} SOL"
                 )
         except Exception as e:
             trading_logger.logger.error(f"Failed to check wallet balance: {e}")
@@ -148,7 +154,7 @@ class TradeBuyer:
             quote = await self._get_jupiter_quote(
                 from_token="So11111111111111111111111111111111111112",  # SOL
                 to_token=opportunity.token_address,
-                amount_sol=config.trade_amount_sol
+                amount_sol=trading_config.trade_amount_sol
             )
             
             if not quote:
@@ -159,7 +165,7 @@ class TradeBuyer:
                 
             # Check slippage
             expected_slippage = quote.get('priceImpactPct', 0)
-            if expected_slippage > config.max_slippage_percent:
+            if expected_slippage > trading_config.max_slippage_percent:
                 return BuyResult(
                     success=False,
                     error_message=f"Slippage too high: {expected_slippage:.2f}%"
@@ -175,12 +181,12 @@ class TradeBuyer:
             if swap_result['success']:
                 # Calculate trade details
                 amount_tokens = float(quote.get('outAmount', 0)) / (10 ** 6)  # Assuming 6 decimals
-                price = config.trade_amount_sol / amount_tokens if amount_tokens > 0 else 0
+                price = trading_config.trade_amount_sol / amount_tokens if amount_tokens > 0 else 0
                 
                 result = BuyResult(
                     success=True,
                     signature=swap_result['signature'],
-                    amount_sol=config.trade_amount_sol,
+                    amount_sol=trading_config.trade_amount_sol,
                     amount_tokens=amount_tokens,
                     price=price,
                     slippage_percent=expected_slippage,
@@ -228,7 +234,7 @@ class TradeBuyer:
                 token_address=opportunity.token_address,
                 token_symbol=opportunity.token_symbol,
                 trade_type='BUY',
-                amount_sol=config.trade_amount_sol,
+                                    amount_sol=trading_config.trade_amount_sol,
                 amount_tokens=0,
                 price=0,
                 slippage_percent=0,
@@ -256,18 +262,18 @@ class TradeBuyer:
             
         # Check wallet balance
         balance = await self.get_sol_balance()
-        if balance < config.trade_amount_sol * 1.1:  # 10% buffer for fees
+        if balance < trading_config.trade_amount_sol * 1.1:  # 10% buffer for fees
             trading_logger.logger.warning(f"Insufficient balance: {balance:.4f} SOL")
             return False
             
         # Check if token is blacklisted
-        from .config import scanner_config
+        from worker_ant_v1.config import scanner_config
         if opportunity.token_address in scanner_config.blacklisted_tokens:
             trading_logger.logger.warning(f"Token blacklisted: {opportunity.token_address}")
             return False
             
         # Check liquidity
-        if opportunity.liquidity_sol < config.min_liquidity_sol:
+        if opportunity.liquidity_sol < trading_config.min_liquidity_sol:
             trading_logger.logger.warning(f"Insufficient liquidity: {opportunity.liquidity_sol:.2f} SOL")
             return False
             
@@ -287,7 +293,7 @@ class TradeBuyer:
                 'inputMint': from_token,
                 'outputMint': to_token,
                 'amount': amount_lamports,
-                'slippageBps': int(config.max_slippage_percent * 100),  # Convert to basis points
+                'slippageBps': int(trading_config.max_slippage_percent * 100),  # Convert to basis points
                 'onlyDirectRoutes': True,  # Faster execution
                 'asLegacyTransaction': False
             }
