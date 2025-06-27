@@ -1,0 +1,471 @@
+2025-06-27 13:46:21,223 - INFO - Connecting to Helius WebSocket... (Attempt 1)
+2025-06-27 13:46:21,772 - INFO - Connected to Helius WebSocket successfully!
+2025-06-27 13:46:21,773 - INFO - Subscribed to pump.fun program logs
+2025-06-27 13:46:21,773 - INFO - Listening for new token creations with detailed metadata...
+2025-06-27 13:46:21,962 - INFO - Subscription confirmed with ID: 14438133
+2025-06-27 13:46:22,513 - INFO - [1] Potential token creation detected: LJdq24H4DFCTafLREWi9eqBAJYgnZn8CunVx9TtCs1rhJoUETBVfQ6J22zC7DG86g36qvvETKvqTm5kaSn7oh5G
+2025-06-27 13:46:23,213 - WARNING - Could not extract mint address from signature: LJdq24H4DFCTafLREWi9eqBAJYgnZn8CunVx9TtCs1rhJoUETBVfQ6J22zC7DG86g36qvvETKvqTm5kaSn7oh5G
+2025-06-27 13:46:23,216 - INFO - [2] Potential token creation detected: 2xSnhLAAaXA28B11YkNjwkUBKncwpkMxoSvCyTKE2T1Dog9X3a8dYreuyRCyjxWd8ntPUEoepgCfWrXAyEH6o1QL
+2025-06-27 13:46:23,945 - WARNING - Could not extract mint address from signature: 2xSnhLAAaXA28B11YkNjwkUBKncwpkMxoSvCyTKE2T1Dog9X3a8dYreuyRCyjxWd8ntPUEoepgCfWrXAyEH6o1QL
+2025-06-27 13:46:23,947 - INFO - [3] Potential token creation detected: 45LWH3TAM7wPc9tPLuiA8u3jo3DUzJ3m8rrs4fZYyeKJ9iYh3VW6yNVGUNkM29BKcbLDivekDzMNrU69wNjY9BDw
+2025-06-27 13:46:24,431 - WARNING - Could not extract mint address from signature: 45LWH3TAM7wPc9tPLuiA8u3jo3DUzJ3m8rrs4fZYyeKJ9iYh3VW6yNVGUNkM29BKcbLDivekDzMNrU69wNjY9BDw
+2025-06-27 13:46:24,432 - INFO - [4] Potential token creation detected: 5sTEm1vCMU8CFE6JHLRr2gw5NMcH1vSzCKjvyfVmuKpsXCcoXA1NnNxHhwqZej9paD2Gf45Jqm9ggHdZJwFrhrTj
+2025-06-27 13:46:25,286 - WARNING - Could not extract mint address from signature: 5sTEm1vCMU8CFE6JHLRr2gw5NMcH1vSzCKjvyfVmuKpsXCcoXA1NnNxHhwqZej9paD2Gf45Jqm9ggHdZJwFrhrTj
+2025-06-27 13:46:25,287 - INFO - [5] Potential token creation detected: 2cHQCDcdeiaALtFT1koY3NT7k2wZPG2kuE8GwF6yoE9aXC2rKtrkaDgsHXZvQA8aAkyus5Ms3RmPsJMbnVL4AkqX
+2025-06-27 13:46:26,047 - WARNING - Could not extract mint address from signature: 2cHQCDcdeiaALtFT1koY3NT7k2wZPG2kuE8GwF6yoE9aXC2rKtrkaDgsHXZvQA8aAkyus5Ms3RmPsJMbnVL4AkqX
+2025-06-27 13:46:26,047 - INFO - [6] Potential token creation detected: 2NNeRrMLwk7z6788BJVTdh4wGcvYDpe27bCLTYUYywp5zbVJyLurQ1QmYrMhQMXFUuWd6qnvAVu6xj9uQMZyHpJJ
+2025-06-27 13:46:26,671 - WARNING - Could not extract mint address from signature: 2NNeRrMLwk7z6788BJVTdh4wGcvYDpe27bCLTYUYywp5zbVJyLurQ1QmYrMhQMXFUuWd6qnvAVu6xj9uQMZyHpJJ
+2025-06-27 13:46:26,672 - INFO - [7] Potential token creation detected: 4wc8eiyYo7BjVLVSdGfkZEojdrN8fZHbKDUU7J5vu9TWvHGDiJQVDpXntsCXKkzTBw4LVToYRWANPKWqWDLmbRdA
+2025-06-27 13:46:27,876 - WARNING - Could not extract mint address from signature: 4wc8eiyYo7BjVLVSdGfkZEojdrN8fZHbKDUU7J5vu9TWvHGDiJQVDpXntsCXKkzTBw4LVToYRWANPKWqWDLmbRdA
+2025-06-27 13:46:27,876 - INFO - [8] Potential token creation detected: 5kNyqTaa1zdfD6FwVy6yf5RpousHEsKVpEkgujkwxLn7mWXVAkeqVCrereu2jKi38YPwG1oRPbPHNumoGp4o9xmS
+2025-06-27 13:46:28,570 - WARNING - Could not extract mint address from signature: 5kNyqTaa1zdfD6FwVy6yf5RpousHEsKVpEkgujkwxLn7mWXVAkeqVCrereu2jKi38YPwG1oRPbPHNumoGp4o9xmS
+2025-06-27 13:46:28,570 - INFO - [9] Potential token creation detected: 5f7mWkcfqWpCoA7B9nLgPXAsbCVesXwebRCymmPYeC8KhJpuMoqR7Zgtg7wkhwK975UU7EPTXneFNeQqSRv1vXbn
+2025-06-27 13:46:29,187 - WARNING - Could not extract mint address from signature: 5f7mWkcfqWpCoA7B9nLgPXAsbCVesXwebRCymmPYeC8KhJpuMoqR7Zgtg7wkhwK975UU7EPTXneFNeQqSRv1vXbn
+2025-06-27 13:46:29,188 - INFO - [10] Potential token creation detected: 3GSvuRuGUXVpXK2t3dXMzCu9MzW6aVX73uKpTPNF7SrYe8gDE5fEu99jiDSrAte9nsR23kU64px2gdZ9oSQiEwAq
+2025-06-27 13:46:29,948 - WARNING - Could not extract mint address from signature: 3GSvuRuGUXVpXK2t3dXMzCu9MzW6aVX73uKpTPNF7SrYe8gDE5fEu99jiDSrAte9nsR23kU64px2gdZ9oSQiEwAq
+2025-06-27 13:46:29,949 - INFO - [11] Potential token creation detected: EZXtCUBZM1CUB8SXa1NGVAJwgPHiGsWFW546pywgjbtz9ABSmGBistrmy5bZwpjHREqmPd54ptgbUtLLQtbkyAm
+2025-06-27 13:46:30,704 - WARNING - Could not extract mint address from signature: EZXtCUBZM1CUB8SXa1NGVAJwgPHiGsWFW546pywgjbtz9ABSmGBistrmy5bZwpjHREqmPd54ptgbUtLLQtbkyAm
+2025-06-27 13:46:30,705 - INFO - [12] Potential token creation detected: 5zrkqjt9EJuprwD2PBgUgbqW12Re9CxMfLPhGwxm44cZUWCuQ4pxhmNb2cALvCbVAyK2LBrsuKpTCH4GUDUbunTu
+2025-06-27 13:46:31,491 - WARNING - Could not extract mint address from signature: 5zrkqjt9EJuprwD2PBgUgbqW12Re9CxMfLPhGwxm44cZUWCuQ4pxhmNb2cALvCbVAyK2LBrsuKpTCH4GUDUbunTu
+2025-06-27 13:46:31,491 - INFO - [13] Potential token creation detected: 4YvvmxiLpSFXqp22rbd93icR5CymasDDBGst422BKH3AmecSQUKmdpTudVRCSTLf8m5pSAfAYg4yhktLKHqvG4gQ
+2025-06-27 13:46:32,167 - WARNING - Could not extract mint address from signature: 4YvvmxiLpSFXqp22rbd93icR5CymasDDBGst422BKH3AmecSQUKmdpTudVRCSTLf8m5pSAfAYg4yhktLKHqvG4gQ
+2025-06-27 13:46:32,168 - INFO - [14] Potential token creation detected: 5gffUha91Ai2D1MmDKcBbMGbjsrWec19GZJXPzZuoq5QNi34N8BsThtHaHEJeQBJWMMHyTmSg2TZM1n6qE1e92K8
+2025-06-27 13:46:32,869 - WARNING - Could not extract mint address from signature: 5gffUha91Ai2D1MmDKcBbMGbjsrWec19GZJXPzZuoq5QNi34N8BsThtHaHEJeQBJWMMHyTmSg2TZM1n6qE1e92K8
+2025-06-27 13:46:32,869 - INFO - [15] Potential token creation detected: 4Gm67zzM86DZ4Jmks79Jigfo9a4K3BxNRQ1FJLd8qr6VyEYP67PhvNGyfSd1ZXzmrNLj7rz8gu9qeNQiNt1PJd42
+2025-06-27 13:46:33,565 - WARNING - Could not extract mint address from signature: 4Gm67zzM86DZ4Jmks79Jigfo9a4K3BxNRQ1FJLd8qr6VyEYP67PhvNGyfSd1ZXzmrNLj7rz8gu9qeNQiNt1PJd42
+2025-06-27 13:46:33,565 - INFO - [16] Potential token creation detected: 4BVqQyGtFXT7fXqiyybLLFfAs6Csj7RmMvC2Y76MYC3sVYPFGoMwbyz1n2fFjvzZvWPv1sfspKUn291y5vj3ah3d
+2025-06-27 13:46:34,367 - WARNING - Could not extract mint address from signature: 4BVqQyGtFXT7fXqiyybLLFfAs6Csj7RmMvC2Y76MYC3sVYPFGoMwbyz1n2fFjvzZvWPv1sfspKUn291y5vj3ah3d
+2025-06-27 13:46:34,368 - INFO - [17] Potential token creation detected: 5HG9es5QihZwJ2EbSiZg7Jqv7fsn7HxFmfcDW3JjHazUAPJinznL3NizigeuL2ZUopMebDV8dMoNnGtGgMr1ouwh
+2025-06-27 13:46:35,216 - WARNING - Could not extract mint address from signature: 5HG9es5QihZwJ2EbSiZg7Jqv7fsn7HxFmfcDW3JjHazUAPJinznL3NizigeuL2ZUopMebDV8dMoNnGtGgMr1ouwh
+2025-06-27 13:46:35,217 - INFO - [18] Potential token creation detected: 2S8snd7tP3Hu6rnyVsGhTNATT8b9yqjRrZdPnnao61f6z74CVdoPgr94NyPiuHT3zv4GqFjaPaktCtRihNjNrh5G
+2025-06-27 13:46:40,939 - WARNING - Could not extract mint address from signature: 2S8snd7tP3Hu6rnyVsGhTNATT8b9yqjRrZdPnnao61f6z74CVdoPgr94NyPiuHT3zv4GqFjaPaktCtRihNjNrh5G
+2025-06-27 13:46:40,940 - INFO - [19] Potential token creation detected: 39wPnrVAK8S9ZFdL4rcx4ehz7k3tGGUuvgXWiE57fXEuseDgC41t2ajdShDnjpwQyiofFcmUuB3CXeaiPpNeCnbT
+2025-06-27 13:46:42,931 - INFO - 
+===============================================================================
+                    NEW PUMP.FUN TOKEN DETECTED #19
+===============================================================================
+Time: 2025-06-27 13:46:40
+Name: Unknown
+Symbol: Unknown
+Description: 
+
+ADDRESSES:
+  Mint: DQhxarerZNs9Xf6fr7GEgcEUpE2BLvrSEkGskquGpump
+  Creator: AkDaQewQfjjFaDLZPz2oAmyY8soPiXXQL4m1zw56hiSy
+  Signature: 39wPnrVAK8S9ZFdL4rcx4ehz7k3tGGUuvgXWiE57fXEuseDgC41t2ajdShDnjpwQyiofFcmUuB3CXeaiPpNeCnbT
+
+METADATA:
+  Supply: Unknown
+  Price: $Unknown
+  Market Cap: $Unknown
+  Liquidity: $Unknown
+
+SOCIAL LINKS:
+  Website: Not available
+  Twitter: Not available
+  Telegram: Not available
+  Image: Not available
+
+DIRECT LINKS:
+  Pump.fun: https://pump.fun/DQhxarerZNs9Xf6fr7GEgcEUpE2BLvrSEkGskquGpump
+  Solscan: https://solscan.io/token/DQhxarerZNs9Xf6fr7GEgcEUpE2BLvrSEkGskquGpump
+  DexScreener: https://dexscreener.com/solana/DQhxarerZNs9Xf6fr7GEgcEUpE2BLvrSEkGskquGpump
+===============================================================================
+
+2025-06-27 13:46:42,933 - INFO - [20] Potential token creation detected: 52FYpo3kq1QkCbXTRuQ443H4fqSppW2Qph6MMUas4n1GcL6Bor5y8MRVXJeG4NtfmiNTpYc61PpA8Wzc7LEkjXxz
+2025-06-27 13:46:45,607 - INFO - 
+===============================================================================
+                    NEW PUMP.FUN TOKEN DETECTED #20
+===============================================================================
+Time: 2025-06-27 13:46:42
+Name: Unknown
+Symbol: Unknown
+Description: 
+
+ADDRESSES:
+  Mint: 2
+  Creator: Frs71e9K1cR4XSYfUyVktAkYiR4HLUTT2j7uyUkUdMiP
+  Signature: 52FYpo3kq1QkCbXTRuQ443H4fqSppW2Qph6MMUas4n1GcL6Bor5y8MRVXJeG4NtfmiNTpYc61PpA8Wzc7LEkjXxz
+
+METADATA:
+  Supply: Unknown
+  Price: $Unknown
+  Market Cap: $Unknown
+  Liquidity: $Unknown
+
+SOCIAL LINKS:
+  Website: Not available
+  Twitter: Not available
+  Telegram: Not available
+  Image: Not available
+
+DIRECT LINKS:
+  Pump.fun: https://pump.fun/2
+  Solscan: https://solscan.io/token/2
+  DexScreener: https://dexscreener.com/solana/2
+===============================================================================
+
+2025-06-27 13:46:45,610 - INFO - [21] Potential token creation detected: 5rxjVT1Ee2cUPN1KSjBtW22u4sYDEygfE89xd3CKH9auBRyG8oKYuh4gNY77VbCLTv36tG2GfmJPCexZpMYJrbtK
+2025-06-27 13:46:47,998 - INFO - 
+===============================================================================
+                    NEW PUMP.FUN TOKEN DETECTED #21
+===============================================================================
+Time: 2025-06-27 13:46:45
+Name: Unknown
+Symbol: Unknown
+Description: 
+
+ADDRESSES:
+  Mint: 15
+  Creator: JACRrUafnGPGsUcUTJ9xo9DjUdXhyyG5fBraSP4isgZT
+  Signature: 5rxjVT1Ee2cUPN1KSjBtW22u4sYDEygfE89xd3CKH9auBRyG8oKYuh4gNY77VbCLTv36tG2GfmJPCexZpMYJrbtK
+
+METADATA:
+  Supply: Unknown
+  Price: $Unknown
+  Market Cap: $Unknown
+  Liquidity: $Unknown
+
+SOCIAL LINKS:
+  Website: Not available
+  Twitter: Not available
+  Telegram: Not available
+  Image: Not available
+
+DIRECT LINKS:
+  Pump.fun: https://pump.fun/15
+  Solscan: https://solscan.io/token/15
+  DexScreener: https://dexscreener.com/solana/15
+===============================================================================
+
+2025-06-27 13:46:48,002 - INFO - [22] Potential token creation detected: 2Wyu4W5JXEqF6JZPsfQf5uZw779S3rwUHopafoHxVy4h6iwKG4ZMW4o6dGkvUNvh2mddJvPaPJZAxrR9rf4WREbC
+2025-06-27 13:46:50,351 - INFO - 
+===============================================================================
+                    NEW PUMP.FUN TOKEN DETECTED #22
+===============================================================================
+Time: 2025-06-27 13:46:48
+Name: Unknown
+Symbol: Unknown
+Description: 
+
+ADDRESSES:
+  Mint: 3
+  Creator: F3m2C4biThKXpPt6zbXW3VbXwucK8Rhv1Dtyrh1ruzUz
+  Signature: 2Wyu4W5JXEqF6JZPsfQf5uZw779S3rwUHopafoHxVy4h6iwKG4ZMW4o6dGkvUNvh2mddJvPaPJZAxrR9rf4WREbC
+
+METADATA:
+  Supply: Unknown
+  Price: $Unknown
+  Market Cap: $Unknown
+  Liquidity: $Unknown
+
+SOCIAL LINKS:
+  Website: Not available
+  Twitter: Not available
+  Telegram: Not available
+  Image: Not available
+
+DIRECT LINKS:
+  Pump.fun: https://pump.fun/3
+  Solscan: https://solscan.io/token/3
+  DexScreener: https://dexscreener.com/solana/3
+===============================================================================
+
+2025-06-27 13:46:50,352 - INFO - [23] Potential token creation detected: 4yBuF4fqmTAfA4trToqRu8PyXHbM75WQhjzqTj4ywZp3rbUNBLYiukMKPuD1ajvA2W9n2qW2mNiuT7ZFBwrb2NtX
+2025-06-27 13:46:52,992 - INFO - 
+===============================================================================
+                    NEW PUMP.FUN TOKEN DETECTED #23
+===============================================================================
+Time: 2025-06-27 13:46:50
+Name: Unknown
+Symbol: Unknown
+Description: 
+
+ADDRESSES:
+  Mint: 1
+  Creator: C1Mgg1dDc44MKQPRLsR1k8iRTdq8DvRkVYyWGqSSHGTc
+  Signature: 4yBuF4fqmTAfA4trToqRu8PyXHbM75WQhjzqTj4ywZp3rbUNBLYiukMKPuD1ajvA2W9n2qW2mNiuT7ZFBwrb2NtX
+
+METADATA:
+  Supply: Unknown
+  Price: $Unknown
+  Market Cap: $Unknown
+  Liquidity: $Unknown
+
+SOCIAL LINKS:
+  Website: Not available
+  Twitter: Not available
+  Telegram: Not available
+  Image: Not available
+
+DIRECT LINKS:
+  Pump.fun: https://pump.fun/1
+  Solscan: https://solscan.io/token/1
+  DexScreener: https://dexscreener.com/solana/1
+===============================================================================
+
+2025-06-27 13:46:52,993 - INFO - [24] Potential token creation detected: MhRqynFC4qiJ4fp4raihSM8Hq3hwjE9udGSk5rmaf4yG8LmM6LLLuxJ17TNzY7TGRSrA8Zk674w7JgF3RVAVyWb
+2025-06-27 13:46:56,059 - INFO - 
+===============================================================================
+                    NEW PUMP.FUN TOKEN DETECTED #24
+===============================================================================
+Time: 2025-06-27 13:46:52
+Name: Unknown
+Symbol: Unknown
+Description: 
+
+ADDRESSES:
+  Mint: 14
+  Creator: 4LepTLgh3FojhTSZNHJRXVptEgfc43skspkB5Tyg7VLQ
+  Signature: MhRqynFC4qiJ4fp4raihSM8Hq3hwjE9udGSk5rmaf4yG8LmM6LLLuxJ17TNzY7TGRSrA8Zk674w7JgF3RVAVyWb
+
+METADATA:
+  Supply: Unknown
+  Price: $Unknown
+  Market Cap: $Unknown
+  Liquidity: $Unknown
+
+SOCIAL LINKS:
+  Website: Not available
+  Twitter: Not available
+  Telegram: Not available
+  Image: Not available
+
+DIRECT LINKS:
+  Pump.fun: https://pump.fun/14
+  Solscan: https://solscan.io/token/14
+  DexScreener: https://dexscreener.com/solana/14
+===============================================================================
+
+2025-06-27 13:46:56,060 - INFO - [25] Potential token creation detected: 2uUDGxFY5K39LfZR66TZozFjCaxLyRU62X49s5YLu473n342EpB3JftcbSehgzHjEq87JMVQhj5NnXicdXM7SQ3J
+2025-06-27 13:46:58,317 - INFO - 
+===============================================================================
+                    NEW PUMP.FUN TOKEN DETECTED #25
+===============================================================================
+Time: 2025-06-27 13:46:56
+Name: MAX
+Symbol: MAX
+Description: 
+
+ADDRESSES:
+  Mint: 3DTFziQFyaVF9DzeR1iwBSVjsaAac1rzpCvPESGWkmbk
+  Creator: DcNRsCaLxbwMys4e7QqGye8eg2aDjRDWT1i8BFrufYSe
+  Signature: 2uUDGxFY5K39LfZR66TZozFjCaxLyRU62X49s5YLu473n342EpB3JftcbSehgzHjEq87JMVQhj5NnXicdXM7SQ3J
+
+METADATA:
+  Supply: Unknown
+  Price: $0.00001133
+  Market Cap: $11335.6
+  Liquidity: $Unknown
+
+SOCIAL LINKS:
+  Website: Not available
+  Twitter: Not available
+  Telegram: Not available
+  Image: Not available
+
+DIRECT LINKS:
+  Pump.fun: https://pump.fun/3DTFziQFyaVF9DzeR1iwBSVjsaAac1rzpCvPESGWkmbk
+  Solscan: https://solscan.io/token/3DTFziQFyaVF9DzeR1iwBSVjsaAac1rzpCvPESGWkmbk
+  DexScreener: https://dexscreener.com/solana/3DTFziQFyaVF9DzeR1iwBSVjsaAac1rzpCvPESGWkmbk
+===============================================================================
+
+2025-06-27 13:46:58,318 - INFO - [26] Potential token creation detected: 3PQA6FL4hC39LV5nQ7cVqaBAQ4AREtqAKPy89vM8zHpPN3iCG4Upt85D9JxeMZpkUMhPvTPgtx4xXRtDrGcfCdpN
+2025-06-27 13:47:00,838 - INFO - 
+===============================================================================
+                    NEW PUMP.FUN TOKEN DETECTED #26
+===============================================================================
+Time: 2025-06-27 13:46:58
+Name: MAX
+Symbol: MAX
+Description: 
+
+ADDRESSES:
+  Mint: 3DTFziQFyaVF9DzeR1iwBSVjsaAac1rzpCvPESGWkmbk
+  Creator: DcNRsCaLxbwMys4e7QqGye8eg2aDjRDWT1i8BFrufYSe
+  Signature: 3PQA6FL4hC39LV5nQ7cVqaBAQ4AREtqAKPy89vM8zHpPN3iCG4Upt85D9JxeMZpkUMhPvTPgtx4xXRtDrGcfCdpN
+
+METADATA:
+  Supply: Unknown
+  Price: $0.00001133
+  Market Cap: $11335.6
+  Liquidity: $Unknown
+
+SOCIAL LINKS:
+  Website: Not available
+  Twitter: Not available
+  Telegram: Not available
+  Image: Not available
+
+DIRECT LINKS:
+  Pump.fun: https://pump.fun/3DTFziQFyaVF9DzeR1iwBSVjsaAac1rzpCvPESGWkmbk
+  Solscan: https://solscan.io/token/3DTFziQFyaVF9DzeR1iwBSVjsaAac1rzpCvPESGWkmbk
+  DexScreener: https://dexscreener.com/solana/3DTFziQFyaVF9DzeR1iwBSVjsaAac1rzpCvPESGWkmbk
+===============================================================================
+
+2025-06-27 13:47:00,839 - INFO - [27] Potential token creation detected: fM5UYzLE2Csnyj4SEb9b1EMtJ6DhA3RkDvdoJHEaQAVMTwne45JbwEQaDii5Lvgga699oURKGbJ8KuCoaevBDAC
+2025-06-27 13:47:03,349 - INFO - 
+===============================================================================
+                    NEW PUMP.FUN TOKEN DETECTED #27
+===============================================================================
+Time: 2025-06-27 13:47:00
+Name: Unknown
+Symbol: Unknown
+Description: 
+
+ADDRESSES:
+  Mint: 4
+  Creator: F4PiM9HzMx55VixfnyosPMHMtD9NJ5jpJ7sqEbXjE9C5
+  Signature: fM5UYzLE2Csnyj4SEb9b1EMtJ6DhA3RkDvdoJHEaQAVMTwne45JbwEQaDii5Lvgga699oURKGbJ8KuCoaevBDAC
+
+METADATA:
+  Supply: Unknown
+  Price: $Unknown
+  Market Cap: $Unknown
+  Liquidity: $Unknown
+
+SOCIAL LINKS:
+  Website: Not available
+  Twitter: Not available
+  Telegram: Not available
+  Image: Not available
+
+DIRECT LINKS:
+  Pump.fun: https://pump.fun/4
+  Solscan: https://solscan.io/token/4
+  DexScreener: https://dexscreener.com/solana/4
+===============================================================================
+
+2025-06-27 13:47:03,350 - INFO - [28] Potential token creation detected: B6hnizXi87zc658ux7HDm7r8CjbBgeTUMbzc4UWG3dRZLTgeASLzLzS6Dt1KxoJNpW2M8DufLdHU8Hi32CgT3vP
+2025-06-27 13:47:05,436 - INFO - 
+===============================================================================
+                    NEW PUMP.FUN TOKEN DETECTED #28
+===============================================================================
+Time: 2025-06-27 13:47:03
+Name: Unknown
+Symbol: Unknown
+Description: 
+
+ADDRESSES:
+  Mint: 15
+  Creator: BH725RVCuwyHEEmQpegfTrK7b1KrxiMhXaCDtggKmgR1
+  Signature: B6hnizXi87zc658ux7HDm7r8CjbBgeTUMbzc4UWG3dRZLTgeASLzLzS6Dt1KxoJNpW2M8DufLdHU8Hi32CgT3vP
+
+METADATA:
+  Supply: Unknown
+  Price: $Unknown
+  Market Cap: $Unknown
+  Liquidity: $Unknown
+
+SOCIAL LINKS:
+  Website: Not available
+  Twitter: Not available
+  Telegram: Not available
+  Image: Not available
+
+DIRECT LINKS:
+  Pump.fun: https://pump.fun/15
+  Solscan: https://solscan.io/token/15
+  DexScreener: https://dexscreener.com/solana/15
+===============================================================================
+
+2025-06-27 13:47:05,438 - INFO - [29] Potential token creation detected: 25h8oU2uRQJBG2eUyAtMJeXY4F84RaruaYkiNduV9v7G2GfEma8bZf7Syj4aPku6XaVDXv7zpfjFW9Xe4jNFXixb
+2025-06-27 13:47:07,726 - INFO - 
+===============================================================================
+                    NEW PUMP.FUN TOKEN DETECTED #29
+===============================================================================
+Time: 2025-06-27 13:47:05
+Name: Unknown
+Symbol: Unknown
+Description: 
+
+ADDRESSES:
+  Mint: 6
+  Creator: BcKjex47yotZ4f8BCmvcnUHjWZYYtPBAQyvHQQDd2Wwz
+  Signature: 25h8oU2uRQJBG2eUyAtMJeXY4F84RaruaYkiNduV9v7G2GfEma8bZf7Syj4aPku6XaVDXv7zpfjFW9Xe4jNFXixb
+
+METADATA:
+  Supply: Unknown
+  Price: $Unknown
+  Market Cap: $Unknown
+  Liquidity: $Unknown
+
+SOCIAL LINKS:
+  Website: Not available
+  Twitter: Not available
+  Telegram: Not available
+  Image: Not available
+
+DIRECT LINKS:
+  Pump.fun: https://pump.fun/6
+  Solscan: https://solscan.io/token/6
+  DexScreener: https://dexscreener.com/solana/6
+===============================================================================
+
+2025-06-27 13:47:07,727 - INFO - [30] Potential token creation detected: 229pcYc55VAw2dvJDvknaTjoHn2V7ji3iQmGnBw9E1tUWJ8XqXuiSJoGRLj75xPG9Lu1XJHnFYW6R1Y1re6fjiZw
+2025-06-27 13:47:10,367 - INFO - 
+===============================================================================
+                    NEW PUMP.FUN TOKEN DETECTED #30
+===============================================================================
+Time: 2025-06-27 13:47:07
+Name: Unknown
+Symbol: Unknown
+Description: 
+
+ADDRESSES:
+  Mint: 9
+  Creator: Crt1mGR6NNGoKzdDACRyxiLy9qq4qgnvmyC6LKgPLF37
+  Signature: 229pcYc55VAw2dvJDvknaTjoHn2V7ji3iQmGnBw9E1tUWJ8XqXuiSJoGRLj75xPG9Lu1XJHnFYW6R1Y1re6fjiZw
+
+METADATA:
+  Supply: Unknown
+  Price: $Unknown
+  Market Cap: $Unknown
+  Liquidity: $Unknown
+
+SOCIAL LINKS:
+  Website: Not available
+  Twitter: Not available
+  Telegram: Not available
+  Image: Not available
+
+DIRECT LINKS:
+  Pump.fun: https://pump.fun/9
+  Solscan: https://solscan.io/token/9
+  DexScreener: https://dexscreener.com/solana/9
+===============================================================================
+
+2025-06-27 13:47:10,369 - INFO - [31] Potential token creation detected: 4jw7gXPHox9w1DLDyWEGQ3sewB8gw4rgutme4CGJPF4QV867t2Z8casfysNWALp2R72x6ZFysFNVBfeSP4gK5nyk
+2025-06-27 13:47:13,095 - INFO - 
+===============================================================================
+                    NEW PUMP.FUN TOKEN DETECTED #31
+===============================================================================
+Time: 2025-06-27 13:47:10
+Name: Unknown
+Symbol: Unknown
+Description: 
+
+ADDRESSES:
+  Mint: 17
+  Creator: 4xxBGBnXqfCyUpsKRix1VaWm15uND2P83ForEzYDngbD
+  Signature: 4jw7gXPHox9w1DLDyWEGQ3sewB8gw4rgutme4CGJPF4QV867t2Z8casfysNWALp2R72x6ZFysFNVBfeSP4gK5nyk
+
+METADATA:
+  Supply: Unknown
+  Price: $Unknown
+  Market Cap: $Unknown
+  Liquidity: $Unknown
+
+SOCIAL LINKS:
+  Website: Not available
+  Twitter: Not available
+  Telegram: Not available
+  Image: Not available
+
+DIRECT LINKS:
+  Pump.fun: https://pump.fun/17
+  Solscan: https://solscan.io/token/17
+  DexScreener: https://dexscreener.com/solana/17
+===============================================================================
+
+2025-06-27 13:47:13,096 - INFO - [32] Potential token creation detected: 3LTEJVvuEXcBmhymp4mEanRR5oXd26wThEMXm3fVAkZVByjgnMne3gK4Bu26xfgLMTUBDf1abNeXZTsXiTVgc4rU

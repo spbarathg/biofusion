@@ -1,0 +1,277 @@
+#!/usr/bin/env python3
+"""
+SMART APE MODE QUICK START
+=========================
+
+Quick and easy launcher for Smart Ape Mode with interactive setup.
+Perfect for getting started quickly with the evolutionary trading system.
+"""
+
+import asyncio
+import os
+import sys
+from pathlib import Path
+from worker_ant_v1.core.main_launcher import main
+from worker_ant_v1.core.core_warfare_system import launch_ultimate_smart_ape
+from worker_ant_v1.utils.legacy_launcher import main as legacy_main
+
+def print_welcome():
+    """Print welcome message"""
+    
+    welcome = """
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                                                                              ║
+║                   🧠 SMART APE MODE QUICK START 🧠                         ║
+║                                                                              ║
+║  Welcome to the evolutionary trading system that turns $300 into $10,000+   ║
+║                                                                              ║
+║  This quick start will help you:                                            ║
+║  • Check system requirements                                                 ║
+║  • Configure basic settings                                                  ║
+║  • Launch the complete Smart Ape Mode system                                ║
+║                                                                              ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+    """
+    print(welcome)
+
+def check_requirements():
+    """Check basic system requirements"""
+    
+    print("\n🔍 CHECKING SYSTEM REQUIREMENTS...")
+    
+    checks = []
+    
+    # Python version
+    if sys.version_info >= (3, 8):
+        checks.append(("✅", "Python 3.8+", "OK"))
+    else:
+        checks.append(("❌", "Python 3.8+", f"Current: {sys.version}"))
+    
+    # Required packages
+    required_packages = [
+        "asyncio", "aiohttp", "numpy", "pandas", 
+        "cryptography", "websockets", "pydantic"
+    ]
+    
+    for package in required_packages:
+        try:
+            __import__(package)
+            checks.append(("✅", f"{package}", "OK"))
+        except ImportError:
+            checks.append(("❌", f"{package}", "Missing"))
+    
+    # Display results
+    for status, item, result in checks:
+        print(f"  {status} {item}: {result}")
+    
+    failed = [item for status, item, result in checks if status == "❌"]
+    
+    if failed:
+        print(f"\n❌ Missing requirements: {', '.join(failed)}")
+        print("Run: pip install -r requirements.txt")
+        return False
+    
+    print("\n✅ All requirements satisfied!")
+    return True
+
+def interactive_setup():
+    """Interactive setup for first-time users"""
+    
+    print("\n⚙️ INTERACTIVE SETUP")
+    print("=" * 50)
+    
+    config = {}
+    
+    # Trading mode
+    print("\n1. Trading Mode:")
+    print("   a) Simulation (safe, no real money)")
+    print("   b) Paper trading (real data, virtual money)")
+    print("   c) Live trading (real money - RISKY)")
+    
+    mode_choice = input("Select mode (a/b/c) [a]: ").lower() or 'a'
+    config['trading_mode'] = {
+        'a': 'simulation',
+        'b': 'paper', 
+        'c': 'live'
+    }.get(mode_choice, 'simulation')
+    
+    # Initial capital
+    capital = input(f"\n2. Initial capital amount [300]: ") or "300"
+    try:
+        config['initial_capital'] = float(capital)
+    except ValueError:
+        config['initial_capital'] = 300.0
+    
+    # Stealth mode
+    stealth = input("\n3. Enable stealth mode? (y/n) [y]: ").lower() or 'y'
+    config['enable_stealth'] = stealth == 'y'
+    
+    # Alerts
+    enable_alerts = input("\n4. Enable alert notifications? (y/n) [y]: ").lower() or 'y'
+    config['enable_alerts'] = enable_alerts == 'y'
+    
+    if config['enable_alerts']:
+        telegram_token = input("   Telegram bot token (optional): ").strip()
+        telegram_chat = input("   Telegram chat ID (optional): ").strip()
+        discord_webhook = input("   Discord webhook URL (optional): ").strip()
+        
+        config['telegram_token'] = telegram_token if telegram_token else None
+        config['telegram_chat'] = telegram_chat if telegram_chat else None
+        config['discord_webhook'] = discord_webhook if discord_webhook else None
+    
+    return config
+
+def create_env_file(config):
+    """Create .env file from configuration"""
+    
+    env_path = Path("worker_ant_v1/.env")
+    
+    env_content = f"""# Smart Ape Mode Configuration
+# Generated by Quick Start
+
+# === TRADING CONFIGURATION ===
+TRADING_MODE={config['trading_mode']}
+INITIAL_CAPITAL={config['initial_capital']}
+
+# === STEALTH CONFIGURATION ===
+ENABLE_STEALTH_MODE={'true' if config['enable_stealth'] else 'false'}
+FAKE_TRADE_FREQUENCY=0.15
+
+# === SAFETY CONFIGURATION ===
+ENABLE_KILL_SWITCH=true
+MAX_DRAWDOWN_STOP_PERCENT=10.0
+EMERGENCY_STOP_ENABLED=true
+
+# === ALERT CONFIGURATION ===
+"""
+    
+    if config.get('enable_alerts'):
+        if config.get('telegram_token'):
+            env_content += f"TELEGRAM_BOT_TOKEN={config['telegram_token']}\n"
+        if config.get('telegram_chat'):
+            env_content += f"TELEGRAM_CHAT_ID={config['telegram_chat']}\n"
+        if config.get('discord_webhook'):
+            env_content += f"DISCORD_WEBHOOK_URL={config['discord_webhook']}\n"
+    
+    env_content += """
+# === DEFAULT SETTINGS ===
+SECURITY_LEVEL=high
+BASE_TRADE_AMOUNT_SOL=0.1
+MAX_DAILY_LOSS_SOL=0.5
+ENABLE_EVOLUTION=true
+ANT_COUNT=10
+LOG_LEVEL=INFO
+"""
+    
+    with open(env_path, 'w') as f:
+        f.write(env_content)
+    
+    print(f"\n✅ Configuration saved to {env_path}")
+
+def show_launch_options():
+    """Show available launch options"""
+    
+    print("\n🚀 LAUNCH OPTIONS:")
+    print("=" * 50)
+    print("1. Complete Integration (recommended)")
+    print("   - Full Smart Ape Mode with all features")
+    print("   - Ultimate system + stealth + intelligence")
+    print("   - File: complete_system_integration.py")
+    print()
+    print("2. Standard Smart Ape Coordinator")
+    print("   - Core evolutionary swarm functionality")  
+    print("   - File: launch_smart_ape_mode.py")
+    print()
+    print("3. Ultimate System Only")
+    print("   - Main warfare system without integrations")
+    print("   - File: ultimate_smart_ape_system.py")
+    print()
+
+async def launch_system(choice, config):
+    """Launch the selected system"""
+    
+    print(f"\n🔥 LAUNCHING SMART APE MODE...")
+    
+    # Set environment variables
+    os.environ['TRADING_MODE'] = config['trading_mode']
+    os.environ['INITIAL_CAPITAL'] = str(config['initial_capital'])
+    os.environ['ENABLE_STEALTH_MODE'] = 'true' if config['enable_stealth'] else 'false'
+    
+    try:
+        if choice == '1':
+            # Complete integration
+            print("🔥 Starting Complete System Integration...")
+            await main()
+            
+        elif choice == '2':
+            # Standard coordinator
+            print("🔥 Starting Smart Ape Coordinator...")
+            await legacy_main()
+            
+        elif choice == '3':
+            # Ultimate system only
+            print("🔥 Starting Ultimate Smart Ape System...")
+            await launch_ultimate_smart_ape(config['initial_capital'])
+            
+        else:
+            print("❌ Invalid choice")
+            return
+            
+    except KeyboardInterrupt:
+        print("\n🛑 User requested shutdown")
+    except Exception as e:
+        print(f"\n💥 Launch failed: {e}")
+        print("Check logs for more details")
+
+async def main():
+    """Main quick start function"""
+    
+    print_welcome()
+    
+    # Check requirements
+    if not check_requirements():
+        input("\nPress Enter to exit...")
+        return
+    
+    # Interactive setup
+    config = interactive_setup()
+    
+    # Create .env file
+    create_env_file(config)
+    
+    # Show launch options
+    show_launch_options()
+    
+    # Get user choice
+    choice = input("Select launch option (1/2/3) [1]: ") or '1'
+    
+    # Confirm launch
+    print(f"\n📋 LAUNCH SUMMARY:")
+    print(f"Mode: {config['trading_mode']}")
+    print(f"Capital: ${config['initial_capital']}")
+    print(f"Stealth: {'Enabled' if config['enable_stealth'] else 'Disabled'}")
+    print(f"Launch: Option {choice}")
+    
+    if config['trading_mode'] == 'live':
+        print("\n⚠️  WARNING: LIVE TRADING MODE SELECTED")
+        print("This will use real money and could result in total loss!")
+        confirm = input("Type 'CONFIRM' to proceed with live trading: ")
+        if confirm != 'CONFIRM':
+            print("❌ Live trading cancelled")
+            return
+    
+    confirm = input("\nProceed with launch? (y/n) [y]: ").lower() or 'y'
+    if confirm != 'y':
+        print("❌ Launch cancelled")
+        return
+    
+    # Launch the system
+    await launch_system(choice, config)
+
+if __name__ == "__main__":
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        print("\n🛑 Quick start interrupted")
+    except Exception as e:
+        print(f"\n💥 Quick start failed: {e}") 

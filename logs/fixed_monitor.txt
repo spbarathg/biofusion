@@ -1,0 +1,30 @@
+2025-06-27 13:51:32,601 - INFO - Connecting to Helius WebSocket... (Attempt 1)
+2025-06-27 13:51:33,120 - INFO - Connected successfully!
+2025-06-27 13:51:33,121 - INFO - Subscribed to pump.fun program logs
+2025-06-27 13:51:33,121 - INFO - Listening for new token creations...
+2025-06-27 13:51:33,265 - INFO - Subscription confirmed with ID: 13936778
+2025-06-27 13:51:33,459 - INFO - [1] Processing signature: 5NFdtTvk8eAUgHpN7QE4BafynyXqgrGyBXmguAFihSn2xsfazHyiS7U8zGJfDYsUKzzQDGg3oQwEZRFAsheeeWjq
+2025-06-27 13:51:34,304 - WARNING - No transaction data for 5NFdtTvk8eAUgHpN7QE4BafynyXqgrGyBXmguAFihSn2xsfazHyiS7U8zGJfDYsUKzzQDGg3oQwEZRFAsheeeWjq
+2025-06-27 13:51:34,306 - WARNING - Could not extract valid mint from signature: 5NFdtTvk8eAUgHpN7QE4BafynyXqgrGyBXmguAFihSn2xsfazHyiS7U8zGJfDYsUKzzQDGg3oQwEZRFAsheeeWjq
+2025-06-27 13:51:34,307 - INFO - [2] Processing signature: 4GmLBBu69gFAMev2TphBXC9wGD2Yadg5nAzRPQKxn5aEoAZJVDbdn25dtpWeX3TykEPFMeyxVP9NcPi4ApAirLhs
+2025-06-27 13:51:34,828 - WARNING - No transaction data for 4GmLBBu69gFAMev2TphBXC9wGD2Yadg5nAzRPQKxn5aEoAZJVDbdn25dtpWeX3TykEPFMeyxVP9NcPi4ApAirLhs
+2025-06-27 13:51:34,828 - WARNING - Could not extract valid mint from signature: 4GmLBBu69gFAMev2TphBXC9wGD2Yadg5nAzRPQKxn5aEoAZJVDbdn25dtpWeX3TykEPFMeyxVP9NcPi4ApAirLhs
+2025-06-27 13:51:34,829 - INFO - [3] Processing signature: A9rj8w7BVj3s4EUQt2kfF1tJ2ykvzg84FgjZeAgHHQaLZPqM1bfLZEKQgvMnqqRDs1vXninHMCpT6T4viAYjnpi
+2025-06-27 13:51:35,532 - WARNING - No transaction data for A9rj8w7BVj3s4EUQt2kfF1tJ2ykvzg84FgjZeAgHHQaLZPqM1bfLZEKQgvMnqqRDs1vXninHMCpT6T4viAYjnpi
+2025-06-27 13:51:35,533 - WARNING - Could not extract valid mint from signature: A9rj8w7BVj3s4EUQt2kfF1tJ2ykvzg84FgjZeAgHHQaLZPqM1bfLZEKQgvMnqqRDs1vXninHMCpT6T4viAYjnpi
+2025-06-27 13:51:35,533 - INFO - [4] Processing signature: 5ZYKzeHpkUwAkC8KvZFhioSztaq1wATyQZmqSPdhpXJcEpaL5s4ezNS2nJjyrAcsKUmqiEgLzVgN9mYMW2Mhv8PE
+2025-06-27 13:51:36,078 - WARNING - No transaction data for 5ZYKzeHpkUwAkC8KvZFhioSztaq1wATyQZmqSPdhpXJcEpaL5s4ezNS2nJjyrAcsKUmqiEgLzVgN9mYMW2Mhv8PE
+2025-06-27 13:51:36,079 - WARNING - Could not extract valid mint from signature: 5ZYKzeHpkUwAkC8KvZFhioSztaq1wATyQZmqSPdhpXJcEpaL5s4ezNS2nJjyrAcsKUmqiEgLzVgN9mYMW2Mhv8PE
+2025-06-27 13:51:36,079 - INFO - [5] Processing signature: 58u4yTZ8mtuQpMt8GdYL5p4fbuvt1RJTSvaDHJyTqwkAxErTKJBWxFVA8b5ij1DYPxwBrzvSGkH9Y7GXTHsYSRCS
+2025-06-27 13:51:36,598 - WARNING - No transaction data for 58u4yTZ8mtuQpMt8GdYL5p4fbuvt1RJTSvaDHJyTqwkAxErTKJBWxFVA8b5ij1DYPxwBrzvSGkH9Y7GXTHsYSRCS
+2025-06-27 13:51:36,599 - WARNING - Could not extract valid mint from signature: 58u4yTZ8mtuQpMt8GdYL5p4fbuvt1RJTSvaDHJyTqwkAxErTKJBWxFVA8b5ij1DYPxwBrzvSGkH9Y7GXTHsYSRCS
+2025-06-27 13:51:36,599 - INFO - [6] Processing signature: 3JrR4x7a53EXDaB8QEfb2EGJoQevuiFCMLXfBoDv2AiLgjHwedE9BDh8tTsGrz52mAEpfm68L44kjkMRNWxJuUyz
+2025-06-27 13:51:37,071 - WARNING - No transaction data for 3JrR4x7a53EXDaB8QEfb2EGJoQevuiFCMLXfBoDv2AiLgjHwedE9BDh8tTsGrz52mAEpfm68L44kjkMRNWxJuUyz
+2025-06-27 13:51:37,071 - WARNING - Could not extract valid mint from signature: 3JrR4x7a53EXDaB8QEfb2EGJoQevuiFCMLXfBoDv2AiLgjHwedE9BDh8tTsGrz52mAEpfm68L44kjkMRNWxJuUyz
+2025-06-27 13:51:37,072 - INFO - [7] Processing signature: o1r8xzBN56x7QSGHMLt2QY8mWVLXgQbsn5RDMt5o5jjXDJF2kV7kBXUGLbjpDP1dkQdGPSbjBs2iWk24djYYYzz
+2025-06-27 13:51:37,748 - WARNING - No transaction data for o1r8xzBN56x7QSGHMLt2QY8mWVLXgQbsn5RDMt5o5jjXDJF2kV7kBXUGLbjpDP1dkQdGPSbjBs2iWk24djYYYzz
+2025-06-27 13:51:37,749 - WARNING - Could not extract valid mint from signature: o1r8xzBN56x7QSGHMLt2QY8mWVLXgQbsn5RDMt5o5jjXDJF2kV7kBXUGLbjpDP1dkQdGPSbjBs2iWk24djYYYzz
+2025-06-27 13:51:37,749 - INFO - [8] Processing signature: 59utNfu4BuGhZWcUQCWghapGNFSJnEXBxorb7EXFnLCSrqztPJHwbYyDaBB9D8y3y4qQVubHdWfKJezFBGtB8vw3
+2025-06-27 13:51:38,401 - WARNING - No transaction data for 59utNfu4BuGhZWcUQCWghapGNFSJnEXBxorb7EXFnLCSrqztPJHwbYyDaBB9D8y3y4qQVubHdWfKJezFBGtB8vw3
+2025-06-27 13:51:38,403 - WARNING - Could not extract valid mint from signature: 59utNfu4BuGhZWcUQCWghapGNFSJnEXBxorb7EXFnLCSrqztPJHwbYyDaBB9D8y3y4qQVubHdWfKJezFBGtB8vw3
+2025-06-27 13:51:38,404 - INFO - [9] Processing signature: 2rFURXs6Eht7jGFk9R2yS5zLt9cEis4VfvsVUrsbjH5g15xcgQ1dRfXboVDx7ZqziZQWZGRwKxEn8xFs6zMP8Fds
