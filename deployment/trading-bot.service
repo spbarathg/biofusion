@@ -1,0 +1,51 @@
+[Unit]
+Description=Smart Ape Neural Swarm Trading Bot
+Documentation=https://github.com/your-org/smart-ape-bot
+After=network.target redis.service
+Requires=redis.service
+
+[Service]
+Type=notify
+User=trader
+Group=trader
+RuntimeDirectory=trading-bot
+RuntimeDirectoryMode=0750
+WorkingDirectory=/app
+EnvironmentFile=/app/.env.production
+
+# Main process
+ExecStart=/usr/local/bin/python3 entry_points/run_bot.py --mode production
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=always
+RestartSec=5s
+
+# Security
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=full
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+MemoryDenyWriteExecute=yes
+LockPersonality=yes
+
+# Resource limits
+CPUQuota=90%
+MemoryLimit=4G
+TasksMax=100
+LimitNOFILE=65535
+LimitNPROC=100
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=trading-bot
+
+[Install]
+WantedBy=multi-user.target 

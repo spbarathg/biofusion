@@ -1,0 +1,25 @@
+{{ define "telegram.message" }}
+{{ if gt (len .Alerts.Firing) 0 }}
+🚨 <b>Alerts Firing:</b>
+{{ range .Alerts.Firing }}
+<b>Alert:</b> {{ .Labels.alertname }}
+<b>Category:</b> {{ .Labels.category }}
+<b>Severity:</b> {{ .Labels.severity }}
+<b>Description:</b> {{ .Annotations.description }}
+<b>Started:</b> {{ .StartsAt | since }}
+{{ if .Annotations.runbook_url }}<b>Runbook:</b> {{ .Annotations.runbook_url }}{{ end }}
+{{ if .Annotations.dashboard_url }}<b>Dashboard:</b> {{ .Annotations.dashboard_url }}{{ end }}
+{{ end }}
+{{ end }}
+
+{{ if gt (len .Alerts.Resolved) 0 }}
+✅ <b>Alerts Resolved:</b>
+{{ range .Alerts.Resolved }}
+<b>Alert:</b> {{ .Labels.alertname }}
+<b>Category:</b> {{ .Labels.category }}
+<b>Severity:</b> {{ .Labels.severity }}
+<b>Description:</b> {{ .Annotations.description }}
+<b>Resolved:</b> {{ .EndsAt | since }}
+{{ end }}
+{{ end }}
+{{ end }} 

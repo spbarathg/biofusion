@@ -1,0 +1,128 @@
+# SMART APE NEURAL SWARM - LOGGING CONFIGURATION
+# ==========================================
+
+version: 1
+disable_existing_loggers: false
+
+formatters:
+  standard:
+    format: '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    datefmt: '%Y-%m-%d %H:%M:%S'
+  
+  json:
+    (): pythonjsonlogger.jsonlogger.JsonFormatter
+    format: '%(asctime)s %(name)s %(levelname)s %(message)s %(filename)s %(funcName)s %(lineno)d %(process)d %(thread)d'
+    datefmt: '%Y-%m-%d %H:%M:%S'
+
+handlers:
+  console:
+    class: logging.StreamHandler
+    level: INFO
+    formatter: standard
+    stream: ext://sys.stdout
+
+  file_info:
+    class: logging.handlers.RotatingFileHandler
+    level: INFO
+    formatter: json
+    filename: logs/trading_bot.log
+    maxBytes: 10485760  # 10MB
+    backupCount: 10
+    encoding: utf8
+
+  file_error:
+    class: logging.handlers.RotatingFileHandler
+    level: ERROR
+    formatter: json
+    filename: logs/error.log
+    maxBytes: 10485760  # 10MB
+    backupCount: 10
+    encoding: utf8
+
+  security:
+    class: logging.handlers.RotatingFileHandler
+    level: INFO
+    formatter: json
+    filename: logs/security.log
+    maxBytes: 10485760  # 10MB
+    backupCount: 10
+    encoding: utf8
+
+  trading:
+    class: logging.handlers.RotatingFileHandler
+    level: INFO
+    formatter: json
+    filename: logs/trading.log
+    maxBytes: 10485760  # 10MB
+    backupCount: 10
+    encoding: utf8
+
+  performance:
+    class: logging.handlers.RotatingFileHandler
+    level: INFO
+    formatter: json
+    filename: logs/performance.log
+    maxBytes: 10485760  # 10MB
+    backupCount: 10
+    encoding: utf8
+
+loggers:
+  # Root logger
+  '':
+    level: INFO
+    handlers: [console, file_info, file_error]
+    propagate: no
+
+  # Security events
+  security:
+    level: INFO
+    handlers: [security, console, file_error]
+    propagate: no
+
+  # Trading events
+  trading:
+    level: INFO
+    handlers: [trading, console, file_error]
+    propagate: no
+
+  # Performance metrics
+  performance:
+    level: INFO
+    handlers: [performance, console]
+    propagate: no
+
+  # Core components
+  worker_ant_v1.core:
+    level: INFO
+    handlers: [console, file_info, file_error]
+    propagate: no
+
+  # Intelligence systems
+  worker_ant_v1.intelligence:
+    level: INFO
+    handlers: [console, file_info, file_error]
+    propagate: no
+
+  # Safety systems
+  worker_ant_v1.safety:
+    level: INFO
+    handlers: [console, file_info, file_error, security]
+    propagate: no
+
+  # Trading systems
+  worker_ant_v1.trading:
+    level: INFO
+    handlers: [console, file_info, file_error, trading]
+    propagate: no
+
+  # Colony coordination
+  worker_ant_v1.colony:
+    level: INFO
+    handlers: [console, file_info, file_error]
+    propagate: no
+
+  # Utilities
+  worker_ant_v1.utils:
+    level: INFO
+    handlers: [console, file_info, file_error]
+    propagate: no 

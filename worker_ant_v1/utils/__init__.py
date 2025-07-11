@@ -1,4 +1,4 @@
-﻿"""
+"""
 Smart Ape Mode - Utils Module
 =============================
 
@@ -8,9 +8,8 @@ Utility components including:
 - Legacy launcher compatibility
 """
 
-from worker_ant_v1.utils.simple_logger import TradingLogger, setup_logger
+from worker_ant_v1.utils.logger import setup_logger
 
 __all__ = [
-    'TradingLogger',
     'setup_logger'
 ]

@@ -1,4 +1,4 @@
-﻿"""
+"""
 Smart Ape Mode - Intelligence Module
 ====================================
 
@@ -10,21 +10,27 @@ Intelligence and analysis systems including:
 """
 
 from worker_ant_v1.intelligence.sentiment_analyzer import SentimentAnalyzer, SentimentData, AggregatedSentiment
-from worker_ant_v1.intelligence.technical_analyzer import TechnicalAnalyzer, TechnicalSignals
-from worker_ant_v1.intelligence.ml_predictor import MLPredictor, MLPrediction
-from worker_ant_v1.intelligence.caller_intelligence import AdvancedCallerIntelligence, CallerProfile
-from worker_ant_v1.intelligence.memory_manager import ProductionMemoryManager, MemoryProfile
+from worker_ant_v1.intelligence.technical_analyzer import TechnicalAnalyzer, TechnicalSignal, TechnicalAnalysis
+from worker_ant_v1.intelligence.ml_predictor import MLPredictor, MLPrediction, MLFeatures
+from worker_ant_v1.intelligence.sentiment_first_ai import SentimentFirstAI, SentimentDecision
+from worker_ant_v1.intelligence.caller_intelligence import AdvancedCallerIntelligence
+# ProductionMemoryManager removed - memory management integrated into core systems
+from worker_ant_v1.intelligence.token_intelligence_system import TokenIntelligenceSystem
+from worker_ant_v1.intelligence.battle_pattern_intelligence import BattlePatternIntelligence
 
 __all__ = [
     'SentimentAnalyzer',
     'SentimentData', 
     'AggregatedSentiment',
     'TechnicalAnalyzer',
-    'TechnicalSignals',
+    'TechnicalSignal',
+    'TechnicalAnalysis',
     'MLPredictor',
     'MLPrediction',
+    'MLFeatures',
+    'SentimentFirstAI',
+    'SentimentDecision',
     'AdvancedCallerIntelligence',
-    'CallerProfile',
-    'ProductionMemoryManager',
-    'MemoryProfile'
+    'TokenIntelligenceSystem',
+    'BattlePatternIntelligence'
 ]

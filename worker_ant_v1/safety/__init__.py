@@ -1,30 +1,31 @@
-﻿"""
-Smart Ape Mode - Safety Module
-==============================
+"""
+Safety Systems
+=============
 
-Safety and protection systems including:
-- Kill switch mechanisms
-- Alert systems for notifications
-- Recovery systems for fault tolerance
-- Rug detection and protection
+Core safety and security systems for the trading bot.
 """
 
-from worker_ant_v1.safety.kill_switch import EnhancedKillSwitch, KillSwitchTrigger, SafetyAlert, ThreatLevel
-from worker_ant_v1.safety.alert_system import AdvancedAlertSystem, AlertPriority, AlertChannel
-from worker_ant_v1.safety.recovery_system import AutonomousRecoverySystem, RecoveryAction
-from worker_ant_v1.safety.rug_detector import AdvancedRugDetector, RugDetectionResult, RugConfidence
+from worker_ant_v1.safety.alert_system import (
+    BattlefieldAlertSystem,
+    AlertPriority,
+    AlertChannel,
+    Alert,
+    create_alert_system
+)
+from worker_ant_v1.safety.kill_switch import EnhancedKillSwitch, KillSwitchTrigger, ThreatLevel
+from worker_ant_v1.safety.rug_detector import RugDetector, RugPullSignal
+from worker_ant_v1.safety.enhanced_rug_detector import EnhancedRugDetector
 
 __all__ = [
+    'BattlefieldAlertSystem',
+    'AlertPriority',
+    'AlertChannel',
+    'Alert',
+    'create_alert_system',
     'EnhancedKillSwitch',
     'KillSwitchTrigger',
-    'SafetyAlert',
     'ThreatLevel',
-    'AdvancedAlertSystem',
-    'AlertPriority', 
-    'AlertChannel',
-    'AutonomousRecoverySystem',
-    'RecoveryAction',
-    'AdvancedRugDetector',
-    'RugDetectionResult',
-    'RugConfidence'
+    'RugDetector',
+    'RugPullSignal',
+    'EnhancedRugDetector'
 ]

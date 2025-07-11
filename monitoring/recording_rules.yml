@@ -1,0 +1,127 @@
+# SMART APE NEURAL SWARM - RECORDING RULES
+# =====================================
+
+groups:
+# Trading Performance Metrics
+- name: trading_performance
+  interval: 30s
+  rules:
+  # Trading Success Rate
+  - record: trading:success_rate:5m
+    expr: sum(rate(trading_success_total[5m])) / sum(rate(trading_attempts_total[5m]))
+
+  # Average Trade Duration
+  - record: trading:duration_seconds:avg_5m
+    expr: rate(trading_duration_seconds_sum[5m]) / rate(trading_duration_seconds_count[5m])
+
+  # Trading Volume
+  - record: trading:volume_sol:sum_1h
+    expr: sum(rate(trading_volume_sol[1h]))
+
+  # Profit/Loss Metrics
+  - record: trading:profit_loss_percent:1h
+    expr: (sum(rate(trading_profit_sol[1h])) - sum(rate(trading_loss_sol[1h]))) / sum(rate(trading_volume_sol[1h])) * 100
+
+  # Win/Loss Ratio
+  - record: trading:win_loss_ratio:1h
+    expr: sum(rate(trading_wins_total[1h])) / sum(rate(trading_losses_total[1h]))
+
+# API Performance Metrics
+- name: api_performance
+  interval: 30s
+  rules:
+  # Request Rate
+  - record: api:request_rate:5m
+    expr: sum(rate(http_requests_total[5m])) by (endpoint)
+
+  # Error Rate
+  - record: api:error_rate:5m
+    expr: sum(rate(http_requests_total{status=~"5.."}[5m])) / sum(rate(http_requests_total[5m]))
+
+  # Average Response Time
+  - record: api:response_time:avg_5m
+    expr: rate(http_request_duration_seconds_sum[5m]) / rate(http_request_duration_seconds_count[5m])
+
+  # Request Throughput
+  - record: api:throughput:1m
+    expr: sum(rate(http_requests_total[1m])) by (endpoint)
+
+# System Performance Metrics
+- name: system_performance
+  interval: 1m
+  rules:
+  # CPU Usage
+  - record: system:cpu_usage:avg_5m
+    expr: avg(rate(process_cpu_seconds_total[5m]) * 100)
+
+  # Memory Usage
+  - record: system:memory_usage:avg_5m
+    expr: avg((1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) * 100)
+
+  # Disk Usage
+  - record: system:disk_usage:avg_5m
+    expr: avg((node_filesystem_size_bytes - node_filesystem_free_bytes) / node_filesystem_size_bytes * 100)
+
+  # Network I/O
+  - record: system:network_io:rate_5m
+    expr: sum(rate(node_network_transmit_bytes_total[5m]) + rate(node_network_receive_bytes_total[5m]))
+
+# Wallet Performance Metrics
+- name: wallet_performance
+  interval: 1m
+  rules:
+  # Wallet Balance
+  - record: wallet:balance:current
+    expr: sum(wallet_balance_sol) by (wallet_id)
+
+  # Wallet Transaction Rate
+  - record: wallet:transaction_rate:5m
+    expr: sum(rate(wallet_transactions_total[5m])) by (wallet_id)
+
+  # Wallet Success Rate
+  - record: wallet:success_rate:5m
+    expr: sum(rate(wallet_success_total[5m])) / sum(rate(wallet_attempts_total[5m])) by (wallet_id)
+
+  # Wallet Profit/Loss
+  - record: wallet:profit_loss:1h
+    expr: sum(rate(wallet_profit_sol[1h]) - rate(wallet_loss_sol[1h])) by (wallet_id)
+
+# Security Metrics
+- name: security_metrics
+  interval: 1m
+  rules:
+  # Unauthorized Access Attempts
+  - record: security:unauthorized_access:rate_5m
+    expr: sum(rate(security_unauthorized_access_total[5m]))
+
+  # Wallet Compromise Attempts
+  - record: security:wallet_compromise:rate_5m
+    expr: sum(rate(security_wallet_compromise_attempt_total[5m]))
+
+  # Abnormal Trading Detection
+  - record: security:abnormal_trading:ratio_5m
+    expr: rate(trading_volume_usd[5m]) / avg_over_time(trading_volume_usd[24h])
+
+  # Security Incident Rate
+  - record: security:incident_rate:1h
+    expr: sum(rate(security_incident_total[1h]))
+
+# Infrastructure Health Metrics
+- name: infrastructure_health
+  interval: 1m
+  rules:
+  # Service Uptime
+  - record: infra:uptime:ratio_5m
+    expr: avg_over_time(up[5m])
+
+  # Redis Performance
+  - record: infra:redis_performance:5m
+    expr: rate(redis_commands_total[5m])
+
+  # Prometheus Performance
+  - record: infra:prometheus_performance:5m
+    expr: rate(prometheus_samples_appended_total[5m])
+
+  # Grafana Performance
+  - record: infra:grafana_performance:5m
+    expr: rate(grafana_http_request_duration_seconds_count[5m]) 

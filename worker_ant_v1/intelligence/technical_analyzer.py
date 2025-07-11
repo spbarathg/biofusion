@@ -1,591 +1,614 @@
 """
-Technical Analysis Engine for Aggressive Memecoin Trading
-======================================================
+Technical Analysis Engine
+=======================
 
-Advanced technical indicators optimized for memecoin volatility and short-term trading.
-Implements RSI, MACD, Bollinger Bands, EMA, and custom momentum indicators.
+Advanced technical analysis system with pattern recognition
+and trend detection capabilities.
 """
 
-import asyncio
-import os
+import numpy as np
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Any, Union
 from dataclasses import dataclass, field
+import logging
 
-from worker_ant_v1.config.swarm_config import aggressive_meme_strategy, ml_model_config
-from worker_ant_v1.utils.simple_logger import setup_logger
+from worker_ant_v1.utils.logger import setup_logger
 
-logger = setup_logger(__name__)
+class SignalStrength(Enum):
+    WEAK = "weak"
+    MODERATE = "moderate"
+    STRONG = "strong"
+    VERY_STRONG = "very_strong"
 
-# External dependencies - conditional imports
-try:
-    import pandas as pd
-    import numpy as np
-    import talib
-    from scipy import stats
-    EXTERNAL_DEPS_AVAILABLE = True
-except ImportError:
-    # Create mock classes for development/testing
-    EXTERNAL_DEPS_AVAILABLE = False
-    
-    class pd:
-        @staticmethod
-        def DataFrame(*args, **kwargs): 
-            class MockDF:
-                def __getitem__(self, key): return [0.5]
-                def rolling(self, *args, **kwargs): return self
-                def mean(self): return 0.5
-                def std(self): return 0.1
-                def iloc(self): return 0.5
-            return MockDF()
-    
-    class np:
-        @staticmethod
-        def array(data): return data
-        @staticmethod
-        def mean(data): return 0.5
-        @staticmethod
-        def std(data): return 0.1
-        @staticmethod
-        def max(data): return 1.0
-        @staticmethod
-        def min(data): return 0.0
-    
-    class talib:
-        @staticmethod
-        def RSI(*args, **kwargs): return [50.0]
-        @staticmethod
-        def MACD(*args, **kwargs): return ([0.0], [0.0], [0.0])
-        @staticmethod
-        def BBANDS(*args, **kwargs): return ([1.0], [0.5], [0.0])
-        @staticmethod
-        def SMA(*args, **kwargs): return [0.5]
-        @staticmethod
-        def EMA(*args, **kwargs): return [0.5]
-    
-    class stats:
-        @staticmethod
-        def linregress(*args, **kwargs):
-            class MockResult:
-                slope = 0.0
-                pvalue = 0.5
-            return MockResult()
-
+class TrendDirection(Enum):
+    BULLISH = "bullish"
+    BEARISH = "bearish"
+    SIDEWAYS = "sideways"
 
 @dataclass
-class TechnicalSignals:
-    """Technical analysis signals for trading decisions"""
-    token_symbol: str
+class TechnicalSignal:
+    """Technical analysis signal"""
+    indicator: str
+    signal_type: str  # buy, sell, hold
+    strength: SignalStrength
+    value: float
     timestamp: datetime
-    
-    # RSI Signals
-    rsi_value: float
-    rsi_signal: str  # "buy", "sell", "hold"
-    rsi_strength: float  # 0 to 1
-    
-    # MACD Signals
-    macd_line: float
-    macd_signal: float
-    macd_histogram: float
-    macd_trend: str  # "bullish", "bearish", "neutral"
-    macd_strength: float  # 0 to 1
-    
-    # Bollinger Bands
-    bb_upper: float
-    bb_middle: float
-    bb_lower: float
-    bb_position: float  # -1 (lower) to +1 (upper)
-    bb_squeeze: bool  # Low volatility indicator
-    
-    # Moving Averages
-    ema_12: float
-    ema_26: float
-    ema_crossover: str  # "golden", "death", "none"
-    
-    # Volume Analysis
-    volume_spike: bool
-    volume_trend: str  # "increasing", "decreasing", "stable"
-    
-    # Custom Memecoin Indicators
-    momentum_score: float  # -1 to +1
-    volatility_index: float  # 0 to 1
-    breakout_probability: float  # 0 to 1
-    
-    # Overall Signal
-    overall_signal: str  # "strong_buy", "buy", "hold", "sell", "strong_sell"
-    confidence: float  # 0 to 1
-
+    metadata: Dict[str, Any] = field(default_factory=dict)
 
 @dataclass
-class PriceData:
-    """OHLCV price data structure"""
-    timestamp: datetime
-    open: float
-    high: float
-    low: float
-    close: float
-    volume: float
-
+class TechnicalAnalysis:
+    """Technical analysis result"""
+    trend_direction: str
+    trend_strength: float
+    support_levels: List[float]
+    resistance_levels: List[float]
+    signals: List[Dict[str, Any]]
+    overall_score: float
+    confidence: float
+    timestamp: datetime = field(default_factory=datetime.now)
 
 class TechnicalAnalyzer:
-    """Advanced technical analysis engine for memecoin trading"""
+    """Technical analysis engine with advanced pattern recognition"""
     
     def __init__(self):
-        self.price_history: Dict[str, List[PriceData]] = {}
-        self.signals_history: Dict[str, List[TechnicalSignals]] = {}
+        self.logger = setup_logger(__name__)
         
-        # Technical indicator periods (optimized for memecoin volatility)
-        self.rsi_period = 14
-        self.macd_fast = 12
-        self.macd_slow = 26
-        self.macd_signal_period = 9
-        self.bb_period = 20
-        self.bb_std = 2.0
-        self.ema_short = 12
-        self.ema_long = 26
         
-        # Memecoin-specific parameters
-        self.volume_spike_threshold = 2.0  # 2x average volume
-        self.momentum_period = 10
-        self.volatility_period = 20
+        self.price_history: Dict[str, List[float]] = {}
+        self.volume_history: Dict[str, List[float]] = {}
+        self.max_history_length: int = 1000
         
-    async def analyze_token_technicals(self, token_symbol: str, price_data: List[PriceData]) -> TechnicalSignals:
-        """Perform comprehensive technical analysis on token"""
         
-        # Update price history
-        self._update_price_history(token_symbol, price_data)
-        
-        # Get sufficient data for analysis
-        if len(self.price_history[token_symbol]) < 50:
-            logger.warning(f"Insufficient data for {token_symbol} technical analysis")
-            return self._create_neutral_signals(token_symbol)
-        
-        df = self._price_data_to_dataframe(self.price_history[token_symbol])
-        
-        # Calculate all technical indicators
-        signals = TechnicalSignals(
-            token_symbol=token_symbol,
-            timestamp=datetime.now(),
-            
-            # RSI Analysis
-            **self._calculate_rsi_signals(df),
-            
-            # MACD Analysis  
-            **self._calculate_macd_signals(df),
-            
-            # Bollinger Bands
-            **self._calculate_bollinger_signals(df),
-            
-            # Moving Averages
-            **self._calculate_ema_signals(df),
-            
-            # Volume Analysis
-            **self._calculate_volume_signals(df),
-            
-            # Custom Memecoin Indicators
-            **self._calculate_memecoin_indicators(df)
-        )
-        
-        # Generate overall signal
-        signals.overall_signal, signals.confidence = self._generate_overall_signal(signals)
-        
-        # Store in history
-        if token_symbol not in self.signals_history:
-            self.signals_history[token_symbol] = []
-        self.signals_history[token_symbol].append(signals)
-        
-        # Keep only last 24 hours
-        cutoff = datetime.now() - timedelta(hours=24)
-        self.signals_history[token_symbol] = [
-            s for s in self.signals_history[token_symbol]
-            if s.timestamp > cutoff
-        ]
-        
-        return signals
-    
-    def _update_price_history(self, token_symbol: str, new_data: List[PriceData]):
-        """Update price history with new data"""
-        
-        if token_symbol not in self.price_history:
-            self.price_history[token_symbol] = []
-        
-        # Add new data
-        self.price_history[token_symbol].extend(new_data)
-        
-        # Sort by timestamp
-        self.price_history[token_symbol].sort(key=lambda x: x.timestamp)
-        
-        # Keep only last 500 data points (about 8 hours of 1-minute data)
-        if len(self.price_history[token_symbol]) > 500:
-            self.price_history[token_symbol] = self.price_history[token_symbol][-500:]
-    
-    def _price_data_to_dataframe(self, price_data: List[PriceData]) -> pd.DataFrame:
-        """Convert price data to pandas DataFrame"""
-        
-        data = {
-            'timestamp': [p.timestamp for p in price_data],
-            'open': [p.open for p in price_data],
-            'high': [p.high for p in price_data],
-            'low': [p.low for p in price_data],
-            'close': [p.close for p in price_data],
-            'volume': [p.volume for p in price_data]
-        }
-        
-        df = pd.DataFrame(data)
-        df.set_index('timestamp', inplace=True)
-        return df
-    
-    def _calculate_rsi_signals(self, df: pd.DataFrame) -> Dict:
-        """Calculate RSI-based signals"""
-        
-        # Calculate RSI
-        rsi = talib.RSI(df['close'].values, timeperiod=self.rsi_period)
-        current_rsi = rsi[-1] if len(rsi) > 0 and not np.isnan(rsi[-1]) else 50.0
-        
-        # Generate RSI signals
-        if current_rsi <= aggressive_meme_strategy.rsi_oversold_threshold:
-            rsi_signal = "buy"
-            rsi_strength = (aggressive_meme_strategy.rsi_oversold_threshold - current_rsi) / aggressive_meme_strategy.rsi_oversold_threshold
-        elif current_rsi >= aggressive_meme_strategy.rsi_overbought_threshold:
-            rsi_signal = "sell" 
-            rsi_strength = (current_rsi - aggressive_meme_strategy.rsi_overbought_threshold) / (100 - aggressive_meme_strategy.rsi_overbought_threshold)
-        else:
-            rsi_signal = "hold"
-            # Strength based on distance from neutral (50)
-            rsi_strength = abs(current_rsi - 50) / 50
-        
-        return {
-            'rsi_value': current_rsi,
-            'rsi_signal': rsi_signal,
-            'rsi_strength': min(rsi_strength, 1.0)
-        }
-    
-    def _calculate_macd_signals(self, df: pd.DataFrame) -> Dict:
-        """Calculate MACD-based signals"""
-        
-        # Calculate MACD
-        macd_line, macd_signal, macd_hist = talib.MACD(
-            df['close'].values,
-            fastperiod=self.macd_fast,
-            slowperiod=self.macd_slow,
-            signalperiod=self.macd_signal_period
-        )
-        
-        current_macd = macd_line[-1] if len(macd_line) > 0 and not np.isnan(macd_line[-1]) else 0.0
-        current_signal = macd_signal[-1] if len(macd_signal) > 0 and not np.isnan(macd_signal[-1]) else 0.0
-        current_hist = macd_hist[-1] if len(macd_hist) > 0 and not np.isnan(macd_hist[-1]) else 0.0
-        
-        # MACD trend analysis
-        if current_macd > current_signal and current_hist > 0:
-            macd_trend = "bullish"
-        elif current_macd < current_signal and current_hist < 0:
-            macd_trend = "bearish"
-        else:
-            macd_trend = "neutral"
-        
-        # MACD strength based on histogram and crossover
-        macd_strength = min(abs(current_hist) / (abs(current_macd) + 1e-6), 1.0)
-        
-        return {
-            'macd_line': current_macd,
-            'macd_signal': current_signal,
-            'macd_histogram': current_hist,
-            'macd_trend': macd_trend,
-            'macd_strength': macd_strength
-        }
-    
-    def _calculate_bollinger_signals(self, df: pd.DataFrame) -> Dict:
-        """Calculate Bollinger Bands signals"""
-        
-        # Calculate Bollinger Bands
-        bb_upper, bb_middle, bb_lower = talib.BBANDS(
-            df['close'].values,
-            timeperiod=self.bb_period,
-            nbdevup=self.bb_std,
-            nbdevdn=self.bb_std,
-            matype=0
-        )
-        
-        current_price = df['close'].iloc[-1]
-        current_upper = bb_upper[-1] if len(bb_upper) > 0 and not np.isnan(bb_upper[-1]) else current_price
-        current_middle = bb_middle[-1] if len(bb_middle) > 0 and not np.isnan(bb_middle[-1]) else current_price
-        current_lower = bb_lower[-1] if len(bb_lower) > 0 and not np.isnan(bb_lower[-1]) else current_price
-        
-        # Calculate position within bands (-1 to +1)
-        if current_upper != current_lower:
-            bb_position = (current_price - current_middle) / (current_upper - current_middle)
-        else:
-            bb_position = 0.0
-        
-        # Bollinger Squeeze detection (low volatility)
-        band_width = (current_upper - current_lower) / current_middle
-        avg_width = np.mean([(bb_upper[i] - bb_lower[i]) / bb_middle[i] 
-                            for i in range(-20, 0) 
-                            if not np.isnan(bb_upper[i]) and bb_middle[i] != 0])
-        bb_squeeze = band_width < avg_width * 0.8
-        
-        return {
-            'bb_upper': current_upper,
-            'bb_middle': current_middle,
-            'bb_lower': current_lower,
-            'bb_position': np.clip(bb_position, -1, 1),
-            'bb_squeeze': bb_squeeze
-        }
-    
-    def _calculate_ema_signals(self, df: pd.DataFrame) -> Dict:
-        """Calculate EMA crossover signals"""
-        
-        # Calculate EMAs
-        ema_12 = talib.EMA(df['close'].values, timeperiod=self.ema_short)
-        ema_26 = talib.EMA(df['close'].values, timeperiod=self.ema_long)
-        
-        current_ema_12 = ema_12[-1] if len(ema_12) > 0 and not np.isnan(ema_12[-1]) else df['close'].iloc[-1]
-        current_ema_26 = ema_26[-1] if len(ema_26) > 0 and not np.isnan(ema_26[-1]) else df['close'].iloc[-1]
-        
-        # Check for crossovers
-        if len(ema_12) >= 2 and len(ema_26) >= 2:
-            prev_ema_12 = ema_12[-2]
-            prev_ema_26 = ema_26[-2]
-            
-            # Golden cross (bullish)
-            if prev_ema_12 <= prev_ema_26 and current_ema_12 > current_ema_26:
-                ema_crossover = "golden"
-            # Death cross (bearish)
-            elif prev_ema_12 >= prev_ema_26 and current_ema_12 < current_ema_26:
-                ema_crossover = "death"
-            else:
-                ema_crossover = "none"
-        else:
-            ema_crossover = "none"
-        
-        return {
-            'ema_12': current_ema_12,
-            'ema_26': current_ema_26,
-            'ema_crossover': ema_crossover
-        }
-    
-    def _calculate_volume_signals(self, df: pd.DataFrame) -> Dict:
-        """Calculate volume-based signals"""
-        
-        current_volume = df['volume'].iloc[-1]
-        
-        # Volume trend analysis
-        if len(df) >= 10:
-            recent_volumes = df['volume'].iloc[-10:].values
-            avg_volume = np.mean(recent_volumes[:-1])
-            
-            # Volume spike detection
-            volume_spike = current_volume > avg_volume * self.volume_spike_threshold
-            
-            # Volume trend
-            volume_slope, _, _, _, _ = stats.linregress(range(len(recent_volumes)), recent_volumes)
-            if volume_slope > avg_volume * 0.1:
-                volume_trend = "increasing"
-            elif volume_slope < -avg_volume * 0.1:
-                volume_trend = "decreasing"
-            else:
-                volume_trend = "stable"
-        else:
-            volume_spike = False
-            volume_trend = "stable"
-        
-        return {
-            'volume_spike': volume_spike,
-            'volume_trend': volume_trend
-        }
-    
-    def _calculate_memecoin_indicators(self, df: pd.DataFrame) -> Dict:
-        """Calculate custom memecoin-specific indicators"""
-        
-        # Momentum Score (rate of change with volatility adjustment)
-        if len(df) >= self.momentum_period:
-            price_change = (df['close'].iloc[-1] - df['close'].iloc[-self.momentum_period]) / df['close'].iloc[-self.momentum_period]
-            volatility = df['close'].iloc[-self.momentum_period:].std() / df['close'].iloc[-self.momentum_period:].mean()
-            momentum_score = np.tanh(price_change / (volatility + 0.01)) # Normalize to -1, +1
-        else:
-            momentum_score = 0.0
-        
-        # Volatility Index
-        if len(df) >= self.volatility_period:
-            returns = df['close'].pct_change().iloc[-self.volatility_period:]
-            volatility_index = min(returns.std() * np.sqrt(len(returns)), 1.0)
-        else:
-            volatility_index = 0.0
-        
-        # Breakout Probability (combination of volume, price action, and volatility)
-        if len(df) >= 20:
-            # Price near resistance/support
-            recent_high = df['high'].iloc[-20:].max()
-            recent_low = df['low'].iloc[-20:].min()
-            current_price = df['close'].iloc[-1]
-            
-            # Distance from range bounds
-            range_size = recent_high - recent_low
-            if range_size > 0:
-                upper_distance = (recent_high - current_price) / range_size
-                lower_distance = (current_price - recent_low) / range_size
-                
-                # Volume confirmation
-                avg_volume = df['volume'].iloc[-20:-1].mean()
-                current_volume = df['volume'].iloc[-1]
-                volume_factor = min(current_volume / avg_volume, 2.0) / 2.0
-                
-                # Volatility factor
-                volatility_factor = min(volatility_index * 2, 1.0)
-                
-                # Breakout probability higher near bounds with volume and volatility
-                breakout_probability = (
-                    (1 - min(upper_distance, lower_distance)) * 0.5 +
-                    volume_factor * 0.3 +
-                    volatility_factor * 0.2
-                )
-            else:
-                breakout_probability = 0.0
-        else:
-            breakout_probability = 0.0
-        
-        return {
-            'momentum_score': np.clip(momentum_score, -1, 1),
-            'volatility_index': volatility_index,
-            'breakout_probability': min(breakout_probability, 1.0)
-        }
-    
-    def _generate_overall_signal(self, signals: TechnicalSignals) -> Tuple[str, float]:
-        """Generate overall trading signal with confidence"""
-        
-        # Signal scoring system
-        signal_score = 0.0
-        confidence_factors = []
-        
-        # RSI contribution
-        if signals.rsi_signal == "buy":
-            signal_score += 1.0 * signals.rsi_strength
-            confidence_factors.append(signals.rsi_strength)
-        elif signals.rsi_signal == "sell":
-            signal_score -= 1.0 * signals.rsi_strength
-            confidence_factors.append(signals.rsi_strength)
-        
-        # MACD contribution
-        if signals.macd_trend == "bullish":
-            signal_score += 1.0 * signals.macd_strength
-            confidence_factors.append(signals.macd_strength)
-        elif signals.macd_trend == "bearish":
-            signal_score -= 1.0 * signals.macd_strength
-            confidence_factors.append(signals.macd_strength)
-        
-        # EMA crossover contribution
-        if signals.ema_crossover == "golden":
-            signal_score += 1.5  # Strong signal
-            confidence_factors.append(0.8)
-        elif signals.ema_crossover == "death":
-            signal_score -= 1.5  # Strong signal
-            confidence_factors.append(0.8)
-        
-        # Bollinger Bands contribution
-        if signals.bb_position < -0.8:  # Near lower band
-            signal_score += 0.8
-            confidence_factors.append(0.6)
-        elif signals.bb_position > 0.8:  # Near upper band
-            signal_score -= 0.8
-            confidence_factors.append(0.6)
-        
-        # Volume spike boost
-        if signals.volume_spike:
-            signal_score *= 1.3  # Amplify signal with volume confirmation
-            confidence_factors.append(0.7)
-        
-        # Momentum contribution
-        signal_score += signals.momentum_score * 0.8
-        confidence_factors.append(abs(signals.momentum_score))
-        
-        # Breakout probability
-        if signals.breakout_probability > 0.7:
-            signal_score *= 1.2  # Boost signal near breakout
-            confidence_factors.append(signals.breakout_probability)
-        
-        # Generate signal classification
-        if signal_score >= 2.5:
-            overall_signal = "strong_buy"
-        elif signal_score >= 1.0:
-            overall_signal = "buy"
-        elif signal_score <= -2.5:
-            overall_signal = "strong_sell"
-        elif signal_score <= -1.0:
-            overall_signal = "sell"
-        else:
-            overall_signal = "hold"
-        
-        # Calculate confidence
-        confidence = min(np.mean(confidence_factors) if confidence_factors else 0.0, 1.0)
-        
-        return overall_signal, confidence
-    
-    def _create_neutral_signals(self, token_symbol: str) -> TechnicalSignals:
-        """Create neutral signals when insufficient data"""
-        
-        return TechnicalSignals(
-            token_symbol=token_symbol,
-            timestamp=datetime.now(),
-            rsi_value=50.0,
-            rsi_signal="hold",
-            rsi_strength=0.0,
-            macd_line=0.0,
-            macd_signal=0.0,
-            macd_histogram=0.0,
-            macd_trend="neutral",
-            macd_strength=0.0,
-            bb_upper=0.0,
-            bb_middle=0.0,
-            bb_lower=0.0,
-            bb_position=0.0,
-            bb_squeeze=False,
-            ema_12=0.0,
-            ema_26=0.0,
-            ema_crossover="none",
-            volume_spike=False,
-            volume_trend="stable",
-            momentum_score=0.0,
-            volatility_index=0.0,
-            breakout_probability=0.0,
-            overall_signal="hold",
-            confidence=0.0
-        )
-    
-    def get_trading_signals(self, token_symbol: str) -> Dict[str, float]:
-        """Get processed trading signals for decision making"""
-        
-        if token_symbol not in self.signals_history or not self.signals_history[token_symbol]:
-            return {
-                'technical_signal': 0.0,
-                'confidence': 0.0,
-                'momentum': 0.0,
-                'volatility': 0.0,
-                'breakout_probability': 0.0
+        self.indicators = {
+            'sma_periods': [7, 21, 50],
+            'ema_periods': [12, 26],
+            'rsi_period': 14,
+            'macd_params': {
+                'fast_period': 12,
+                'slow_period': 26,
+                'signal_period': 9
+            },
+            'bollinger_params': {
+                'period': 20,
+                'std_dev': 2
             }
-        
-        latest = self.signals_history[token_symbol][-1]
-        
-        # Convert signal to numeric
-        signal_map = {
-            "strong_buy": 1.0,
-            "buy": 0.5,
-            "hold": 0.0,
-            "sell": -0.5,
-            "strong_sell": -1.0
         }
         
-        technical_signal = signal_map.get(latest.overall_signal, 0.0)
         
-        return {
-            'technical_signal': technical_signal,
-            'confidence': latest.confidence,
-            'momentum': latest.momentum_score,
-            'volatility': latest.volatility_index,
-            'breakout_probability': latest.breakout_probability,
-            'rsi': latest.rsi_value,
-            'volume_spike': latest.volume_spike
+        self.thresholds = {
+            'rsi_oversold': 30,
+            'rsi_overbought': 70,
+            'volume_surge': 2.0,
+            'trend_strength': 0.1
         }
-
-
-# Global technical analyzer instance
-technical_analyzer = TechnicalAnalyzer() 
+        
+    async def analyze_token(self, token_address: str, price_data: Dict) -> TechnicalAnalysis:
+        """Perform comprehensive technical analysis"""
+        
+        try:
+            await self._update_price_history(token_address, price_data)
+            
+            
+            prices = self.price_history.get(token_address, [])
+            volumes = self.volume_history.get(token_address, [])
+            
+            if len(prices) < 10:
+                return self._create_default_analysis(token_address)
+            
+            
+            sma_signals = self._calculate_sma_signals(prices)
+            ema_signals = self._calculate_ema_signals(prices)
+            rsi_signal = self._calculate_rsi_signal(prices)
+            macd_signal = self._calculate_macd_signal(prices)
+            bollinger_signal = self._calculate_bollinger_signal(prices)
+            volume_signal = self._calculate_volume_signal(prices, volumes)
+            
+            
+            all_signals = [
+                sma_signals, ema_signals, rsi_signal,
+                macd_signal, bollinger_signal, volume_signal
+            ]
+            
+            
+            valid_signals = [s for s in all_signals if s is not None]
+            
+            
+            trend_direction, trend_strength = self._analyze_trend(prices)
+            
+            
+            support_levels = self._calculate_support_levels(prices)
+            resistance_levels = self._calculate_resistance_levels(prices)
+            
+            
+            overall_score = self._calculate_overall_score(valid_signals)
+            
+            
+            confidence = self._calculate_confidence(len(prices), len(valid_signals))
+            
+            return TechnicalAnalysis(
+                token_address=token_address,
+                timestamp=datetime.now(),
+                trend_direction=trend_direction,
+                trend_strength=trend_strength,
+                support_levels=support_levels,
+                resistance_levels=resistance_levels,
+                signals=valid_signals,
+                overall_score=overall_score,
+                confidence=confidence
+            )
+            
+        except Exception as e:
+            self.logger.error(f"Technical analysis failed for {token_address}: {e}")
+            return self._create_default_analysis(token_address)
+    
+    async def _update_price_history(self, token_address: str, price_data: Dict):
+        """Update price history for a token"""
+        
+        current_price = 0.0
+        current_volume = 0.0
+        
+        
+        if 'price' in price_data:
+            current_price = float(price_data['price'])
+        elif 'current_price' in price_data:
+            current_price = float(price_data['current_price'])
+        elif 'last_price' in price_data:
+            current_price = float(price_data['last_price'])
+        else:
+            self.logger.warning(f"No price data found for {token_address}")
+            return
+        
+        
+        if 'volume' in price_data:
+            current_volume = float(price_data['volume'])
+        elif 'volume_24h' in price_data:
+            current_volume = float(price_data['volume_24h'])
+        
+        
+        if token_address not in self.price_history:
+            self.price_history[token_address] = []
+            self.volume_history[token_address] = []
+        
+        
+        self.price_history[token_address].append(current_price)
+        self.volume_history[token_address].append(current_volume)
+        
+        
+        if len(self.price_history[token_address]) > self.max_history_length:
+            self.price_history[token_address] = self.price_history[token_address][-self.max_history_length:]
+            self.volume_history[token_address] = self.volume_history[token_address][-self.max_history_length:]
+    
+    def _calculate_sma_signals(self, prices: List[float]) -> Optional[TechnicalSignal]:
+        """Calculate Simple Moving Average signals"""
+        
+        try:
+            if len(prices) < max(self.indicators['sma_periods']):
+                return None
+            
+            current_price = prices[-1]
+            signals = []
+            
+            for period in self.indicators['sma_periods']:
+                if len(prices) >= period:
+                    sma = np.mean(prices[-period:])
+                    
+                    if current_price > sma:
+                        signals.append(1)  # Bullish
+                    elif current_price < sma:
+                        signals.append(-1)  # Bearish
+                    else:
+                        signals.append(0)  # Neutral
+            
+            if not signals:
+                return None
+            
+            
+            avg_signal = np.mean(signals)
+            
+            
+            if avg_signal > 0.3:
+                signal_type = "buy"
+                strength = SignalStrength.MODERATE if avg_signal > 0.7 else SignalStrength.WEAK
+            elif avg_signal < -0.3:
+                signal_type = "sell"
+                strength = SignalStrength.MODERATE if avg_signal < -0.7 else SignalStrength.WEAK
+            else:
+                signal_type = "hold"
+                strength = SignalStrength.WEAK
+            
+            return TechnicalSignal(
+                indicator="SMA",
+                signal_type=signal_type,
+                strength=strength,
+                value=avg_signal,
+                timestamp=datetime.now(),
+                metadata={"periods": self.indicators['sma_periods']}
+            )
+            
+        except Exception as e:
+            self.logger.warning(f"SMA calculation failed: {e}")
+            return None
+    
+    def _calculate_ema_signals(self, prices: List[float]) -> Optional[TechnicalSignal]:
+        """Calculate Exponential Moving Average signals"""
+        
+        try:
+            if len(prices) < max(self.indicators['ema_periods']):
+                return None
+            
+            def calculate_ema(data, period):
+                alpha = 2 / (period + 1)
+                ema = [data[0]]
+                for price in data[1:]:
+                    ema.append(alpha * price + (1 - alpha) * ema[-1])
+                return ema
+            
+            current_price = prices[-1]
+            
+            
+            ema_fast = calculate_ema(prices, self.indicators['ema_periods'][0])
+            ema_slow = calculate_ema(prices, self.indicators['ema_periods'][1])
+            
+            
+            if ema_fast[-1] > ema_slow[-1]:
+                signal_type = "buy"
+                strength = SignalStrength.MODERATE
+                value = 0.5
+            elif ema_fast[-1] < ema_slow[-1]:
+                signal_type = "sell"
+                strength = SignalStrength.MODERATE
+                value = -0.5
+            else:
+                signal_type = "hold"
+                strength = SignalStrength.WEAK
+                value = 0.0
+            
+            return TechnicalSignal(
+                indicator="EMA",
+                signal_type=signal_type,
+                strength=strength,
+                value=value,
+                timestamp=datetime.now(),
+                metadata={
+                    "fast_period": self.indicators['ema_periods'][0],
+                    "slow_period": self.indicators['ema_periods'][1]
+                }
+            )
+            
+        except Exception as e:
+            self.logger.warning(f"EMA calculation failed: {e}")
+            return None
+    
+    def _calculate_rsi_signal(self, prices: List[float]) -> Optional[TechnicalSignal]:
+        """Calculate RSI signal"""
+        
+        try:
+            period = self.indicators['rsi_period']
+            if len(prices) < period + 1:
+                return None
+            
+            
+            changes = np.diff(prices)
+            
+            
+            gains = np.where(changes > 0, changes, 0)
+            losses = np.where(changes < 0, -changes, 0)
+            
+            
+            avg_gain = np.mean(gains[-period:])
+            avg_loss = np.mean(losses[-period:])
+            
+            if avg_loss == 0:
+                rsi = 100
+            else:
+                rs = avg_gain / avg_loss
+                rsi = 100 - (100 / (1 + rs))
+            
+            
+            if rsi > self.thresholds['rsi_overbought']:
+                signal_type = "sell"
+                strength = SignalStrength.STRONG
+            elif rsi < self.thresholds['rsi_oversold']:
+                signal_type = "buy"
+                strength = SignalStrength.STRONG
+            else:
+                signal_type = "hold"
+                strength = SignalStrength.WEAK
+            
+            
+            normalized_rsi = (rsi - 50) / 50
+            
+            return TechnicalSignal(
+                indicator="RSI",
+                signal_type=signal_type,
+                strength=strength,
+                value=normalized_rsi,
+                timestamp=datetime.now(),
+                metadata={"rsi_value": rsi, "period": period}
+            )
+            
+        except Exception as e:
+            self.logger.warning(f"RSI calculation failed: {e}")
+            return None
+    
+    def _calculate_macd_signal(self, prices: List[float]) -> Optional[TechnicalSignal]:
+        """Calculate MACD signal"""
+        
+        try:
+            fast_period = self.indicators['macd_params']['fast_period']
+            slow_period = self.indicators['macd_params']['slow_period']
+            signal_period = self.indicators['macd_params']['signal_period']
+            
+            if len(prices) < slow_period:
+                return None
+            
+            def calculate_ema(data, period):
+                alpha = 2 / (period + 1)
+                ema = [data[0]]
+                for price in data[1:]:
+                    ema.append(alpha * price + (1 - alpha) * ema[-1])
+                return ema
+            
+            
+            ema_fast = calculate_ema(prices, fast_period)
+            ema_slow = calculate_ema(prices, slow_period)
+            
+            macd_line = np.array(ema_fast) - np.array(ema_slow)
+            signal_line = calculate_ema(macd_line.tolist(), signal_period)
+            
+            
+            current_macd = macd_line[-1]
+            current_signal = signal_line[-1]
+            
+            if current_macd > current_signal:
+                signal_type = "buy"
+                strength = SignalStrength.MODERATE
+                value = 0.4
+            elif current_macd < current_signal:
+                signal_type = "sell"
+                strength = SignalStrength.MODERATE
+                value = -0.4
+            else:
+                signal_type = "hold"
+                strength = SignalStrength.WEAK
+                value = 0.0
+            
+            return TechnicalSignal(
+                indicator="MACD",
+                signal_type=signal_type,
+                strength=strength,
+                value=value,
+                timestamp=datetime.now(),
+                metadata={
+                    "macd": current_macd,
+                    "signal": current_signal,
+                    "fast_period": fast_period,
+                    "slow_period": slow_period
+                }
+            )
+            
+        except Exception as e:
+            self.logger.warning(f"MACD calculation failed: {e}")
+            return None
+    
+    def _calculate_bollinger_signal(self, prices: List[float]) -> Optional[TechnicalSignal]:
+        """Calculate Bollinger Bands signal"""
+        
+        try:
+            period = self.indicators['bollinger_params']['period']
+            std_dev = self.indicators['bollinger_params']['std_dev']
+            
+            if len(prices) < period:
+                return None
+            
+            
+            middle_band = np.mean(prices[-period:])
+            
+            
+            std = np.std(prices[-period:])
+            
+            
+            upper_band = middle_band + (std * std_dev)
+            lower_band = middle_band - (std * std_dev)
+            
+            current_price = prices[-1]
+            
+            
+            if current_price > upper_band:
+                signal_type = "sell"
+                strength = SignalStrength.MODERATE
+                value = -0.3
+            elif current_price < lower_band:
+                signal_type = "buy"
+                strength = SignalStrength.MODERATE
+                value = 0.3
+            else:
+                signal_type = "hold"
+                strength = SignalStrength.WEAK
+                value = 0.0
+            
+            return TechnicalSignal(
+                indicator="BOLLINGER",
+                signal_type=signal_type,
+                strength=strength,
+                value=value,
+                timestamp=datetime.now(),
+                metadata={
+                    "upper_band": upper_band,
+                    "middle_band": middle_band,
+                    "lower_band": lower_band,
+                    "current_price": current_price
+                }
+            )
+            
+        except Exception as e:
+            self.logger.warning(f"Bollinger Bands calculation failed: {e}")
+            return None
+    
+    def _calculate_volume_signal(self, prices: List[float], volumes: List[float]) -> Optional[TechnicalSignal]:
+        """Calculate volume-based signal"""
+        
+        try:
+            if len(volumes) < 10 or len(prices) < 10:
+                return None
+            
+            
+            avg_volume = np.mean(volumes[-10:])
+            current_volume = volumes[-1]
+            
+            
+            price_change = (prices[-1] - prices[-2]) / prices[-2] if len(prices) > 1 else 0
+            
+            
+            volume_ratio = current_volume / avg_volume if avg_volume > 0 else 1
+            
+            
+            if volume_ratio > 1.5 and price_change > 0:
+                signal_type = "buy"
+                strength = SignalStrength.STRONG
+                value = 0.6
+            elif volume_ratio > 1.5 and price_change < 0:
+                signal_type = "sell"
+                strength = SignalStrength.STRONG
+                value = -0.6
+            else:
+                signal_type = "hold"
+                strength = SignalStrength.WEAK
+                value = 0.0
+            
+            return TechnicalSignal(
+                indicator="VOLUME",
+                signal_type=signal_type,
+                strength=strength,
+                value=value,
+                timestamp=datetime.now(),
+                metadata={
+                    "volume_ratio": volume_ratio,
+                    "price_change": price_change,
+                    "current_volume": current_volume,
+                    "avg_volume": avg_volume
+                }
+            )
+            
+        except Exception as e:
+            self.logger.warning(f"Volume signal calculation failed: {e}")
+            return None
+    
+    def _analyze_trend(self, prices: List[float]) -> Tuple[TrendDirection, float]:
+        """Analyze overall trend direction and strength"""
+        
+        try:
+            if len(prices) < 10:
+                return TrendDirection.SIDEWAYS, 0.0
+            
+            
+            x = np.arange(len(prices))
+            y = np.array(prices)
+            
+            
+            slope, intercept = np.polyfit(x, y, 1)
+            
+            
+            avg_price = np.mean(prices)
+            normalized_slope = slope / avg_price if avg_price > 0 else 0
+            
+            
+            if normalized_slope > 0.001:
+                direction = TrendDirection.BULLISH
+            elif normalized_slope < -0.001:
+                direction = TrendDirection.BEARISH
+            else:
+                direction = TrendDirection.SIDEWAYS
+            
+            
+            strength = min(abs(normalized_slope) * 1000, 1.0)
+            
+            return direction, strength
+            
+        except Exception as e:
+            self.logger.warning(f"Trend analysis failed: {e}")
+            return TrendDirection.SIDEWAYS, 0.0
+    
+    def _calculate_support_levels(self, prices: List[float]) -> List[float]:
+        """Calculate support levels"""
+        
+        try:
+            if len(prices) < 20:
+                return []
+            
+            
+            support_levels = []
+            for i in range(1, len(prices) - 1):
+                if prices[i] < prices[i-1] and prices[i] < prices[i+1]:
+                    support_levels.append(prices[i])
+            
+            
+            return sorted(list(set(support_levels)))[-3:]  # Top 3 support levels
+            
+        except Exception as e:
+            self.logger.warning(f"Support level calculation failed: {e}")
+            return []
+    
+    def _calculate_resistance_levels(self, prices: List[float]) -> List[float]:
+        """Calculate resistance levels"""
+        
+        try:
+            if len(prices) < 20:
+                return []
+            
+            
+            resistance_levels = []
+            for i in range(1, len(prices) - 1):
+                if prices[i] > prices[i-1] and prices[i] > prices[i+1]:
+                    resistance_levels.append(prices[i])
+            
+            
+            return sorted(list(set(resistance_levels)), reverse=True)[:3]  # Top 3 resistance levels
+            
+        except Exception as e:
+            self.logger.warning(f"Resistance level calculation failed: {e}")
+            return []
+    
+    def _calculate_overall_score(self, signals: List[TechnicalSignal]) -> float:
+        """Calculate overall technical score"""
+        
+        if not signals:
+            return 0.0
+        
+        scores = []
+        for signal in signals:
+            if signal.signal_type == "buy":
+                scores.append(signal.value)
+            elif signal.signal_type == "sell":
+                scores.append(signal.value)
+            else:  # hold
+                scores.append(0.0)
+        
+        return np.mean(scores) if scores else 0.0
+    
+    def _calculate_confidence(self, price_data_length: int, signal_count: int) -> float:
+        """Calculate confidence in the analysis"""
+        
+        
+        data_confidence = min(price_data_length / 50.0, 1.0)
+        
+        
+        signal_confidence = min(signal_count / 5.0, 1.0)
+        
+        
+        return (data_confidence + signal_confidence) / 2.0
+    
+    def _create_default_analysis(self, token_address: str) -> TechnicalAnalysis:
+        """Create default analysis when insufficient data"""
+        
+        return TechnicalAnalysis(
+            token_address=token_address,
+            timestamp=datetime.now(),
+            trend_direction=TrendDirection.SIDEWAYS,
+            trend_strength=0.0,
+            support_levels=[],
+            resistance_levels=[],
+            signals=[],
+            overall_score=0.0,
+            confidence=0.0
+        ) 

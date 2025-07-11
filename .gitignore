@@ -1,40 +1,28 @@
+# Security & Sensitive Files
+.env
+.env.production
+.env.local
+wallets/
+*.key
+*.pem
+*.p12
+
+# Data & Logs
+data/
+logs/
+backups/
+*.db
+*.sqlite
+
 # Python
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
 .Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-pip-wheel-metadata/
-share/python-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-MANIFEST
-
-# Virtual environments
-venv/
 env/
+venv/
 ENV/
-env.bak/
-venv.bak/
-
-# Environment variables
-.env
-.env.local
-.env.production
-.env.staging
 
 # IDE
 .vscode/
@@ -46,29 +34,5 @@ venv.bak/
 .DS_Store
 Thumbs.db
 
-# Logs (keep structure, ignore content)
-logs/*.log
-logs/*.jsonl
-logs/*.json
-!logs/.gitkeep
-
-# Trading data
-data/wallets/*.json
-data/backups/*.json
-!data/wallets/.gitkeep
-!data/backups/.gitkeep
-
-# Temporary files
-*.tmp
-*.temp
-temp/
-tmp/
-
-# Config files with sensitive data
-worker_ant_v1/.env
-.env.swarm
-
-# Package files
-*.tar.gz
-*.zip
-*.rar 
+# Docker
+.dockerignore

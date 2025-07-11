@@ -1,1 +1,0 @@
-2025-04-20 03:37:16.406 | ERROR    | bindings.worker_bridge:_load_rust_lib:111 - Failed to load Rust library: Could not find or build Rust library

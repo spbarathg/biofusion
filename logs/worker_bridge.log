@@ -1,8 +1,0 @@
-2025-04-20 03:34:15.802 | INFO     | src.utils.logging.logger:setup_logging:61 - Logging initialized for worker_bridge
-2025-04-20 03:34:15.803 | INFO     | bindings.worker_bridge:find_rust_lib:73 - Rust library not found, attempting to build it...
-2025-04-20 03:37:16.406 | ERROR    | bindings.worker_bridge:_load_rust_lib:111 - Failed to load Rust library: Could not find or build Rust library
-2025-04-20 03:37:16.408 | WARNING  | bindings.worker_bridge:__init__:52 - Failed to load Rust library: Could not find or build Rust library
-2025-04-20 03:37:16.408 | INFO     | bindings.worker_bridge:__init__:53 - Using mock implementation for testing
-2025-04-20 03:37:16.410 | INFO     | bindings.worker_bridge:start_worker:175 - Started Worker Ant d7e3ebcb-81ea-4933-82fe-97c81115d04a with 0.26666666666666666 SOL
-2025-04-20 03:37:16.411 | INFO     | bindings.worker_bridge:start_worker:175 - Started Worker Ant 90a0d910-74ab-414e-9d66-fc4e03de8157 with 0.26666666666666666 SOL
-2025-04-20 03:37:16.412 | INFO     | bindings.worker_bridge:start_worker:175 - Started Worker Ant 0e3b1684-9ef3-474f-9f77-0b0be4123a40 with 0.26666666666666666 SOL

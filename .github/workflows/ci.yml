@@ -1,0 +1,57 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+        
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        
+    - name: Run linting
+      run: |
+        flake8 worker_ant_v1/
+        black --check worker_ant_v1/
+        
+    - name: Run type checking
+      run: mypy worker_ant_v1/
+      
+    - name: Run tests
+      run: |
+        pytest tests/ -v --cov=worker_ant_v1
+        
+    - name: Run security scan
+      run: |
+        pip install bandit
+        bandit -r worker_ant_v1/
+        
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Build Docker image
+      run: docker build -t smart-ape-trading-bot .
+      
+    - name: Run security scan on image
+      run: |
+        docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+          aquasec/trivy image smart-ape-trading-bot

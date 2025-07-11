@@ -1,4 +1,4 @@
-﻿"""
+"""
 Smart Ape Mode - Trading Module
 ===============================
 
@@ -12,7 +12,7 @@ Trading execution components including:
 from worker_ant_v1.trading.market_scanner import ProductionScanner, TradingOpportunity, ScanResult
 from worker_ant_v1.trading.order_buyer import ProductionBuyer, BuySignal, BuyResult
 from worker_ant_v1.trading.order_seller import ProductionSeller, SellSignal, Position
-from worker_ant_v1.trading.trade_executor import TradeExecutor, ExecutionResult
+from worker_ant_v1.trading.surgical_trade_executor import SurgicalTradeExecutor as TradeExecutor, ExecutionResult
 
 __all__ = [
     'ProductionScanner',
