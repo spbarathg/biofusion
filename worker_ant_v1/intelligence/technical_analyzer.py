@@ -14,6 +14,7 @@ import logging
 from enum import Enum
 
 from worker_ant_v1.utils.logger import setup_logger
+from worker_ant_v1.utils.constants import SentimentDecision as SentimentDecisionEnum
 
 class SignalStrength(Enum):
     WEAK = "weak"
@@ -30,7 +31,7 @@ class TrendDirection(Enum):
 class TechnicalSignal:
     """Technical analysis signal"""
     indicator: str
-    signal_type: str  # buy, sell, hold
+    signal_type: str  # Uses SentimentDecisionEnum values
     strength: SignalStrength
     value: float
     timestamp: datetime
@@ -208,13 +209,13 @@ class TechnicalAnalyzer:
             
             
             if avg_signal > 0.3:
-                signal_type = "buy"
+                signal_type = SentimentDecisionEnum.BUY.value
                 strength = SignalStrength.MODERATE if avg_signal > 0.7 else SignalStrength.WEAK
             elif avg_signal < -0.3:
-                signal_type = "sell"
+                signal_type = SentimentDecisionEnum.SELL.value
                 strength = SignalStrength.MODERATE if avg_signal < -0.7 else SignalStrength.WEAK
             else:
-                signal_type = "hold"
+                signal_type = SentimentDecisionEnum.NEUTRAL.value
                 strength = SignalStrength.WEAK
             
             return TechnicalSignal(
@@ -252,15 +253,15 @@ class TechnicalAnalyzer:
             
             
             if ema_fast[-1] > ema_slow[-1]:
-                signal_type = "buy"
+                signal_type = SentimentDecisionEnum.BUY.value
                 strength = SignalStrength.MODERATE
                 value = 0.5
             elif ema_fast[-1] < ema_slow[-1]:
-                signal_type = "sell"
+                signal_type = SentimentDecisionEnum.SELL.value
                 strength = SignalStrength.MODERATE
                 value = -0.5
             else:
-                signal_type = "hold"
+                signal_type = SentimentDecisionEnum.NEUTRAL.value
                 strength = SignalStrength.WEAK
                 value = 0.0
             
@@ -307,13 +308,13 @@ class TechnicalAnalyzer:
             
             
             if rsi > self.thresholds['rsi_overbought']:
-                signal_type = "sell"
+                signal_type = SentimentDecisionEnum.SELL.value
                 strength = SignalStrength.STRONG
             elif rsi < self.thresholds['rsi_oversold']:
-                signal_type = "buy"
+                signal_type = SentimentDecisionEnum.BUY.value
                 strength = SignalStrength.STRONG
             else:
-                signal_type = "hold"
+                signal_type = SentimentDecisionEnum.NEUTRAL.value
                 strength = SignalStrength.WEAK
             
             
@@ -362,15 +363,15 @@ class TechnicalAnalyzer:
             current_signal = signal_line[-1]
             
             if current_macd > current_signal:
-                signal_type = "buy"
+                signal_type = SentimentDecisionEnum.BUY.value
                 strength = SignalStrength.MODERATE
                 value = 0.4
             elif current_macd < current_signal:
-                signal_type = "sell"
+                signal_type = SentimentDecisionEnum.SELL.value
                 strength = SignalStrength.MODERATE
                 value = -0.4
             else:
-                signal_type = "hold"
+                signal_type = SentimentDecisionEnum.NEUTRAL.value
                 strength = SignalStrength.WEAK
                 value = 0.0
             
@@ -416,15 +417,15 @@ class TechnicalAnalyzer:
             
             
             if current_price > upper_band:
-                signal_type = "sell"
+                signal_type = SentimentDecisionEnum.SELL.value
                 strength = SignalStrength.MODERATE
                 value = -0.3
             elif current_price < lower_band:
-                signal_type = "buy"
+                signal_type = SentimentDecisionEnum.BUY.value
                 strength = SignalStrength.MODERATE
                 value = 0.3
             else:
-                signal_type = "hold"
+                signal_type = SentimentDecisionEnum.NEUTRAL.value
                 strength = SignalStrength.WEAK
                 value = 0.0
             
@@ -465,15 +466,15 @@ class TechnicalAnalyzer:
             
             
             if volume_ratio > 1.5 and price_change > 0:
-                signal_type = "buy"
+                signal_type = SentimentDecisionEnum.BUY.value
                 strength = SignalStrength.STRONG
                 value = 0.6
             elif volume_ratio > 1.5 and price_change < 0:
-                signal_type = "sell"
+                signal_type = SentimentDecisionEnum.SELL.value
                 strength = SignalStrength.STRONG
                 value = -0.6
             else:
-                signal_type = "hold"
+                signal_type = SentimentDecisionEnum.NEUTRAL.value
                 strength = SignalStrength.WEAK
                 value = 0.0
             
@@ -578,11 +579,11 @@ class TechnicalAnalyzer:
         
         scores = []
         for signal in signals:
-            if signal.signal_type == "buy":
+            if signal.signal_type == SentimentDecisionEnum.BUY.value:
                 scores.append(signal.value)
-            elif signal.signal_type == "sell":
+            elif signal.signal_type == SentimentDecisionEnum.SELL.value:
                 scores.append(signal.value)
-            else:  # hold
+            else:  # neutral
                 scores.append(0.0)
         
         return np.mean(scores) if scores else 0.0

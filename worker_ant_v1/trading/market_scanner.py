@@ -7,7 +7,6 @@ with sentiment-driven filtering and aggressive compounding targets.
 """
 
 import asyncio
-import aiohttp
 import json
 import logging
 from typing import Dict, List, Optional, Any
@@ -18,37 +17,10 @@ import numpy as np
 import os
 
 from worker_ant_v1.utils.logger import get_logger
+from worker_ant_v1.utils.market_data_fetcher import get_market_data_fetcher, TokenMarketData, MarketOpportunity
 from worker_ant_v1.intelligence.sentiment_first_ai import get_sentiment_first_ai
 
-@dataclass
-class TokenData:
-    address: str
-    symbol: str
-    name: str
-    price: float
-    volume_24h: float
-    liquidity: float
-    market_cap: float
-    price_change_24h: float
-    price_change_1h: float
-    holder_count: int
-    age_hours: float
-    last_updated: datetime
-
-@dataclass
-class TradingOpportunity:
-    token_address: str
-    token_symbol: str
-    sentiment_score: float
-    liquidity_sol: float
-    volume_24h_sol: float
-    price_impact_percent: float
-    risk_score: float
-    confidence: float
-    expected_profit: float
-    priority: int
-    memecoin_pattern: str
-    timestamp: datetime
+# TokenData and TradingOpportunity are now imported from market_data_fetcher
 
 class RealMarketScanner:
     """Real market scanner with live DEX integration for memecoin hunting"""
@@ -56,15 +28,12 @@ class RealMarketScanner:
     def __init__(self):
         self.logger = get_logger("MarketScanner")
         
-        # API endpoints
-        self.jupiter_api = "https://price.jup.ag/v4"
-        self.birdeye_api = "https://public-api.birdeye.so"
-        self.dexscreener_api = "https://api.dexscreener.com/latest/dex"
-        self.helius_api = "https://api.helius.xyz/v0"
+        # Market data fetcher
+        self.market_fetcher = None
         
         # Data storage
-        self.token_data: Dict[str, TokenData] = {}
-        self.opportunities: List[TradingOpportunity] = []
+        self.token_data: Dict[str, TokenMarketData] = {}
+        self.opportunities: List[MarketOpportunity] = []
         self.last_scan = datetime.now()
         
         # Memecoin-specific configuration
@@ -73,11 +42,6 @@ class RealMarketScanner:
         self.max_price_impact = 5.0  # Higher price impact tolerance
         self.max_age_hours = 168  # 1 week max age for memecoins
         self.min_holder_count = 50  # Minimum holders
-        
-        # Rate limiting
-        self.request_count = 0
-        self.last_request_time = time.time()
-        self.rate_limit_delay = 0.1  # 100ms between requests
         
         # Sentiment AI
         self.sentiment_ai = None
@@ -93,275 +57,54 @@ class RealMarketScanner:
         """Initialize market scanner"""
         self.logger.info("🔍 Initializing real market scanner...")
         
+        # Initialize market data fetcher
+        self.market_fetcher = await get_market_data_fetcher()
+        
         # Initialize sentiment AI
         self.sentiment_ai = await get_sentiment_first_ai()
-        
-        # Test API connections
-        await self._test_api_connections()
         
         # Load initial market data
         await self.update_market_data()
         
         self.logger.info("✅ Market scanner initialized")
         
-    async def _test_api_connections(self):
-        """Test all API connections"""
-        try:
-            async with aiohttp.ClientSession() as session:
-                # Test Jupiter API
-                async with session.get(f"{self.jupiter_api}/price?ids=SOL") as resp:
-                    if resp.status == 200:
-                        self.logger.info("✅ Jupiter API connected")
-                    else:
-                        self.logger.warning("⚠️ Jupiter API connection failed")
-                        
-                # Test Birdeye API
-                async with session.get(f"{self.birdeye_api}/public/price?address=So11111111111111111111111111111111111111112") as resp:
-                    if resp.status == 200:
-                        self.logger.info("✅ Birdeye API connected")
-                    else:
-                        self.logger.warning("⚠️ Birdeye API connection failed")
-                        
-        except Exception as e:
-            self.logger.error(f"❌ API connection test failed: {e}")
+    # API connection testing is now handled by the centralized market data fetcher
             
     async def update_market_data(self):
         """Update market data from all sources"""
         try:
             self.scan_count += 1
             
-            # Get trending tokens
-            trending_tokens = await self._get_trending_tokens()
+            # Get market opportunities from centralized fetcher
+            opportunities = await self.market_fetcher.get_market_opportunities(
+                min_liquidity=self.min_liquidity,
+                min_volume=self.min_volume
+            )
             
-            # Get detailed data for each token
-            for token_address in trending_tokens:
-                await self._get_token_data(token_address)
-                await asyncio.sleep(self.rate_limit_delay)  # Rate limiting
-                
-            # Generate opportunities with sentiment analysis
-            await self._generate_opportunities()
+            # Filter for memecoin criteria
+            self.opportunities = []
+            for opportunity in opportunities:
+                if self._passes_memecoin_filters(opportunity.market_data):
+                    self.opportunities.append(opportunity)
+                    self.token_data[opportunity.token_address] = opportunity.market_data
             
+            self.opportunities_found = len(self.opportunities)
             self.last_scan = datetime.now()
+            
+            self.logger.info(f"📊 Found {len(self.opportunities)} memecoin opportunities")
             
         except Exception as e:
             self.logger.error(f"Market data update error: {e}")
             
-    async def _get_trending_tokens(self) -> List[str]:
-        """Get trending tokens from multiple sources"""
-        trending_tokens = set()
+    # Trending tokens are now fetched by the centralized market data fetcher
         
-        try:
-            async with aiohttp.ClientSession() as session:
-                # Get from Birdeye trending
-                try:
-                    async with session.get(f"{self.birdeye_api}/public/trending") as resp:
-                        if resp.status == 200:
-                            data = await resp.json()
-                            if 'data' in data:
-                                for token in data['data'][:30]:  # Top 30
-                                    if 'address' in token:
-                                        trending_tokens.add(token['address'])
-                except Exception as e:
-                    self.logger.warning(f"Birdeye trending fetch failed: {e}")
-                    
-                # Get from DexScreener trending
-                try:
-                    async with session.get(f"{self.dexscreener_api}/tokens/trending") as resp:
-                        if resp.status == 200:
-                            data = await resp.json()
-                            if 'pairs' in data:
-                                for pair in data['pairs'][:30]:  # Top 30
-                                    if 'tokenAddress' in pair:
-                                        trending_tokens.add(pair['tokenAddress'])
-                except Exception as e:
-                    self.logger.warning(f"DexScreener trending fetch failed: {e}")
-                    
-                # Get from Jupiter trending
-                try:
-                    async with session.get(f"{self.jupiter_api}/trending") as resp:
-                        if resp.status == 200:
-                            data = await resp.json()
-                            if 'data' in data:
-                                for token in data['data'][:20]:  # Top 20
-                                    if 'address' in token:
-                                        trending_tokens.add(token['address'])
-                except Exception as e:
-                    self.logger.warning(f"Jupiter trending fetch failed: {e}")
-                    
-        except Exception as e:
-            self.logger.error(f"Trending tokens fetch error: {e}")
+    # Token data fetching is now handled by the centralized market data fetcher
             
-        return list(trending_tokens)
-        
-    async def _get_token_data(self, token_address: str):
-        """Get detailed token data"""
-        try:
-            async with aiohttp.ClientSession() as session:
-                # Get price from Jupiter
-                price_data = await self._get_jupiter_price(session, token_address)
-                
-                # Get additional data from Birdeye
-                birdeye_data = await self._get_birdeye_data(session, token_address)
-                
-                # Get token metadata from Helius (if available)
-                metadata = await self._get_token_metadata(session, token_address)
-                
-                # Combine data
-                if price_data and birdeye_data:
-                    token_data = TokenData(
-                        address=token_address,
-                        symbol=birdeye_data.get('symbol', metadata.get('symbol', 'UNKNOWN')),
-                        name=birdeye_data.get('name', metadata.get('name', 'Unknown Token')),
-                        price=price_data.get('price', 0),
-                        volume_24h=birdeye_data.get('volume24h', 0),
-                        liquidity=birdeye_data.get('liquidity', 0),
-                        market_cap=birdeye_data.get('marketCap', 0),
-                        price_change_24h=birdeye_data.get('priceChange24h', 0),
-                        price_change_1h=birdeye_data.get('priceChange1h', 0),
-                        holder_count=birdeye_data.get('holderCount', 0),
-                        age_hours=birdeye_data.get('ageHours', 0),
-                        last_updated=datetime.now()
-                    )
-                    
-                    self.token_data[token_address] = token_data
-                    
-        except Exception as e:
-            self.logger.error(f"Token data fetch error for {token_address}: {e}")
+    # API-specific methods are now handled by the centralized market data fetcher
             
-    async def _get_jupiter_price(self, session: aiohttp.ClientSession, token_address: str) -> Optional[Dict]:
-        """Get price from Jupiter API"""
-        try:
-            async with session.get(f"{self.jupiter_api}/price?ids={token_address}") as resp:
-                if resp.status == 200:
-                    data = await resp.json()
-                    if 'data' in data and token_address in data['data']:
-                        return data['data'][token_address]
-                return None
-        except Exception as e:
-            self.logger.error(f"Jupiter price fetch error: {e}")
-            return None
+    # Opportunity generation is now handled by the centralized market data fetcher
             
-    async def _get_birdeye_data(self, session: aiohttp.ClientSession, token_address: str) -> Optional[Dict]:
-        """Get token data from Birdeye API"""
-        try:
-            # Get token info
-            async with session.get(f"{self.birdeye_api}/public/token/{token_address}") as resp:
-                if resp.status == 200:
-                    data = await resp.json()
-                    if 'data' in data:
-                        token_info = data['data']
-                        
-                        # Get additional metrics
-                        metrics_data = await self._get_birdeye_metrics(session, token_address)
-                        
-                        return {
-                            'symbol': token_info.get('symbol', 'UNKNOWN'),
-                            'name': token_info.get('name', 'Unknown Token'),
-                            'volume24h': token_info.get('volume24h', 0),
-                            'liquidity': token_info.get('liquidity', 0),
-                            'marketCap': token_info.get('marketCap', 0),
-                            'priceChange24h': token_info.get('priceChange24h', 0),
-                            'priceChange1h': token_info.get('priceChange1h', 0),
-                            'holderCount': metrics_data.get('holderCount', 0),
-                            'ageHours': metrics_data.get('ageHours', 0)
-                        }
-                return None
-        except Exception as e:
-            self.logger.error(f"Birdeye data fetch error: {e}")
-            return None
-            
-    async def _get_birdeye_metrics(self, session: aiohttp.ClientSession, token_address: str) -> Dict:
-        """Get additional metrics from Birdeye"""
-        try:
-            async with session.get(f"{self.birdeye_api}/public/token/{token_address}/metrics") as resp:
-                if resp.status == 200:
-                    data = await resp.json()
-                    if 'data' in data:
-                        return data['data']
-                return {}
-        except Exception as e:
-            self.logger.error(f"Birdeye metrics fetch error: {e}")
-            return {}
-            
-    async def _get_token_metadata(self, session: aiohttp.ClientSession, token_address: str) -> Dict:
-        """Get token metadata from Helius"""
-        try:
-            helius_key = os.getenv('HELIUS_API_KEY')
-            if not helius_key:
-                return {}
-                
-            url = f"{self.helius_api}/token-metadata?api-key={helius_key}"
-            payload = {"mintAccounts": [token_address]}
-            
-            async with session.post(url, json=payload) as resp:
-                if resp.status == 200:
-                    data = await resp.json()
-                    if data and len(data) > 0:
-                        return data[0].get('onChainMetadata', {}).get('metadata', {})
-                return {}
-        except Exception as e:
-            self.logger.error(f"Helius metadata fetch error: {e}")
-            return {}
-            
-    async def _generate_opportunities(self):
-        """Generate trading opportunities with sentiment analysis"""
-        try:
-            self.opportunities.clear()
-            
-            for token_address, token_data in self.token_data.items():
-                # Apply memecoin filters
-                if not self._passes_memecoin_filters(token_data):
-                    continue
-                
-                # Get sentiment analysis
-                market_data = {
-                    'symbol': token_data.symbol,
-                    'price': token_data.price,
-                    'volume': token_data.volume_24h,
-                    'liquidity': token_data.liquidity,
-                    'price_change_24h': token_data.price_change_24h,
-                    'price_change_1h': token_data.price_change_1h,
-                    'holder_count': token_data.holder_count,
-                    'age_hours': token_data.age_hours
-                }
-                
-                sentiment_decision = await self.sentiment_ai.analyze_and_decide(
-                    token_address, market_data
-                )
-                
-                # Only consider BUY opportunities
-                if sentiment_decision.decision == "BUY":
-                    # Calculate additional metrics
-                    risk_score = self._calculate_risk_score(token_data)
-                    price_impact = self._calculate_price_impact(token_data)
-                    
-                    opportunity = TradingOpportunity(
-                        token_address=token_address,
-                        token_symbol=token_data.symbol,
-                        sentiment_score=sentiment_decision.sentiment_score,
-                        liquidity_sol=token_data.liquidity,
-                        volume_24h_sol=token_data.volume_24h,
-                        price_impact_percent=price_impact,
-                        risk_score=risk_score,
-                        confidence=sentiment_decision.confidence,
-                        expected_profit=sentiment_decision.expected_profit,
-                        priority=sentiment_decision.priority,
-                        memecoin_pattern=sentiment_decision.metadata.get('pattern', 'unknown'),
-                        timestamp=datetime.now()
-                    )
-                    
-                    self.opportunities.append(opportunity)
-            
-            # Sort by priority and expected profit
-            self.opportunities.sort(key=lambda x: (x.priority, x.expected_profit), reverse=True)
-            
-            self.opportunities_found = len(self.opportunities)
-            self.logger.info(f"🎯 Found {self.opportunities_found} memecoin opportunities")
-            
-        except Exception as e:
-            self.logger.error(f"Error generating opportunities: {e}")
-            
-    def _passes_memecoin_filters(self, token_data: TokenData) -> bool:
+    def _passes_memecoin_filters(self, token_data: TokenMarketData) -> bool:
         """Check if token passes memecoin-specific filters"""
         try:
             # Liquidity filter
@@ -380,10 +123,11 @@ class RealMarketScanner:
             if token_data.holder_count < self.min_holder_count:
                 return False
                 
-            # Price impact filter
-            price_impact = self._calculate_price_impact(token_data)
-            if price_impact > self.max_price_impact:
-                return False
+            # Price impact filter (simplified)
+            if token_data.volume_24h > 0 and token_data.liquidity > 0:
+                volume_liquidity_ratio = token_data.volume_24h / token_data.liquidity
+                if volume_liquidity_ratio > 10:  # High volume relative to liquidity
+                    return False
                 
             return True
             
@@ -391,7 +135,7 @@ class RealMarketScanner:
             self.logger.error(f"Error in memecoin filters: {e}")
             return False
             
-    def _calculate_risk_score(self, token_data: TokenData) -> float:
+    def _calculate_risk_score(self, token_data: TokenMarketData) -> float:
         """Calculate risk score for memecoin"""
         try:
             risk_score = 0.0
@@ -428,7 +172,7 @@ class RealMarketScanner:
             self.logger.error(f"Error calculating risk score: {e}")
             return 0.5
             
-    def _calculate_price_impact(self, token_data: TokenData) -> float:
+    def _calculate_price_impact(self, token_data: TokenMarketData) -> float:
         """Calculate estimated price impact for a 1 SOL trade"""
         try:
             # Simple estimation based on liquidity
@@ -456,16 +200,20 @@ class RealMarketScanner:
                 {
                     'token_address': opp.token_address,
                     'token_symbol': opp.token_symbol,
-                    'sentiment_score': opp.sentiment_score,
-                    'liquidity_sol': opp.liquidity_sol,
-                    'volume_24h_sol': opp.volume_24h_sol,
-                    'price_impact_percent': opp.price_impact_percent,
-                    'risk_score': opp.risk_score,
-                    'confidence': opp.confidence,
+                    'market_data': {
+                        'price': opp.market_data.price,
+                        'volume_24h': opp.market_data.volume_24h,
+                        'liquidity': opp.market_data.liquidity,
+                        'price_change_24h': opp.market_data.price_change_24h,
+                        'holder_count': opp.market_data.holder_count,
+                        'age_hours': opp.market_data.age_hours,
+                    },
+                    'opportunity_score': opp.opportunity_score,
+                    'risk_level': opp.risk_level,
                     'expected_profit': opp.expected_profit,
-                    'priority': opp.priority,
-                    'memecoin_pattern': opp.memecoin_pattern,
-                    'timestamp': opp.timestamp.isoformat()
+                    'recommended_position_size': opp.recommended_position_size,
+                    'max_slippage_percent': opp.max_slippage_percent,
+                    'detected_at': opp.detected_at.isoformat()
                 }
                 for opp in top_opportunities
             ]
@@ -479,14 +227,9 @@ class RealMarketScanner:
         try:
             if token_address in self.token_data:
                 return self.token_data[token_address].price
-                
-            # Fetch fresh price
-            async with aiohttp.ClientSession() as session:
-                price_data = await self._get_jupiter_price(session, token_address)
-                if price_data:
-                    return price_data.get('price', 0)
-                    
-            return None
+            
+            # Use centralized market data fetcher
+            return await self.market_fetcher.get_token_price(token_address)
             
         except Exception as e:
             self.logger.error(f"Error getting token price: {e}")

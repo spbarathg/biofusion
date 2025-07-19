@@ -29,6 +29,7 @@ from worker_ant_v1.core.unified_trading_engine import UnifiedTradingEngine
 from worker_ant_v1.safety.enhanced_rug_detector import EnhancedRugDetector
 from worker_ant_v1.safety.kill_switch import EnhancedKillSwitch
 from worker_ant_v1.utils.logger import setup_logger
+from worker_ant_v1.utils.constants import SentimentDecision as SentimentDecisionEnum
 
 class SwarmState(Enum):
     """Swarm operational states"""
@@ -202,7 +203,6 @@ class SwarmDecisionEngine:
                 return decision
             
             else:
-            else:
                 return SwarmDecision(
                     opportunity=opportunity,
                     consensus=consensus,
@@ -213,7 +213,6 @@ class SwarmDecisionEngine:
                 )
                 
         except Exception as e:
-            self.logger.error(f"Error analyzing opportunity: {e}")
             self.logger.error(f"Error analyzing opportunity: {e}")
             return SwarmDecision(
                 opportunity=opportunity,
@@ -248,21 +247,20 @@ class SwarmDecisionEngine:
             all_analyses = [neural_analysis, rug_analysis, stealth_analysis]
             
             
-            buy_votes = sum(1 for analysis in all_analyses if analysis.get('action') == 'BUY')
+            buy_votes = sum(1 for analysis in all_analyses if analysis.get('action') == SentimentDecisionEnum.BUY.value)
             avoid_votes = sum(1 for analysis in all_analyses if analysis.get('action') == 'AVOID')
             
             
             if buy_votes >= 2 and avoid_votes == 0:  # Majority buy, no avoid votes
-                avg_confidence = np.mean([a.get('confidence', 0) for a in all_analyses if a.get('action') == 'BUY'])
+                avg_confidence = np.mean([a.get('confidence', 0) for a in all_analyses if a.get('action') == SentimentDecisionEnum.BUY.value])
                 
-                if avg_confidence >= self.consensus_thresholds['min_confidence']:
                 if avg_confidence >= self.consensus_thresholds['min_confidence']:
                     base_position = 0.35  # 35% max from config
                     confidence_multiplier = avg_confidence
                     position_size = base_position * confidence_multiplier
                     
                     return ConsensusResult(
-                        action="BUY",
+                        action=SentimentDecisionEnum.BUY.value,
                         confidence=avg_confidence,
                         reasoning=f"Consensus reached: {buy_votes}/3 sources approve",
                         risk_level="medium",
@@ -272,7 +270,7 @@ class SwarmDecisionEngine:
                             'timeout_seconds': 30,
                             'priority': 'high'
                         },
-                        consensus_sources=[a.get('source', 'unknown') for a in all_analyses if a.get('action') == 'BUY'],
+                        consensus_sources=[a.get('source', 'unknown') for a in all_analyses if a.get('action') == SentimentDecisionEnum.BUY.value],
                         dissenting_sources=[]
                     )
             
@@ -319,7 +317,7 @@ class SwarmDecisionEngine:
             if 5 < price_change_24h < 50:  # Healthy growth
                 base_confidence += 0.05
             
-            action = "BUY" if base_confidence > 0.65 else "AVOID"
+            action = SentimentDecisionEnum.BUY.value if base_confidence > 0.65 else "AVOID"
             
             return {
                 'source': 'neural_command_center',
@@ -363,7 +361,7 @@ class SwarmDecisionEngine:
                 confidence = 0.8
                 reasoning = f"Rug risk detected: {risk_factors} risk factors"
             else:
-                action = "BUY"
+                action = SentimentDecisionEnum.BUY.value
                 confidence = 0.7
                 reasoning = f"Rug check passed: {risk_factors} risk factors"
             

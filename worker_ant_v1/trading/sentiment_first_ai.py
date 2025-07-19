@@ -17,13 +17,14 @@ import json
 import os
 from worker_ant_v1.utils.logger import get_logger
 from worker_ant_v1.intelligence.sentiment_analyzer import SentimentAnalyzer, SentimentData
+from worker_ant_v1.utils.constants import SentimentDecision as SentimentDecisionEnum, SentimentConstants
 from enum import Enum
 
 @dataclass
 class SentimentDecision:
     """Sentiment-based trading decision"""
     token_address: str
-    decision: str  # "BUY", "SELL", "HOLD", "AVOID"
+    decision: str  # Uses SentimentDecisionEnum values
     sentiment_score: float
     confidence: float
     reasoning: List[str]
@@ -39,20 +40,20 @@ class SentimentFirstAI:
         
         
         self.decision_thresholds = {
-            'strong_buy': 0.7,
-            'buy': 0.4,
-            'neutral_high': 0.2,
-            'neutral_low': -0.2,
-            'sell': -0.4,
-            'strong_sell': -0.7
+            SentimentDecisionEnum.STRONG_BUY.value: SentimentConstants.STRONG_BUY_THRESHOLD,
+            SentimentDecisionEnum.BUY.value: SentimentConstants.BUY_THRESHOLD,
+            'neutral_high': SentimentConstants.NEUTRAL_HIGH_THRESHOLD,
+            'neutral_low': SentimentConstants.NEUTRAL_LOW_THRESHOLD,
+            SentimentDecisionEnum.SELL.value: SentimentConstants.SELL_THRESHOLD,
+            SentimentDecisionEnum.STRONG_SELL.value: SentimentConstants.STRONG_SELL_THRESHOLD
         }
         
         
         self.sentiment_weights = {
-            'immediate': 0.4,     # Current sentiment
-            'trend': 0.3,         # Sentiment trend over time
-            'stability': 0.2,     # Sentiment stability
-            'strength': 0.1       # Sentiment strength/confidence
+            'immediate': SentimentConstants.IMMEDIATE_WEIGHT,     # Current sentiment
+            'trend': SentimentConstants.TREND_WEIGHT,         # Sentiment trend over time
+            'stability': SentimentConstants.STABILITY_WEIGHT,     # Sentiment stability
+            'strength': SentimentConstants.STRENGTH_WEIGHT       # Sentiment strength/confidence
         }
         
         
@@ -219,32 +220,32 @@ class SentimentFirstAI:
         reasoning = []
         
         
-        if composite_score >= self.decision_thresholds['strong_buy']:
-            decision = "BUY"
+        if composite_score >= self.decision_thresholds[SentimentDecisionEnum.STRONG_BUY.value]:
+            decision = SentimentDecisionEnum.STRONG_BUY.value
             confidence = 0.9
             priority = 5
             reasoning.append(f"Strong bullish sentiment: {composite_score:.3f}")
             
-        elif composite_score >= self.decision_thresholds['buy']:
-            decision = "BUY"
+        elif composite_score >= self.decision_thresholds[SentimentDecisionEnum.BUY.value]:
+            decision = SentimentDecisionEnum.BUY.value
             confidence = 0.7
             priority = 4
             reasoning.append(f"Bullish sentiment: {composite_score:.3f}")
             
-        elif composite_score <= self.decision_thresholds['strong_sell']:
-            decision = "SELL"
+        elif composite_score <= self.decision_thresholds[SentimentDecisionEnum.STRONG_SELL.value]:
+            decision = SentimentDecisionEnum.STRONG_SELL.value
             confidence = 0.9
             priority = 5
             reasoning.append(f"Strong bearish sentiment: {composite_score:.3f}")
             
-        elif composite_score <= self.decision_thresholds['sell']:
-            decision = "SELL"
+        elif composite_score <= self.decision_thresholds[SentimentDecisionEnum.SELL.value]:
+            decision = SentimentDecisionEnum.SELL.value
             confidence = 0.7
             priority = 4
             reasoning.append(f"Bearish sentiment: {composite_score:.3f}")
             
         else:
-            decision = "HOLD"
+            decision = SentimentDecisionEnum.NEUTRAL.value
             confidence = 0.5
             priority = 2
             reasoning.append(f"Neutral sentiment: {composite_score:.3f}")
@@ -252,14 +253,14 @@ class SentimentFirstAI:
         
         if sentiment_trend['trend_direction'] > 0.2:
             reasoning.append("Positive sentiment trend")
-            if decision == "HOLD":
-                decision = "BUY"
+            if decision == SentimentDecisionEnum.NEUTRAL.value:
+                decision = SentimentDecisionEnum.BUY.value
                 confidence += 0.1
                 priority += 1
         elif sentiment_trend['trend_direction'] < -0.2:
             reasoning.append("Negative sentiment trend")
-            if decision == "HOLD":
-                decision = "SELL"
+            if decision == SentimentDecisionEnum.NEUTRAL.value:
+                decision = SentimentDecisionEnum.SELL.value
                 confidence += 0.1
                 priority += 1
         
@@ -296,15 +297,15 @@ class SentimentFirstAI:
                 confidence = min(1.0, confidence + signal_influence)
         
         
-        if composite_score < 0 and decision == "BUY":
-            decision = "HOLD"
+        if composite_score < 0 and decision == SentimentDecisionEnum.BUY.value:
+            decision = SentimentDecisionEnum.NEUTRAL.value
             reasoning.append("Override: Negative sentiment blocks buy signal")
             confidence = max(0.1, confidence - 0.2)
         
         
-        if composite_score > 0.3 and decision == "SELL":
+        if composite_score > 0.3 and decision == SentimentDecisionEnum.SELL.value:
             if not additional_signals or max(additional_signals.values()) < 0.8:
-                decision = "HOLD"
+                decision = SentimentDecisionEnum.NEUTRAL.value
                 reasoning.append("Override: Positive sentiment blocks sell signal")
                 confidence = max(0.1, confidence - 0.2)
         
@@ -318,7 +319,7 @@ class SentimentFirstAI:
         
         
         blacklist_time = self.sentiment_blacklist[token_address]
-        if datetime.now() - blacklist_time > timedelta(hours=24):
+        if datetime.now() - blacklist_time > timedelta(hours=SentimentConstants.DEFAULT_BLACKLIST_DURATION_HOURS):
             del self.sentiment_blacklist[token_address]
             return False
         
@@ -373,7 +374,7 @@ class SentimentFirstAI:
         decision = await self.analyze_and_decide(token_address, market_data)
         
         
-        return (decision.decision == "BUY" and 
+        return (decision.decision == SentimentDecisionEnum.BUY.value and 
                 decision.sentiment_score > 0.2 and 
                 decision.confidence > 0.4)
     
@@ -383,7 +384,7 @@ class SentimentFirstAI:
         decision = await self.analyze_and_decide(token_address, market_data)
         
         
-        return (decision.decision == "SELL" or 
+        return (decision.decision == SentimentDecisionEnum.SELL.value or 
                 decision.sentiment_score < -0.3 or 
                 decision.confidence > 0.8)
     

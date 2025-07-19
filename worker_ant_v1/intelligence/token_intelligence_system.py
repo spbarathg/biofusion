@@ -8,14 +8,17 @@ using multiple data sources and AI-powered pattern recognition.
 
 import asyncio
 import numpy as np
-from typing import Dict, List, Optional, Any, Tuple
+from typing import Dict, List, Optional, Tuple, Any
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from enum import Enum
 import logging
 import aiohttp
+import json
+import os
 
 from worker_ant_v1.utils.logger import setup_logger
+from worker_ant_v1.utils.constants import SentimentDecision as SentimentDecisionEnum
 from worker_ant_v1.intelligence.sentiment_analyzer import SentimentAnalyzer
 from worker_ant_v1.intelligence.technical_analyzer import TechnicalAnalyzer
 from worker_ant_v1.intelligence.enhanced_rug_detector import EnhancedRugDetector
@@ -595,23 +598,23 @@ class TokenIntelligenceSystem:
                                risk_indicators: List[str]) -> Tuple[str, List[str]]:
         """Generate trading recommendation"""
         try:
-            recommendation = "HOLD"
+            recommendation = SentimentDecisionEnum.NEUTRAL.value
             reasoning = []
             
             if opportunity_level == OpportunityLevel.HIGH:
-                recommendation = "BUY"
+                recommendation = SentimentDecisionEnum.BUY.value
                 reasoning.append("High confidence opportunity with low risk")
             elif opportunity_level == OpportunityLevel.MEDIUM:
-                recommendation = "BUY_SMALL"
+                recommendation = SentimentDecisionEnum.BUY.value  # Use BUY for medium opportunities
                 reasoning.append("Moderate opportunity with acceptable risk")
             elif opportunity_level == OpportunityLevel.LOW:
-                recommendation = "MONITOR"
+                recommendation = SentimentDecisionEnum.NEUTRAL.value
                 reasoning.append("Low confidence, wait for better signals")
             elif opportunity_level == OpportunityLevel.AVOID:
-                recommendation = "AVOID"
+                recommendation = "AVOID"  # Custom recommendation not in enum
                 reasoning.append("High risk, avoid this token")
             else:  # MONITOR
-                recommendation = "MONITOR"
+                recommendation = SentimentDecisionEnum.NEUTRAL.value
                 reasoning.append("Monitor for changes in conditions")
             
             # Add category-specific reasoning
@@ -634,7 +637,7 @@ class TokenIntelligenceSystem:
             
         except Exception as e:
             self.logger.error(f"Error generating recommendation: {e}")
-            return "HOLD", ["Analysis error - defaulting to hold"]
+            return SentimentDecisionEnum.NEUTRAL.value, ["Analysis error - defaulting to hold"]
     
     def _get_cached_analysis(self, token_address: str) -> Optional[TokenAnalysis]:
         """Get cached analysis if still valid"""
@@ -700,7 +703,7 @@ class TokenIntelligenceSystem:
                 security_score=0.5,
                 pattern_signals=[],
                 risk_indicators=["analysis_failed"],
-                recommendation="MONITOR",
+                recommendation=SentimentDecisionEnum.NEUTRAL.value,
                 reasoning=["Analysis failed - insufficient data"],
                 timestamp=datetime.now()
             )
@@ -784,7 +787,7 @@ class TokenIntelligenceSystem:
                         'opportunity_level': latest_analysis.opportunity_level.value if latest_analysis else None,
                         'confidence_score': latest_analysis.confidence_score if latest_analysis else 0.0,
                         'risk_score': latest_analysis.risk_score if latest_analysis else 1.0,
-                        'recommendation': latest_analysis.recommendation if latest_analysis else "UNKNOWN",
+                        'recommendation': latest_analysis.recommendation if latest_analysis else SentimentDecisionEnum.NEUTRAL.value,
                         'timestamp': latest_analysis.timestamp.isoformat() if latest_analysis else None
                     },
                     'analysis_count': len(recent_analyses),

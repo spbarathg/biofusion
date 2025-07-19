@@ -18,13 +18,14 @@ import os
 
 from worker_ant_v1.utils.logger import get_logger
 from worker_ant_v1.intelligence.sentiment_analyzer import SentimentAnalyzer
+from worker_ant_v1.utils.constants import SentimentDecision as SentimentDecisionEnum, SentimentConstants
 from enum import Enum
 
 @dataclass
 class SentimentDecision:
     """Sentiment-based trading decision"""
     token_address: str
-    decision: str  # "BUY", "SELL", "HOLD", "AVOID"
+    decision: str  # Uses SentimentDecisionEnum values
     sentiment_score: float
     confidence: float
     reasoning: List[str]
@@ -42,20 +43,20 @@ class SentimentFirstAI:
         
         # Aggressive memecoin trading thresholds
         self.decision_thresholds = {
-            'strong_buy': 0.6,      # Lower threshold for aggressive buying
-            'buy': 0.3,             # Moderate sentiment is enough to buy
-            'neutral_high': 0.1,    # Slight positive sentiment
-            'neutral_low': -0.1,    # Slight negative sentiment
-            'sell': -0.3,           # Moderate negative sentiment
-            'strong_sell': -0.6     # Strong negative sentiment
+            SentimentDecisionEnum.STRONG_BUY.value: SentimentConstants.STRONG_BUY_THRESHOLD,
+            SentimentDecisionEnum.BUY.value: SentimentConstants.BUY_THRESHOLD,
+            'neutral_high': SentimentConstants.NEUTRAL_HIGH_THRESHOLD,
+            'neutral_low': SentimentConstants.NEUTRAL_LOW_THRESHOLD,
+            SentimentDecisionEnum.SELL.value: SentimentConstants.SELL_THRESHOLD,
+            SentimentDecisionEnum.STRONG_SELL.value: SentimentConstants.STRONG_SELL_THRESHOLD
         }
         
         # Sentiment weights for memecoin trading
         self.sentiment_weights = {
-            'immediate': 0.5,     # Current sentiment (highest weight)
-            'trend': 0.3,         # Sentiment trend over time
-            'stability': 0.1,     # Sentiment stability
-            'strength': 0.1       # Sentiment strength/confidence
+            'immediate': SentimentConstants.IMMEDIATE_WEIGHT,     # Current sentiment (highest weight)
+            'trend': SentimentConstants.TREND_WEIGHT,         # Sentiment trend over time
+            'stability': SentimentConstants.STABILITY_WEIGHT,     # Sentiment stability
+            'strength': SentimentConstants.STRENGTH_WEIGHT       # Sentiment strength/confidence
         }
         
         # Decision history for pattern recognition
@@ -306,16 +307,16 @@ class SentimentFirstAI:
             risk_level = "medium"
             
             # Base decision on sentiment score
-            if composite_score >= self.decision_thresholds['strong_buy']:
-                decision = "BUY"
+            if composite_score >= self.decision_thresholds[SentimentDecisionEnum.STRONG_BUY.value]:
+                decision = SentimentDecisionEnum.STRONG_BUY.value
                 confidence = 0.9
                 priority = 5
                 expected_profit = 0.15  # 15% expected profit
                 risk_level = "medium"
                 reasoning.append(f"Strong positive sentiment: {composite_score:.2f}")
                 
-            elif composite_score >= self.decision_thresholds['buy']:
-                decision = "BUY"
+            elif composite_score >= self.decision_thresholds[SentimentDecisionEnum.BUY.value]:
+                decision = SentimentDecisionEnum.BUY.value
                 confidence = 0.7
                 priority = 4
                 expected_profit = 0.10  # 10% expected profit
@@ -323,7 +324,7 @@ class SentimentFirstAI:
                 reasoning.append(f"Positive sentiment: {composite_score:.2f}")
                 
             elif composite_score >= self.decision_thresholds['neutral_high']:
-                decision = "HOLD"
+                decision = SentimentDecisionEnum.NEUTRAL.value
                 confidence = 0.5
                 priority = 2
                 expected_profit = 0.02  # 2% expected profit
@@ -331,15 +332,15 @@ class SentimentFirstAI:
                 reasoning.append(f"Slightly positive sentiment: {composite_score:.2f}")
                 
             elif composite_score >= self.decision_thresholds['neutral_low']:
-                decision = "HOLD"
+                decision = SentimentDecisionEnum.NEUTRAL.value
                 confidence = 0.3
                 priority = 1
                 expected_profit = 0.0
                 risk_level = "low"
                 reasoning.append(f"Neutral sentiment: {composite_score:.2f}")
                 
-            elif composite_score >= self.decision_thresholds['sell']:
-                decision = "SELL"
+            elif composite_score >= self.decision_thresholds[SentimentDecisionEnum.SELL.value]:
+                decision = SentimentDecisionEnum.SELL.value
                 confidence = 0.7
                 priority = 3
                 expected_profit = 0.0
@@ -347,7 +348,7 @@ class SentimentFirstAI:
                 reasoning.append(f"Negative sentiment: {composite_score:.2f}")
                 
             else:  # composite_score < self.decision_thresholds['strong_sell']
-                decision = "SELL"
+                decision = SentimentDecisionEnum.STRONG_SELL.value
                 confidence = 0.9
                 priority = 4
                 expected_profit = 0.0
@@ -356,30 +357,30 @@ class SentimentFirstAI:
             
             # Adjust based on memecoin pattern
             if memecoin_pattern == 'hype_cycle':
-                if decision == "BUY":
+                if decision == SentimentDecisionEnum.BUY.value:
                     priority = 5
                     expected_profit = 0.25  # 25% expected profit for hype cycle
                     reasoning.append("Hype cycle detected - high profit potential")
                 else:
-                    decision = "BUY"
+                    decision = SentimentDecisionEnum.BUY.value
                     priority = 4
                     expected_profit = 0.20
                     reasoning.append("Hype cycle detected - converting to BUY")
                     
             elif memecoin_pattern == 'fomo_pattern':
-                if decision == "BUY":
+                if decision == SentimentDecisionEnum.BUY.value:
                     priority = 5
                     expected_profit = 0.20  # 20% expected profit for FOMO
                     reasoning.append("FOMO pattern detected - momentum building")
                     
             elif memecoin_pattern == 'dump_pattern':
-                if decision != "SELL":
-                    decision = "SELL"
+                if decision != SentimentDecisionEnum.SELL.value:
+                    decision = SentimentDecisionEnum.SELL.value
                     priority = 5
                     reasoning.append("Dump pattern detected - immediate sell signal")
                     
             elif memecoin_pattern == 'accumulation':
-                if decision == "BUY":
+                if decision == SentimentDecisionEnum.BUY.value:
                     expected_profit = 0.08  # 8% expected profit for accumulation
                     reasoning.append("Accumulation pattern - steady growth expected")
             
@@ -399,13 +400,13 @@ class SentimentFirstAI:
             # Additional signals adjustment
             if additional_signals:
                 if 'volume_spike' in additional_signals and additional_signals['volume_spike'] > 2.0:
-                    if decision == "BUY":
+                    if decision == SentimentDecisionEnum.BUY.value:
                         priority = 5
                         expected_profit += 0.05
                         reasoning.append("Volume spike detected")
                 
                 if 'price_momentum' in additional_signals and additional_signals['price_momentum'] > 0.1:
-                    if decision == "BUY":
+                    if decision == SentimentDecisionEnum.BUY.value:
                         expected_profit += 0.03
                         reasoning.append("Price momentum detected")
             
@@ -413,15 +414,15 @@ class SentimentFirstAI:
             
         except Exception as e:
             self.logger.error(f"Error making aggressive decision: {e}")
-            return "HOLD", 0.0, [f"Decision error: {str(e)}"], 1, 0.0, "high"
+            return SentimentDecisionEnum.NEUTRAL.value, 0.0, [f"Decision error: {str(e)}"], 1, 0.0, "high"
     
     async def _is_sentiment_blacklisted(self, token_address: str) -> bool:
         """Check if token is on sentiment blacklist"""
         try:
             if token_address in self.sentiment_blacklist:
                 blacklist_time = self.sentiment_blacklist[token_address]
-                # Remove from blacklist after 24 hours
-                if datetime.now() - blacklist_time > timedelta(hours=24):
+                # Remove from blacklist after configured duration
+                if datetime.now() - blacklist_time > timedelta(hours=SentimentConstants.DEFAULT_BLACKLIST_DURATION_HOURS):
                     del self.sentiment_blacklist[token_address]
                     return False
                 return True
@@ -459,7 +460,7 @@ class SentimentFirstAI:
                 if token_address in market_data:
                     decision = await self.analyze_and_decide(token_address, market_data[token_address])
                     
-                    if decision.decision == "BUY":
+                    if decision.decision == SentimentDecisionEnum.BUY.value:
                         token_priorities.append((
                             token_address,
                             decision.priority,
@@ -481,7 +482,7 @@ class SentimentFirstAI:
             decision = await self.analyze_and_decide(token_address, market_data)
             
             # Aggressive validation for memecoins
-            return (decision.decision == "BUY" and 
+            return (decision.decision == SentimentDecisionEnum.BUY.value and 
                    decision.confidence >= 0.6 and 
                    decision.sentiment_score >= self.compounding_settings['min_sentiment_for_buy'])
             
@@ -494,7 +495,7 @@ class SentimentFirstAI:
         try:
             decision = await self.analyze_and_decide(token_address, market_data)
             
-            return (decision.decision == "SELL" and 
+            return (decision.decision == SentimentDecisionEnum.SELL.value and 
                    decision.confidence >= 0.7 and 
                    decision.sentiment_score <= self.compounding_settings['profit_taking_sentiment_threshold'])
             

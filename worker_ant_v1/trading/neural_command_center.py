@@ -32,6 +32,7 @@ from worker_ant_v1.intelligence.sentiment_first_ai import SentimentFirstAI
 from worker_ant_v1.core.wallet_manager import UnifiedWalletManager
 from worker_ant_v1.core.vault_wallet_system import VaultWalletSystem
 from worker_ant_v1.utils.logger import setup_logger
+from worker_ant_v1.utils.constants import SentimentDecision as SentimentDecisionEnum
 from ..core.unified_config import UnifiedConfig
 
 class SwarmDecision(Enum):
@@ -80,7 +81,7 @@ class ConsensusSignal:
     
     unanimous_agreement: bool = False
     passes_consensus: bool = False
-    recommended_action: str = "HOLD"
+    recommended_action: str = SentimentDecisionEnum.NEUTRAL.value
     reasoning: List[str] = field(default_factory=list)
     
     # Enhanced validation fields
@@ -412,14 +413,14 @@ class NeuralCommandCenter:
             signal.reasoning = consensus_result['reasoning']
             
             # Phase 3: Secondary Validation Layers (Consensus of Consensuses)
-            if signal.passes_consensus and signal.recommended_action == "BUY":
+            if signal.passes_consensus and signal.recommended_action == SentimentDecisionEnum.BUY.value:
                 
                 # Secondary validation: Challenger model
                 challenger_result = await self.challenger_model.validate_opportunity(token_address, market_data)
                 signal.challenger_model_agreement = challenger_result['passed']
                 
                 if not signal.challenger_model_agreement:
-                    signal.recommended_action = "HOLD"
+                    signal.recommended_action = SentimentDecisionEnum.NEUTRAL.value
                     signal.reasoning.append(f"Challenger model veto: {', '.join(challenger_result['reasons'])}")
                     self.logger.warning(f"🛡️ Challenger model vetoed {token_address}")
                 
@@ -428,7 +429,7 @@ class NeuralCommandCenter:
                 signal.sanity_check_passed = sanity_result['passed']
                 
                 if not signal.sanity_check_passed:
-                    signal.recommended_action = "HOLD"
+                    signal.recommended_action = SentimentDecisionEnum.NEUTRAL.value
                     signal.reasoning.append(f"Sanity check veto: {sanity_result['veto_reason']}")
                     self.logger.warning(f"🧠 Sanity check vetoed {token_address}")
                 
@@ -437,7 +438,7 @@ class NeuralCommandCenter:
                 signal.shadow_memory_check_passed = shadow_memory_check['passed']
                 
                 if not signal.shadow_memory_check_passed:
-                    signal.recommended_action = "HOLD"
+                    signal.recommended_action = SentimentDecisionEnum.NEUTRAL.value
                     signal.reasoning.append(f"Shadow memory veto: {shadow_memory_check['reason']}")
                     self.logger.warning(f"👻 Shadow memory vetoed {token_address}")
                 
@@ -446,7 +447,7 @@ class NeuralCommandCenter:
                 signal.failed_patterns_check_passed = failed_patterns_check['passed']
                 
                 if not signal.failed_patterns_check_passed:
-                    signal.recommended_action = "HOLD"
+                    signal.recommended_action = SentimentDecisionEnum.NEUTRAL.value
                     signal.reasoning.append(f"Failed patterns veto: {failed_patterns_check['reason']}")
                     self.logger.warning(f"🚫 Failed patterns vetoed {token_address}")
                 
@@ -462,7 +463,7 @@ class NeuralCommandCenter:
                 ])
                 
                 if not signal.secondary_validation_passed:
-                    signal.recommended_action = "HOLD"
+                    signal.recommended_action = SentimentDecisionEnum.NEUTRAL.value
                     self.logger.warning(f"🛡️ Secondary validation failed for {token_address} - trade vetoed")
             
             return signal
@@ -474,7 +475,7 @@ class NeuralCommandCenter:
             return ConsensusSignal(
                 token_address=token_address,
                 timestamp=datetime.now(),
-                recommended_action="HOLD",
+                recommended_action=SentimentDecisionEnum.NEUTRAL.value,
                 reasoning=[f"Analysis error: {str(e)}"],
                 secondary_validation_passed=False,
                 final_confidence_score=0.0

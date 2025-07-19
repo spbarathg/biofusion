@@ -15,7 +15,7 @@ from datetime import datetime, timedelta
 from enum import Enum
 import logging
 
-from worker_ant_v1.utils.logger import setup_logger
+from worker_ant_v1.utils.logger import get_logger
 from worker_ant_v1.trading.neural_command_center import NeuralCommandCenter
 from worker_ant_v1.trading.stealth_operations import StealthOperationsSystem
 from worker_ant_v1.core.wallet_manager import UnifiedWalletManager
@@ -68,7 +68,7 @@ class SwarmDecisionEngine:
     """Orchestrates decisions across the 10-wallet swarm"""
     
     def __init__(self):
-        self.logger = setup_logger("SwarmDecisionEngine")
+        self.logger = get_logger("SwarmDecisionEngine")
         
         # Core components
         self.neural_command_center: Optional[NeuralCommandCenter] = None

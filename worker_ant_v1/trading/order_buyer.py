@@ -361,38 +361,20 @@ class ProductionBuyer:
             raise
     
     async def _get_token_info(self, token_address: str) -> Dict:
-        """Get token information from Jupiter API"""
+        """Get token information using centralized market data fetcher"""
         try:
-            # Get price from Jupiter
-            price_url = f"{self.jupiter_api}/price?ids={token_address}"
-            async with aiohttp.ClientSession() as session:
-                async with session.get(price_url) as resp:
-                    if resp.status == 200:
-                        data = await resp.json()
-                        if 'data' in data and token_address in data['data']:
-                            token_data = data['data'][token_address]
-                            return {
-                                "liquidity_sol": float(token_data.get("liquidity", 0)),
-                                "volume_24h_sol": float(token_data.get("volume24h", 0)),
-                                "amount_tokens": 1000.0,  # Will be calculated during trade
-                                "price": float(token_data.get("price", 0))
-                            }
+            from worker_ant_v1.utils.market_data_fetcher import get_market_data_fetcher
             
-            # Fallback to DexScreener
-            dexscreener_url = f"https://api.dexscreener.com/latest/dex/tokens/{token_address}"
-            async with aiohttp.ClientSession() as session:
-                async with session.get(dexscreener_url) as resp:
-                    if resp.status == 200:
-                        data = await resp.json()
-                        pairs = data.get("pairs", [])
-                        if pairs:
-                            pair = pairs[0]  # Take first pair
-                            return {
-                                "liquidity_sol": float(pair.get("liquidity", {}).get("base", 0)),
-                                "volume_24h_sol": float(pair.get("volume", {}).get("h24", 0)),
-                                "amount_tokens": 1000.0,
-                                "price": float(pair.get("priceNative", 0))
-                            }
+            market_fetcher = await get_market_data_fetcher()
+            token_data = await market_fetcher.get_token_data(token_address)
+            
+            if token_data:
+                return {
+                    "liquidity_sol": token_data.liquidity,
+                    "volume_24h_sol": token_data.volume_24h,
+                    "amount_tokens": 1000.0,  # Will be calculated during trade
+                    "price": token_data.price
+                }
             
             # Default fallback
             return {
