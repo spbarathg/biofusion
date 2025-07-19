@@ -21,6 +21,7 @@ import os
 import json
 from pathlib import Path
 import discord
+import hashlib
 
 from worker_ant_v1.intelligence.sentiment_analyzer import SentimentAnalyzer
 from worker_ant_v1.intelligence.twitter_sentiment_analyzer import TwitterSentimentAnalyzer
@@ -81,6 +82,13 @@ class ConsensusSignal:
     passes_consensus: bool = False
     recommended_action: str = "HOLD"
     reasoning: List[str] = field(default_factory=list)
+    
+    # Enhanced validation fields
+    secondary_validation_passed: bool = False
+    challenger_model_agreement: bool = False
+    shadow_memory_check_passed: bool = False
+    sanity_check_passed: bool = False
+    final_confidence_score: float = 0.0
 
 @dataclass
 class SwarmIntelligence:
@@ -99,6 +107,189 @@ class SwarmIntelligence:
     avoided_patterns: Set[str] = field(default_factory=set)
     successful_patterns: Set[str] = field(default_factory=set)
 
+class ChallengerModel:
+    """Conservative challenger model for validation"""
+    
+    def __init__(self):
+        self.logger = setup_logger("ChallengerModel")
+        
+        # Conservative thresholds
+        self.conservative_thresholds = {
+            'min_liquidity': 10000,  # $10K minimum liquidity
+            'min_holders': 50,       # 50 minimum holders
+            'max_volatility': 0.5,   # 50% max volatility
+            'min_age_hours': 2,      # 2 hours minimum age
+            'max_whale_concentration': 0.3  # 30% max whale concentration
+        }
+        
+        self.logger.info("🛡️ Challenger model initialized with conservative thresholds")
+    
+    async def validate_opportunity(self, token_address: str, market_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Validate opportunity using conservative metrics"""
+        
+        validation_result = {
+            'passed': True,
+            'confidence': 0.0,
+            'reasons': [],
+            'risk_factors': []
+        }
+        
+        try:
+            # Check liquidity
+            liquidity = market_data.get('liquidity', 0)
+            if liquidity < self.conservative_thresholds['min_liquidity']:
+                validation_result['passed'] = False
+                validation_result['reasons'].append(f"Insufficient liquidity: ${liquidity:,.0f}")
+                validation_result['risk_factors'].append('low_liquidity')
+            
+            # Check holder count
+            holder_count = market_data.get('holder_count', 0)
+            if holder_count < self.conservative_thresholds['min_holders']:
+                validation_result['passed'] = False
+                validation_result['reasons'].append(f"Too few holders: {holder_count}")
+                validation_result['risk_factors'].append('low_holder_count')
+            
+            # Check volatility
+            volatility = market_data.get('volatility', 0)
+            if volatility > self.conservative_thresholds['max_volatility']:
+                validation_result['passed'] = False
+                validation_result['reasons'].append(f"Excessive volatility: {volatility:.2%}")
+                validation_result['risk_factors'].append('high_volatility')
+            
+            # Check token age
+            token_age_hours = market_data.get('age_hours', 0)
+            if token_age_hours < self.conservative_thresholds['min_age_hours']:
+                validation_result['passed'] = False
+                validation_result['reasons'].append(f"Token too new: {token_age_hours:.1f} hours")
+                validation_result['risk_factors'].append('new_token')
+            
+            # Check whale concentration
+            whale_concentration = market_data.get('whale_concentration', 0)
+            if whale_concentration > self.conservative_thresholds['max_whale_concentration']:
+                validation_result['passed'] = False
+                validation_result['reasons'].append(f"High whale concentration: {whale_concentration:.1%}")
+                validation_result['risk_factors'].append('whale_risk')
+            
+            # Calculate confidence based on how many checks passed
+            total_checks = 5
+            passed_checks = sum([
+                liquidity >= self.conservative_thresholds['min_liquidity'],
+                holder_count >= self.conservative_thresholds['min_holders'],
+                volatility <= self.conservative_thresholds['max_volatility'],
+                token_age_hours >= self.conservative_thresholds['min_age_hours'],
+                whale_concentration <= self.conservative_thresholds['max_whale_concentration']
+            ])
+            
+            validation_result['confidence'] = passed_checks / total_checks
+            
+            if validation_result['passed']:
+                self.logger.info(f"✅ Challenger validation passed for {token_address} (confidence: {validation_result['confidence']:.2f})")
+            else:
+                self.logger.warning(f"❌ Challenger validation failed for {token_address}: {', '.join(validation_result['reasons'])}")
+            
+            return validation_result
+            
+        except Exception as e:
+            self.logger.error(f"Challenger validation error for {token_address}: {e}")
+            validation_result['passed'] = False
+            validation_result['reasons'].append(f"Validation error: {str(e)}")
+            return validation_result
+
+class SanityChecker:
+    """Secondary sanity check system"""
+    
+    def __init__(self):
+        self.logger = setup_logger("SanityChecker")
+        
+        # Hard-coded safety thresholds that override AI decisions
+        self.safety_thresholds = {
+            'max_position_size_sol': 0.5,  # 0.5 SOL max position
+            'min_liquidity_override': 5000,  # $5K minimum liquidity (hard override)
+            'max_slippage': 0.15,  # 15% max slippage
+            'min_market_cap': 1000,  # $1K minimum market cap
+            'max_gas_price': 1000,  # 1000 gwei max gas price
+        }
+        
+        self.logger.info("🧠 Sanity checker initialized with hard safety thresholds")
+    
+    async def run_sanity_check(self, signal: ConsensusSignal, market_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Run sanity check on consensus signal"""
+        
+        sanity_result = {
+            'passed': True,
+            'veto_reason': None,
+            'confidence_adjustment': 0.0,
+            'warnings': []
+        }
+        
+        try:
+            # Check if consensus is too strong (potential overconfidence)
+            if signal.consensus_strength > 0.95:
+                sanity_result['warnings'].append("Extremely high consensus strength - potential overconfidence")
+                sanity_result['confidence_adjustment'] -= 0.1
+            
+            # Check liquidity override
+            liquidity = market_data.get('liquidity', 0)
+            if liquidity < self.safety_thresholds['min_liquidity_override']:
+                sanity_result['passed'] = False
+                sanity_result['veto_reason'] = f"Liquidity below hard threshold: ${liquidity:,.0f} < ${self.safety_thresholds['min_liquidity_override']:,.0f}"
+            
+            # Check market cap
+            market_cap = market_data.get('market_cap', 0)
+            if market_cap < self.safety_thresholds['min_market_cap']:
+                sanity_result['passed'] = False
+                sanity_result['veto_reason'] = f"Market cap below minimum: ${market_cap:,.0f} < ${self.safety_thresholds['min_market_cap']:,.0f}"
+            
+            # Check for suspicious patterns
+            if self._detect_suspicious_patterns(market_data):
+                sanity_result['passed'] = False
+                sanity_result['veto_reason'] = "Suspicious trading patterns detected"
+            
+            # Check for extreme volatility
+            volatility = market_data.get('volatility', 0)
+            if volatility > 1.0:  # 100% volatility
+                sanity_result['passed'] = False
+                sanity_result['veto_reason'] = f"Extreme volatility: {volatility:.1%}"
+            
+            if sanity_result['passed']:
+                self.logger.info(f"✅ Sanity check passed for {signal.token_address}")
+            else:
+                self.logger.warning(f"❌ Sanity check failed for {signal.token_address}: {sanity_result['veto_reason']}")
+            
+            return sanity_result
+            
+        except Exception as e:
+            self.logger.error(f"Sanity check error for {signal.token_address}: {e}")
+            sanity_result['passed'] = False
+            sanity_result['veto_reason'] = f"Sanity check error: {str(e)}"
+            return sanity_result
+    
+    def _detect_suspicious_patterns(self, market_data: Dict[str, Any]) -> bool:
+        """Detect suspicious trading patterns"""
+        
+        # Check for pump and dump patterns
+        price_history = market_data.get('price_history', [])
+        if len(price_history) >= 10:
+            recent_prices = price_history[-10:]
+            price_changes = [abs(recent_prices[i] - recent_prices[i-1]) / recent_prices[i-1] 
+                           for i in range(1, len(recent_prices))]
+            
+            # If more than 70% of recent price changes are > 20%, suspicious
+            large_changes = sum(1 for change in price_changes if change > 0.2)
+            if large_changes / len(price_changes) > 0.7:
+                return True
+        
+        # Check for unusual volume spikes
+        volume_history = market_data.get('volume_history', [])
+        if len(volume_history) >= 5:
+            avg_volume = sum(volume_history[:-1]) / (len(volume_history) - 1)
+            latest_volume = volume_history[-1]
+            
+            if latest_volume > avg_volume * 10:  # 10x volume spike
+                return True
+        
+        return False
+
 class NeuralCommandCenter:
     """The neural command center of the 10-wallet swarm"""
     
@@ -116,6 +307,10 @@ class NeuralCommandCenter:
         self.technical_analyzer = TechnicalAnalyzer()
         self.ml_predictor = MLPredictor()
         self.sentiment_ai = SentimentFirstAI()
+        
+        # Initialize validation components
+        self.challenger_model = ChallengerModel()
+        self.sanity_checker = SanityChecker()
         
         # Initialize Twitter analyzer (required for sentiment analysis)
         self.twitter_analyzer = None
@@ -148,7 +343,11 @@ class NeuralCommandCenter:
         self.shadow_memory = {}
         self.shadow_memory_file = Path('data/shadow_memory.json')
         
-        self.logger.info("🧠 Neural Command Center initialized")
+        # Failed trade patterns database
+        self.failed_patterns_db = {}
+        self.failed_patterns_file = Path('data/failed_patterns.json')
+        
+        self.logger.info("🧠 Neural Command Center initialized with validation layers")
     
     async def initialize(self, wallet_manager: UnifiedWalletManager, 
                         vault_system: VaultWalletSystem):
@@ -163,8 +362,9 @@ class NeuralCommandCenter:
         await self.technical_analyzer.initialize()
         await self.ml_predictor.initialize()
         
-        # Load shadow memory from previous sessions
+        # Load shadow memory and failed patterns from previous sessions
         await self._load_shadow_memory()
+        await self._load_failed_patterns()
         
         # Start background intelligence loops
         asyncio.create_task(self._continuous_intelligence_loop())
@@ -177,7 +377,7 @@ class NeuralCommandCenter:
                                  market_data: Dict[str, Any]) -> ConsensusSignal:
         """
         Core decision engine: Only trades when AI + on-chain + Twitter ALL agree
-        No exceptions. This is the survival filter.
+        PLUS secondary validation layers. No exceptions. This is the survival filter.
         """
         
         try:
@@ -186,52 +386,98 @@ class NeuralCommandCenter:
                 timestamp=datetime.now()
             )
             
-            # Get AI prediction
+            # Phase 1: Primary Intelligence Gathering
             ai_prediction = await self._get_ai_prediction(token_address, market_data)
             signal.ai_prediction = ai_prediction
             
-            # Get on-chain analysis
             onchain_sentiment = await self._get_onchain_analysis(token_address, market_data)
             signal.onchain_sentiment = onchain_sentiment
             
-            # Get Twitter sentiment (required)
             twitter_sentiment = await self._get_twitter_analysis(token_address)
             signal.twitter_sentiment = twitter_sentiment
             
-            if twitter_sentiment.confidence_score < 0.3:
-                self.logger.debug("🐦 Low confidence Twitter sentiment, proceeding carefully")
+            technical_score = await self._get_technical_analysis(token_address)
+            signal.technical_score = technical_score
             
-            # Get technical analysis
-            signal.technical_score = await self._get_technical_analysis(token_address)
+            caller_reputation = await self._get_caller_intelligence(token_address)
+            signal.caller_reputation = caller_reputation
             
-            # Get caller intelligence
-            signal.caller_reputation = await self._get_caller_intelligence(token_address)
-            
-            # Check shadow memory
-            if await self._matches_shadow_memory(token_address, market_data):
-                signal.risk_indicators.append("Matches failed pattern in shadow memory")
-                signal.passes_consensus = False
-                signal.recommended_action = "AVOID"
-                signal.reasoning.append("Déjà vu trap detected - never die the same way twice")
-                return signal
-            
-            # Evaluate consensus
+            # Phase 2: Primary Consensus Evaluation
             consensus_result = self._evaluate_consensus(signal)
-            signal.consensus_strength = consensus_result['strength']
-            signal.passes_consensus = consensus_result['passes']
-            signal.recommended_action = consensus_result['action']
+            signal.consensus_strength = consensus_result['consensus_strength']
+            signal.confidence_level = consensus_result['confidence_level']
+            signal.unanimous_agreement = consensus_result['unanimous_agreement']
+            signal.passes_consensus = consensus_result['passes_consensus']
+            signal.recommended_action = consensus_result['recommended_action']
             signal.reasoning = consensus_result['reasoning']
+            
+            # Phase 3: Secondary Validation Layers (Consensus of Consensuses)
+            if signal.passes_consensus and signal.recommended_action == "BUY":
+                
+                # Secondary validation: Challenger model
+                challenger_result = await self.challenger_model.validate_opportunity(token_address, market_data)
+                signal.challenger_model_agreement = challenger_result['passed']
+                
+                if not signal.challenger_model_agreement:
+                    signal.recommended_action = "HOLD"
+                    signal.reasoning.append(f"Challenger model veto: {', '.join(challenger_result['reasons'])}")
+                    self.logger.warning(f"🛡️ Challenger model vetoed {token_address}")
+                
+                # Secondary validation: Sanity check
+                sanity_result = await self.sanity_checker.run_sanity_check(signal, market_data)
+                signal.sanity_check_passed = sanity_result['passed']
+                
+                if not signal.sanity_check_passed:
+                    signal.recommended_action = "HOLD"
+                    signal.reasoning.append(f"Sanity check veto: {sanity_result['veto_reason']}")
+                    self.logger.warning(f"🧠 Sanity check vetoed {token_address}")
+                
+                # Secondary validation: Shadow memory check
+                shadow_memory_check = await self._check_shadow_memory(token_address, market_data)
+                signal.shadow_memory_check_passed = shadow_memory_check['passed']
+                
+                if not signal.shadow_memory_check_passed:
+                    signal.recommended_action = "HOLD"
+                    signal.reasoning.append(f"Shadow memory veto: {shadow_memory_check['reason']}")
+                    self.logger.warning(f"👻 Shadow memory vetoed {token_address}")
+                
+                # Secondary validation: Failed patterns check
+                failed_patterns_check = await self._check_failed_patterns(token_address, market_data)
+                signal.failed_patterns_check_passed = failed_patterns_check['passed']
+                
+                if not signal.failed_patterns_check_passed:
+                    signal.recommended_action = "HOLD"
+                    signal.reasoning.append(f"Failed patterns veto: {failed_patterns_check['reason']}")
+                    self.logger.warning(f"🚫 Failed patterns vetoed {token_address}")
+                
+                # Final confidence calculation with all validation layers
+                signal.final_confidence_score = self._calculate_final_confidence(signal)
+                
+                # Final decision: Only proceed if ALL validation layers pass
+                signal.secondary_validation_passed = all([
+                    signal.challenger_model_agreement,
+                    signal.sanity_check_passed,
+                    signal.shadow_memory_check_passed,
+                    signal.failed_patterns_check_passed
+                ])
+                
+                if not signal.secondary_validation_passed:
+                    signal.recommended_action = "HOLD"
+                    self.logger.warning(f"🛡️ Secondary validation failed for {token_address} - trade vetoed")
             
             return signal
             
         except Exception as e:
-            self.logger.error(f"Opportunity analysis failed: {e}")
+            self.logger.error(f"Opportunity analysis failed for {token_address}: {e}")
+            
+            # Return safe default signal
             return ConsensusSignal(
                 token_address=token_address,
                 timestamp=datetime.now(),
-                passes_consensus=False,
-                recommended_action="ERROR",
-                reasoning=[f"Analysis failed: {str(e)}"]
+                recommended_action="HOLD",
+                reasoning=[f"Analysis error: {str(e)}"],
+                secondary_validation_passed=False,
+                final_confidence_score=0.0
             )
     
     async def _get_ai_prediction(self, token_address: str, market_data: Dict[str, Any]) -> float:
@@ -351,15 +597,184 @@ class NeuralCommandCenter:
                     }
                     
                     score = rec_scores.get(recommendation.get('recommendation', 'CAUTION'), 0.0)
-                    confidence = recommendation.get('confidence', 0.5)
-                    
-                    reputation_scores.append(score * confidence)
+                    reputation_scores.append(score)
             
-            return np.mean(reputation_scores) if reputation_scores else 0.0
-            
+            if reputation_scores:
+                return sum(reputation_scores) / len(reputation_scores)
+            else:
+                return 0.0
+                
         except Exception as e:
             self.logger.warning(f"Caller intelligence failed: {e}")
             return 0.0
+    
+    async def _check_shadow_memory(self, token_address: str, market_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Check if token matches patterns in shadow memory"""
+        
+        try:
+            pattern_signature = self._create_pattern_signature(token_address, market_data)
+            
+            for memory_entry in self.shadow_memory.values():
+                if memory_entry.get('outcome') == 'failed':
+                    stored_pattern = memory_entry.get('pattern_signature', {})
+                    similarity = self._pattern_similarity(pattern_signature, stored_pattern)
+                    
+                    if similarity > 0.8:  # 80% similarity threshold
+                        return {
+                            'passed': False,
+                            'reason': f"Matches failed pattern in shadow memory (similarity: {similarity:.2f})"
+                        }
+            
+            return {'passed': True, 'reason': "No failed patterns matched"}
+            
+        except Exception as e:
+            self.logger.error(f"Shadow memory check failed: {e}")
+            return {'passed': False, 'reason': f"Shadow memory check error: {str(e)}"}
+    
+    async def _check_failed_patterns(self, token_address: str, market_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Check if token matches known failed trade patterns"""
+        
+        try:
+            pattern_signature = self._create_pattern_signature(token_address, market_data)
+            pattern_hash = hashlib.md5(json.dumps(pattern_signature, sort_keys=True).encode()).hexdigest()
+            
+            # Check against failed patterns database
+            if pattern_hash in self.failed_patterns_db:
+                failed_entry = self.failed_patterns_db[pattern_hash]
+                return {
+                    'passed': False,
+                    'reason': f"Matches known failed pattern: {failed_entry.get('reason', 'Unknown failure')}"
+                }
+            
+            # Check for rug pull patterns
+            if self._detect_rug_pattern(market_data):
+                return {
+                    'passed': False,
+                    'reason': "Detected potential rug pull pattern"
+                }
+            
+            return {'passed': True, 'reason': "No failed patterns detected"}
+            
+        except Exception as e:
+            self.logger.error(f"Failed patterns check failed: {e}")
+            return {'passed': False, 'reason': f"Failed patterns check error: {str(e)}"}
+    
+    def _detect_rug_pattern(self, market_data: Dict[str, Any]) -> bool:
+        """Detect potential rug pull patterns"""
+        
+        try:
+            # Check for sudden liquidity removal
+            liquidity_history = market_data.get('liquidity_history', [])
+            if len(liquidity_history) >= 3:
+                recent_liquidity = liquidity_history[-3:]
+                if all(recent_liquidity[i] < recent_liquidity[i-1] * 0.5 for i in range(1, len(recent_liquidity))):
+                    return True
+            
+            # Check for whale concentration
+            whale_concentration = market_data.get('whale_concentration', 0)
+            if whale_concentration > 0.8:  # 80% whale concentration
+                return True
+            
+            # Check for suspicious holder distribution
+            holder_distribution = market_data.get('holder_distribution', {})
+            if holder_distribution:
+                top_10_holders = sum(list(holder_distribution.values())[:10])
+                if top_10_holders > 0.9:  # Top 10 holders own >90%
+                    return True
+            
+            return False
+            
+        except Exception as e:
+            self.logger.error(f"Rug pattern detection failed: {e}")
+            return False
+    
+    def _calculate_final_confidence(self, signal: ConsensusSignal) -> float:
+        """Calculate final confidence score with all validation layers"""
+        
+        try:
+            # Base confidence from primary consensus
+            base_confidence = signal.confidence_level
+            
+            # Apply validation layer adjustments
+            validation_multiplier = 1.0
+            
+            if signal.challenger_model_agreement:
+                validation_multiplier *= 1.1  # 10% boost for challenger agreement
+            else:
+                validation_multiplier *= 0.5  # 50% penalty for challenger disagreement
+            
+            if signal.sanity_check_passed:
+                validation_multiplier *= 1.05  # 5% boost for sanity check
+            else:
+                validation_multiplier *= 0.3  # 70% penalty for sanity check failure
+            
+            if signal.shadow_memory_check_passed:
+                validation_multiplier *= 1.05  # 5% boost for shadow memory
+            else:
+                validation_multiplier *= 0.2  # 80% penalty for shadow memory failure
+            
+            if signal.failed_patterns_check_passed:
+                validation_multiplier *= 1.05  # 5% boost for failed patterns check
+            else:
+                validation_multiplier *= 0.1  # 90% penalty for failed patterns match
+            
+            final_confidence = base_confidence * validation_multiplier
+            
+            # Ensure confidence stays within bounds
+            return np.clip(final_confidence, 0.0, 1.0)
+            
+        except Exception as e:
+            self.logger.error(f"Final confidence calculation failed: {e}")
+            return 0.0
+    
+    async def _load_failed_patterns(self):
+        """Load failed trade patterns from file"""
+        
+        try:
+            if self.failed_patterns_file.exists():
+                with open(self.failed_patterns_file, 'r') as f:
+                    self.failed_patterns_db = json.load(f)
+                self.logger.info(f"✅ Loaded {len(self.failed_patterns_db)} failed patterns")
+            else:
+                self.failed_patterns_db = {}
+                self.logger.info("No failed patterns file found, starting fresh")
+                
+        except Exception as e:
+            self.logger.error(f"Failed to load failed patterns: {e}")
+            self.failed_patterns_db = {}
+    
+    async def _save_failed_patterns(self):
+        """Save failed trade patterns to file"""
+        
+        try:
+            self.failed_patterns_file.parent.mkdir(parents=True, exist_ok=True)
+            with open(self.failed_patterns_file, 'w') as f:
+                json.dump(self.failed_patterns_db, f, indent=2)
+            self.logger.debug("✅ Failed patterns saved")
+            
+        except Exception as e:
+            self.logger.error(f"Failed to save failed patterns: {e}")
+    
+    async def record_failed_pattern(self, token_address: str, market_data: Dict[str, Any], reason: str):
+        """Record a failed trade pattern for future avoidance"""
+        
+        try:
+            pattern_signature = self._create_pattern_signature(token_address, market_data)
+            pattern_hash = hashlib.md5(json.dumps(pattern_signature, sort_keys=True).encode()).hexdigest()
+            
+            self.failed_patterns_db[pattern_hash] = {
+                'token_address': token_address,
+                'pattern_signature': pattern_signature,
+                'reason': reason,
+                'timestamp': datetime.now().isoformat(),
+                'avoid_count': 0
+            }
+            
+            await self._save_failed_patterns()
+            self.logger.info(f"🚫 Recorded failed pattern for {token_address}: {reason}")
+            
+        except Exception as e:
+            self.logger.error(f"Failed to record failed pattern: {e}")
     
     def _evaluate_consensus(self, signal: ConsensusSignal) -> Dict[str, Any]:
         """
@@ -416,13 +831,14 @@ class NeuralCommandCenter:
                 action = "SELL"
                 reasoning = ["All systems agree: Strong bearish consensus"]
         else:
-            action = "WAIT"
+            action = "HOLD"
             
         return {
-            'passes': passes_consensus,
-            'strength': consensus_strength,
-            'confidence': confidence_level,
-            'action': action,
+            'passes_consensus': passes_consensus,
+            'consensus_strength': consensus_strength,
+            'confidence_level': confidence_level,
+            'unanimous_agreement': unanimous_agreement,
+            'recommended_action': action,
             'reasoning': reasoning
         }
     
