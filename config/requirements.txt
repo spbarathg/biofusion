@@ -1,67 +1,95 @@
-# Core dependencies
+# Core dependencies for production-ready memecoin trading bot
+aiohttp==3.9.1
+asyncio==3.4.3
+numpy==1.24.3
+pandas==2.0.3
+requests==2.31.0
+websockets==12.0
+python-dotenv==1.0.0
+
+# Solana blockchain integration
 solana==0.30.2
 solders==0.18.1
-pydantic==2.5.2
-cryptography==41.0.7
-aiohttp==3.9.1
 base58==2.1.1
-websockets==11.0.3
-python-dotenv==1.0.0
-asyncio==3.4.3
+construct==2.10.68
+spl-token==0.2.0
 
-# Discord integration
-discord.py==2.3.2
-
-# DEX integrations
-jupiter-py==0.5.0
-raydium-py==0.3.0
-birdeye-py==0.2.0
-dexscreener-py==0.1.0
-
-# Machine learning and analytics
-numpy==1.24.3
-pandas==2.1.4
+# AI and sentiment analysis
+transformers==4.35.2
+torch==2.1.1
 scikit-learn==1.3.2
-tensorflow==2.15.0
-torch==2.1.2
-transformers==4.36.2
+nltk==3.8.1
+textblob==0.17.1
 
-# Data processing and analysis
-pyarrow==14.0.1
-polars==0.19.19
-ta-lib==0.4.28
-technical-analysis==0.1.0
+# Data analysis and visualization
+matplotlib==3.7.2
+seaborn==0.12.2
+plotly==5.17.0
 
-# Monitoring and infrastructure
+# Database and storage
+aiosqlite==0.19.0
 redis==5.0.1
-aioredis==2.0.1
-prometheus_client==0.19.0
-grafana-api-client==2.3.0
-statsd==4.0.1
+pymongo==4.6.0
 
-# Security and encryption
+# Monitoring and logging
+prometheus-client==0.19.0
+structlog==23.2.0
+colorama==0.4.6
+
+# Security and cryptography
 cryptography==41.0.7
 pycryptodome==3.19.0
-pyOpenSSL==23.3.0
-certifi==2023.11.17
 
-# Development and testing
+# API integrations - Updated to latest versions
+jupiter-python-sdk==0.2.0
+birdeye-python==0.2.0
+dexscreener-python==0.2.0
+
+# Configuration and environment
+pyyaml==6.0.1
+toml==0.10.2
+
+# Testing and development
 pytest==7.4.3
-pytest-asyncio==0.23.2
-pytest-cov==4.1.0
-black==23.12.1
+pytest-asyncio==0.21.1
+black==23.11.0
 flake8==6.1.0
-mypy==1.7.1
-bandit==1.7.5
-safety==2.3.5
 
-# Documentation
-sphinx==7.2.6
-sphinx-rtd-theme==1.3.0
-sphinx-autodoc-typehints==1.24.0
-
-# Performance optimization
-ujson==5.8.0
+# Performance and optimization
+uvloop==0.19.0
 orjson==3.9.10
-cython==3.0.6
-numba==0.58.1
+ujson==5.8.0
+
+# Time and date handling
+python-dateutil==2.8.2
+pytz==2023.3
+
+# HTTP and networking
+httpx==0.25.2
+aiofiles==23.2.1
+
+# Data validation
+pydantic==2.5.0
+marshmallow==3.20.1
+
+# Async utilities
+asyncio-throttle==1.0.2
+aiodns==3.1.1
+
+# Memory and process management
+psutil==5.9.6
+memory-profiler==0.61.0
+
+# Error handling and debugging
+sentry-sdk==1.38.0
+better-exceptions==0.3.3
+
+# Web3 and blockchain utilities
+web3==6.11.3
+
+# Optional: GPU acceleration for AI models
+# torch==2.1.1+cu118  # Uncomment for CUDA support
+
+# Optional: Advanced monitoring
+# grafana-api==1.0.3
+# influxdb-client==1.38.0

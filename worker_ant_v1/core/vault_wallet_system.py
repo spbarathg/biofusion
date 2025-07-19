@@ -20,7 +20,10 @@ import logging
 from pathlib import Path
 
 from worker_ant_v1.utils.logger import setup_logger
-from solana.keypair import Keypair
+try:
+    from solana.keypair import Keypair
+except ImportError:
+    from ..utils.solana_compat import Keypair
 import base58
 
 class VaultType(Enum):
@@ -69,6 +72,7 @@ class VaultWalletSystem:
         
         # System state
         self.initialized = False
+        self.system_active = True
         self.total_vault_balance = 0.0
         self.total_profits_secured = 0.0
         
@@ -235,6 +239,23 @@ class VaultWalletSystem:
         except Exception as e:
             self.logger.error(f"Error allocating profit: {e}")
             return {}
+    
+    async def deposit_profits(self, amount: float) -> bool:
+        """Deposit profits to vault system - simplified interface"""
+        try:
+            # Use daily vault for profit deposits
+            vault_id = "vault_daily"
+            if vault_id in self.vaults:
+                await self._deposit_to_vault(vault_id, amount, "trading_bot")
+                self.logger.info(f"💰 Deposited {amount:.4f} SOL profits to vault")
+                return True
+            else:
+                self.logger.error(f"Vault {vault_id} not found")
+                return False
+                
+        except Exception as e:
+            self.logger.error(f"Error depositing profits: {e}")
+            return False
     
     async def _deposit_to_vault(self, vault_id: str, amount: float, source_wallet: str):
         """Deposit funds to a vault"""
@@ -506,19 +527,42 @@ class VaultWalletSystem:
     
     async def _record_vault_transaction(self, vault_id: str, transaction_type: str, 
                                       amount: float, wallet: str, reason: str = ""):
-        """Record vault transaction"""
+        """Record vault transaction in database"""
         try:
-            # Placeholder - implement with actual transaction recording
-            transaction = {
-                'vault_id': vault_id,
-                'type': transaction_type,
-                'amount': amount,
-                'wallet': wallet,
-                'reason': reason,
-                'timestamp': datetime.now().isoformat()
-            }
+            import sqlite3
+            from datetime import datetime
             
-            # In a real implementation, this would be stored in a database
+            # Create transactions table if it doesn't exist
+            db_path = 'wallets/vault_transactions.db'
+            os.makedirs(os.path.dirname(db_path), exist_ok=True)
+            
+            with sqlite3.connect(db_path) as conn:
+                cursor = conn.cursor()
+                
+                # Create table if not exists
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS vault_transactions (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        vault_id TEXT NOT NULL,
+                        transaction_type TEXT NOT NULL,
+                        amount REAL NOT NULL,
+                        wallet TEXT NOT NULL,
+                        reason TEXT,
+                        timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+                        status TEXT DEFAULT 'completed'
+                    )
+                """)
+                
+                # Insert transaction record
+                cursor.execute("""
+                    INSERT INTO vault_transactions 
+                    (vault_id, transaction_type, amount, wallet, reason)
+                    VALUES (?, ?, ?, ?, ?)
+                """, (vault_id, transaction_type, amount, wallet, reason))
+                
+                conn.commit()
+                
+                self.logger.info(f"📝 Recorded {transaction_type} transaction: {amount} SOL for {vault_id}")
             
         except Exception as e:
             self.logger.error(f"Error recording vault transaction: {e}")

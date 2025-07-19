@@ -12,9 +12,12 @@ from typing import Dict, List, Optional, Any, Tuple
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 import logging
-
-from worker_ant_v1.utils.logger import setup_logger
+import aiohttp
+import json
+import os
+from worker_ant_v1.utils.logger import get_logger
 from worker_ant_v1.intelligence.sentiment_analyzer import SentimentAnalyzer, SentimentData
+from enum import Enum
 
 @dataclass
 class SentimentDecision:

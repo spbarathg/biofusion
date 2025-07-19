@@ -17,7 +17,9 @@ from pathlib import Path
 import numpy as np
 import asyncio
 import aiohttp
+import aiosqlite
 from ..utils.logger import setup_logger
+import os
 
 @dataclass
 class CallerStats:
@@ -428,24 +430,138 @@ class AlphaCallerDB:
             return 0.0
     
     async def _fetch_price_history(self, token_address: str) -> List[float]:
-        """Fetch price history for a token"""
-        # Placeholder - implement with your preferred API
-        return []
+        """Fetch price history for a token from Birdeye API"""
+        try:
+            if not hasattr(self, 'birdeye_api_key'):
+                self.birdeye_api_key = os.getenv('BIRDEYE_API_KEY')
+            
+            if not self.birdeye_api_key:
+                return []
+            
+            # Get price history from Birdeye
+            url = f"https://public-api.birdeye.so/public/token/{token_address}/price_history"
+            headers = {'X-API-KEY': self.birdeye_api_key}
+            
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, headers=headers) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        price_data = data.get('data', {}).get('items', [])
+                        
+                        # Extract prices from the last 100 data points
+                        prices = []
+                        for item in price_data[-100:]:
+                            price = item.get('value', 0.0)
+                            if price > 0:
+                                prices.append(price)
+                        
+                        return prices
+            
+            return []
+            
+        except Exception as e:
+            self.logger.error(f"Error fetching price history: {e}")
+            return []
     
     async def _fetch_volume_history(self, token_address: str) -> List[float]:
-        """Fetch volume history for a token (production-ready stub)"""
-        self.logger.warning("Volume history fetch not implemented. TODO: Integrate with real API.")
-        return []
+        """Fetch volume history for a token from Birdeye API"""
+        try:
+            if not hasattr(self, 'birdeye_api_key'):
+                self.birdeye_api_key = os.getenv('BIRDEYE_API_KEY')
+            
+            if not self.birdeye_api_key:
+                return []
+            
+            # Get volume history from Birdeye
+            url = f"https://public-api.birdeye.so/public/token/{token_address}/volume_history"
+            headers = {'X-API-KEY': self.birdeye_api_key}
+            
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, headers=headers) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        volume_data = data.get('data', {}).get('items', [])
+                        
+                        # Extract volumes from the last 100 data points
+                        volumes = []
+                        for item in volume_data[-100:]:
+                            volume = item.get('value', 0.0)
+                            if volume > 0:
+                                volumes.append(volume)
+                        
+                        return volumes
+            
+            return []
+            
+        except Exception as e:
+            self.logger.error(f"Error fetching volume history: {e}")
+            return []
 
     async def _fetch_holder_history(self, token_address: str) -> Dict[str, Any]:
-        """Fetch holder data for a token (production-ready stub)"""
-        self.logger.warning("Holder history fetch not implemented. TODO: Integrate with real API.")
-        return {}
+        """Fetch holder data for a token from Birdeye API"""
+        try:
+            if not hasattr(self, 'birdeye_api_key'):
+                self.birdeye_api_key = os.getenv('BIRDEYE_API_KEY')
+            
+            if not self.birdeye_api_key:
+                return {}
+            
+            # Get holder data from Birdeye
+            url = f"https://public-api.birdeye.so/public/token/{token_address}/holders"
+            headers = {'X-API-KEY': self.birdeye_api_key}
+            
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, headers=headers) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        holder_data = data.get('data', {})
+                        
+                        return {
+                            'holder_count': holder_data.get('total', 0),
+                            'top_holder_percentage': holder_data.get('top_holder_percentage', 0.0),
+                            'holder_distribution': holder_data.get('distribution', {}),
+                            'whale_count': holder_data.get('whale_count', 0)
+                        }
+            
+            return {}
+            
+        except Exception as e:
+            self.logger.error(f"Error fetching holder history: {e}")
+            return {}
 
     async def _fetch_mcap_history(self, token_address: str) -> List[float]:
-        """Fetch market cap history for a token (production-ready stub)"""
-        self.logger.warning("Market cap history fetch not implemented. TODO: Integrate with real API.")
-        return []
+        """Fetch market cap history for a token from Birdeye API"""
+        try:
+            if not hasattr(self, 'birdeye_api_key'):
+                self.birdeye_api_key = os.getenv('BIRDEYE_API_KEY')
+            
+            if not self.birdeye_api_key:
+                return []
+            
+            # Get market cap history from Birdeye
+            url = f"https://public-api.birdeye.so/public/token/{token_address}/mcap_history"
+            headers = {'X-API-KEY': self.birdeye_api_key}
+            
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, headers=headers) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        mcap_data = data.get('data', {}).get('items', [])
+                        
+                        # Extract market caps from the last 100 data points
+                        mcaps = []
+                        for item in mcap_data[-100:]:
+                            mcap = item.get('value', 0.0)
+                            if mcap > 0:
+                                mcaps.append(mcap)
+                        
+                        return mcaps
+            
+            return []
+            
+        except Exception as e:
+            self.logger.error(f"Error fetching market cap history: {e}")
+            return []
     
     async def _pattern_analysis_loop(self) -> None:
         """Background task to analyze patterns"""

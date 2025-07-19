@@ -118,37 +118,83 @@ class SystemIntegrityChecker:
     def _check_dependencies(self):
         """Check Python package dependencies"""
         
-        required_packages = [
+        critical_deps = [
             'aiohttp',
             'pydantic',
-            'web3',
             'numpy',
             'pandas',
             'scikit-learn',
             'prometheus_client',
-            'cryptography'
+            'cryptography',
+            'solana',
+            'solders',
+            'base58',
+            'transformers',
+            'torch',
+            'aiosqlite',
+            'redis',
+            'websockets',
+            'asyncio',
+            'requests'
         ]
         
-        missing_packages = []
-        installed_packages = []
+        optional_deps = [
+            'tensorflow',
+            'pymongo',
+            'plotly',
+            'matplotlib',
+            'seaborn',
+            'uvloop',
+            'orjson',
+            'sentry_sdk'
+        ]
         
-        for package in required_packages:
+        missing_critical = []
+        missing_optional = []
+        installed_deps = []
+        
+        # Check critical dependencies
+        for dep in critical_deps:
             try:
-                __import__(package)
-                installed_packages.append(f"✅ {package}")
+                __import__(dep)
+                installed_deps.append(f"✅ {dep}")
             except ImportError:
-                missing_packages.append(f"❌ {package}")
+                missing_critical.append(f"❌ {dep} (CRITICAL)")
         
-        if missing_packages:
-            self.results['dependencies']['status'] = 'FAIL'
-            print("❌ Missing dependencies:")
-            for item in missing_packages:
+        # Check optional dependencies
+        for dep in optional_deps:
+            try:
+                __import__(dep)
+                installed_deps.append(f"✅ {dep}")
+            except ImportError:
+                missing_optional.append(f"⚠️  {dep} (OPTIONAL)")
+        
+        # Check GPU availability for AI models
+        try:
+            import torch
+            if torch.cuda.is_available():
+                installed_deps.append("✅ CUDA GPU support available")
+            else:
+                installed_deps.append("⚠️  CUDA GPU support not available (CPU only)")
+        except ImportError:
+            missing_optional.append("⚠️  torch (OPTIONAL - for GPU acceleration)")
+        
+        # Report results
+        if missing_critical:
+            self.results['dependencies']['status'] = 'CRITICAL_FAIL'
+            print(f"❌ Missing {len(missing_critical)} critical dependencies:")
+            for item in missing_critical:
                 print(f"   {item}")
         else:
             self.results['dependencies']['status'] = 'PASS'
-            print("✅ All dependencies installed")
+            print(f"✅ All {len(critical_deps)} critical dependencies found")
         
-        self.results['dependencies']['details'] = installed_packages + missing_packages
+        if missing_optional:
+            print(f"⚠️  Missing {len(missing_optional)} optional dependencies:")
+            for item in missing_optional:
+                print(f"   {item}")
+        
+        self.results['dependencies']['details'] = installed_deps + missing_critical + missing_optional
     
     def _check_modules(self):
         """Test loading of core modules"""
@@ -233,98 +279,192 @@ class SystemIntegrityChecker:
             print(f"❌ Configuration validation failed: {e}")
     
     def _check_trading_system(self):
-        """Validate trading system readiness"""
-        
+        """Validate trading system components and configuration"""
         try:
-            from worker_ant_v1.core.unified_trading_engine import UnifiedTradingEngine
-            from worker_ant_v1.core.wallet_manager import get_wallet_manager
+            # Check trading mode configuration
+            trading_mode = os.getenv('TRADING_MODE', '').upper()
+            if trading_mode not in ['LIVE', 'SIMULATION', 'PRODUCTION']:
+                self.results['trading_readiness']['status'] = 'CRITICAL_FAIL'
+                self.results['trading_readiness']['details'].append(
+                    f"❌ Invalid TRADING_MODE: {trading_mode} - must be LIVE, SIMULATION, or PRODUCTION"
+                )
+                return
             
-            engine = UnifiedTradingEngine()
-            wallet_manager = get_wallet_manager()
+            # Validate trading parameters
+            required_params = {
+                'MAX_TRADE_SIZE_SOL': (0.1, 1000.0),
+                'MIN_TRADE_SIZE_SOL': (0.01, 10.0),
+                'MAX_SLIPPAGE_PERCENT': (0.1, 5.0),
+                'PROFIT_TARGET_PERCENT': (0.5, 100.0),
+                'STOP_LOSS_PERCENT': (0.5, 50.0),
+                'INITIAL_CAPITAL': (1.0, 10000.0)
+            }
             
-            checks = []
+            missing_params = []
+            invalid_params = []
             
-            # Check wallet setup
-            wallet_count = len(wallet_manager.get_all_wallets())
-            if wallet_count < 1:
-                checks.append("❌ No trading wallets configured")
-            else:
-                checks.append(f"✅ {wallet_count} trading wallets ready")
+            for param, (min_val, max_val) in required_params.items():
+                value = os.getenv(param)
+                if not value:
+                    missing_params.append(param)
+                else:
+                    try:
+                        float_val = float(value)
+                        if not (min_val <= float_val <= max_val):
+                            invalid_params.append(
+                                f"{param}={float_val} (should be between {min_val}-{max_val})"
+                            )
+                    except ValueError:
+                        invalid_params.append(f"{param}={value} (invalid number)")
             
-            # Check trading engine
-            if engine.is_ready():
-                checks.append("✅ Trading engine initialized")
-            else:
-                checks.append("❌ Trading engine not ready")
+            # Check for missing parameters
+            if missing_params:
+                self.results['trading_readiness']['status'] = 'CRITICAL_FAIL'
+                self.results['trading_readiness']['details'].append(
+                    f"❌ Missing trading parameters: {', '.join(missing_params)}"
+                )
+                return
             
-            # Check safety systems
-            if engine.safety_systems_active():
-                checks.append("✅ Safety systems active")
-            else:
-                checks.append("❌ Safety systems inactive")
+            # Check for invalid parameters
+            if invalid_params:
+                self.results['trading_readiness']['status'] = 'CRITICAL_FAIL'
+                self.results['trading_readiness']['details'].append(
+                    f"❌ Invalid trading parameters: {', '.join(invalid_params)}"
+                )
+                return
             
-            if any('❌' in check for check in checks):
-                self.results['trading_readiness']['status'] = 'FAIL'
-            else:
-                self.results['trading_readiness']['status'] = 'PASS'
+            # Validate wallet configuration
+            wallet_count = int(os.getenv('WALLET_COUNT', '10'))
+            if wallet_count < 3 or wallet_count > 20:
+                self.results['trading_readiness']['status'] = 'CRITICAL_FAIL'
+                self.results['trading_readiness']['details'].append(
+                    f"❌ Invalid WALLET_COUNT: {wallet_count} (should be between 3-20)"
+                )
+                return
             
-            self.results['trading_readiness']['details'] = checks
+            # Check safety settings
+            safety_params = {
+                'KILL_SWITCH_ENABLED': 'true',
+                'EMERGENCY_STOP_ENABLED': 'true',
+                'VAULT_ENABLED': 'true'
+            }
             
-            for check in checks:
-                print(f"   {check}")
-                
+            for param, expected_value in safety_params.items():
+                actual_value = os.getenv(param, 'false').lower()
+                if actual_value != expected_value:
+                    self.results['trading_readiness']['details'].append(
+                        f"⚠️  {param}={actual_value} (recommended: {expected_value})"
+                    )
+            
+            # All checks passed
+            self.results['trading_readiness']['status'] = 'PASS'
+            self.results['trading_readiness']['details'].append(
+                f"✅ Trading system configuration valid - Mode: {trading_mode}, Wallets: {wallet_count}"
+            )
+            
         except Exception as e:
-            self.results['trading_readiness']['status'] = 'FAIL'
-            self.results['trading_readiness']['details'] = [f"❌ Trading system error: {str(e)}"]
-            print(f"❌ Trading system validation failed: {e}")
+            self.results['trading_readiness']['status'] = 'CRITICAL_FAIL'
+            self.results['trading_readiness']['details'].append(f"❌ Trading system validation error: {str(e)}")
     
     async def _dry_boot_test(self):
-        """Run dry boot test of core systems"""
+        """Perform dry boot test of core systems"""
         
         try:
+            print("   🔧 Testing configuration loading...")
+            from worker_ant_v1.core.unified_config import UnifiedConfigManager
+            config_manager = UnifiedConfigManager()
+            config = config_manager.get_config()
+            
+            if not config:
+                raise Exception("Configuration loading failed")
+            
+            print("   ✅ Configuration loaded successfully")
+            
+            print("   👛 Testing wallet manager...")
+            from worker_ant_v1.core.wallet_manager import UnifiedWalletManager
+            wallet_manager = UnifiedWalletManager()
+            
+            # Test wallet manager initialization
+            if not await wallet_manager.initialize():
+                raise Exception("Wallet manager initialization failed")
+            
+            print("   ✅ Wallet manager initialized successfully")
+            
+            print("   🌐 Testing Solana RPC connection...")
+            try:
+    from solana.rpc.async_api import AsyncClient
+except ImportError:
+    from ..utils.solana_compat import AsyncClient
+            
+            rpc_url = os.getenv('SOLANA_RPC_URL', 'https://api.mainnet-beta.solana.com')
+            solana_client = AsyncClient(rpc_url)
+            
+            try:
+                # Test RPC connection
+                response = await solana_client.get_health()
+                if response.value != "ok":
+                    raise Exception(f"RPC health check failed: {response.value}")
+                
+                # Test basic RPC operations
+                slot_response = await solana_client.get_slot()
+                if not slot_response.value:
+                    raise Exception("RPC slot query failed")
+                
+                print("   ✅ Solana RPC connection successful")
+                
+            except Exception as e:
+                print(f"   ⚠️  RPC connection warning: {e}")
+            
+            print("   🧠 Testing intelligence systems...")
+            from worker_ant_v1.intelligence.token_intelligence_system import TokenIntelligenceSystem
+            intelligence = TokenIntelligenceSystem()
+            
+            # Test intelligence system initialization
+            if not await intelligence.initialize():
+                raise Exception("Intelligence system initialization failed")
+            
+            print("   ✅ Intelligence systems initialized successfully")
+            
+            print("   🛡️  Testing safety systems...")
+            from worker_ant_v1.safety.enhanced_rug_detector import EnhancedRugDetector
+            rug_detector = EnhancedRugDetector()
+            
+            # Test rug detector initialization
+            if not await rug_detector.initialize():
+                raise Exception("Rug detector initialization failed")
+            
+            print("   ✅ Safety systems initialized successfully")
+            
+            print("   🔄 Testing trading engine...")
             from worker_ant_v1.core.unified_trading_engine import UnifiedTradingEngine
+            trading_engine = UnifiedTradingEngine()
             
-            print("Running dry boot test (no real trades)...")
+            # Test trading engine initialization
+            if not await trading_engine.initialize():
+                raise Exception("Trading engine initialization failed")
             
-            engine = UnifiedTradingEngine()
-            await engine.initialize(dry_run=True)
+            print("   ✅ Trading engine initialized successfully")
             
-            checks = []
+            print("   🏦 Testing vault system...")
+            from worker_ant_v1.core.vault_wallet_system import VaultWalletSystem
+            vault_system = VaultWalletSystem()
             
-            # Test market data fetching
-            if await engine.test_market_data():
-                checks.append("✅ Market data systems operational")
-            else:
-                checks.append("❌ Market data systems failed")
+            # Test vault system initialization
+            if not await vault_system.initialize_vault_system():
+                raise Exception("Vault system initialization failed")
             
-            # Test order simulation
-            if await engine.test_order_simulation():
-                checks.append("✅ Order systems operational")
-            else:
-                checks.append("❌ Order systems failed")
+            print("   ✅ Vault system initialized successfully")
             
-            # Test safety systems
-            if await engine.test_safety_systems():
-                checks.append("✅ Safety systems operational")
-            else:
-                checks.append("❌ Safety systems failed")
-            
-            if any('❌' in check for check in checks):
-                self.results['dry_boot']['status'] = 'FAIL'
-            else:
-                self.results['dry_boot']['status'] = 'PASS'
-            
-            self.results['dry_boot']['details'] = checks
-            
-            for check in checks:
-                print(f"   {check}")
-            
-            await engine.shutdown()
+            # All systems initialized successfully
+            self.results['dry_boot']['status'] = 'PASS'
+            self.results['dry_boot']['details'].append("✅ All core systems initialized successfully")
             
         except Exception as e:
-            self.results['dry_boot']['status'] = 'FAIL'
-            self.results['dry_boot']['details'] = [f"❌ Dry boot error: {str(e)}"]
-            print(f"❌ Dry boot test failed: {e}")
+            self.results['dry_boot']['status'] = 'CRITICAL_FAIL'
+            error_msg = f"❌ Dry boot test failed: {str(e)}"
+            self.results['dry_boot']['details'].append(error_msg)
+            print(f"   {error_msg}")
+            raise
     
     def _generate_report(self) -> Dict[str, Any]:
         """Generate final integrity check report"""

@@ -126,4 +126,16 @@ class EnhancedKillSwitch:
             self.emergency_actions = []
             self.logger.info("🔄 Kill switch reset successfully")
             return True
-        return False 
+        return False
+    
+    async def trigger_emergency_stop(self, reason: str):
+        """Trigger emergency stop"""
+        self.trigger(KillSwitchTrigger.MANUAL, reason)
+    
+    async def shutdown(self):
+        """Shutdown kill switch"""
+        self.logger.info("🛑 Kill switch shutdown")
+    
+    def is_triggered(self) -> bool:
+        """Check if kill switch is triggered"""
+        return self.is_triggered 

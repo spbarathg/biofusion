@@ -1,12 +1,9 @@
 #!/bin/bash
-# ENHANCED PRODUCTION DEPLOYMENT SCRIPT
-# ====================================
-# Comprehensive deployment with configuration validation and health checks
 
-set -e
+# SMART APE TRADING BOT - DEPLOYMENT SCRIPT
+# ========================================
 
-echo "🚀 Starting Smart Ape Mode Production Deployment..."
-echo "======================================================"
+set -e  # Exit on any error
 
 # Colors for output
 RED='\033[0;31m'
@@ -15,211 +12,225 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-# Logging function
-log() {
-    echo -e "${BLUE}[$(date '+%Y-%m-%d %H:%M:%S')]${NC} $1"
-}
-
+# Helper functions
 error() {
-    echo -e "${RED}[ERROR]${NC} $1" >&2
-}
-
-warning() {
-    echo -e "${YELLOW}[WARNING]${NC} $1"
+    echo -e "${RED}❌ ERROR: $1${NC}" >&2
+    exit 1
 }
 
 success() {
-    echo -e "${GREEN}[SUCCESS]${NC} $1"
+    echo -e "${GREEN}✅ $1${NC}"
 }
 
-# Check if .env.production exists
-if [ ! -f ".env.production" ]; then
-    error ".env.production file not found!"
-    echo "Please copy .env.example to .env.production and configure it."
-    echo ""
-    echo "Quick setup commands:"
-    echo "  cp .env.example .env.production"
-    echo "  nano .env.production  # Edit configuration"
-    echo ""
-    exit 1
+warning() {
+    echo -e "${YELLOW}⚠️  WARNING: $1${NC}"
+}
+
+info() {
+    echo -e "${BLUE}ℹ️  $1${NC}"
+}
+
+# Check if running as root
+if [[ $EUID -eq 0 ]]; then
+   error "This script should not be run as root"
 fi
 
-# Load environment variables
-log "Loading production environment variables..."
-set -a
-source .env.production
-set +a
+# Check prerequisites
+check_prerequisites() {
+    info "Checking prerequisites..."
+    
+    # Check Python version
+    if ! command -v python3 &> /dev/null; then
+        error "Python 3.8+ is required but not installed"
+    fi
+    
+    python_version=$(python3 -c 'import sys; print(".".join(map(str, sys.version_info[:2])))')
+    if [[ $(echo "$python_version >= 3.8" | bc -l) -eq 0 ]]; then
+        error "Python 3.8+ is required, found $python_version"
+    fi
+    
+    # Check Docker
+    if ! command -v docker &> /dev/null; then
+        error "Docker is required but not installed"
+    fi
+    
+    # Check Docker Compose
+    if ! command -v docker-compose &> /dev/null; then
+        error "Docker Compose is required but not installed"
+    fi
+    
+    success "Prerequisites check passed"
+}
 
-# 1. PREREQUISITE CHECKS
-log "Checking prerequisites..."
-
-# Check Docker
-if ! command -v docker >/dev/null 2>&1; then
-    error "Docker is required but not installed. Please install Docker and try again."
-    exit 1
-fi
-
-# Check Docker Compose
-if ! command -v docker-compose >/dev/null 2>&1; then
-    error "Docker Compose is required but not installed. Please install Docker Compose and try again."
-    exit 1
-fi
-
-# Check if Docker daemon is running
-if ! docker info >/dev/null 2>&1; then
-    error "Docker daemon is not running. Please start Docker and try again."
-    exit 1
-fi
-
-success "Prerequisites check passed"
-
-# 2. CONFIGURATION VALIDATION
-log "Validating production configuration..."
-
-# Run Python configuration validator
-if python3 -c "
-import sys
-sys.path.append('.')
-from worker_ant_v1.core.config_validator import validate_production_config
-exit(0 if validate_production_config() else 1)
-" 2>/dev/null; then
+# Validate configuration
+validate_configuration() {
+    info "Validating configuration..."
+    
+    # Check if .env.production exists
+    if [[ ! -f ".env.production" ]]; then
+        error "Configuration file .env.production not found. Please copy config/env.template to .env.production and configure it."
+    fi
+    
+    # Check for required API keys
+    required_keys=(
+        "HELIUS_API_KEY"
+        "SOLANA_TRACKER_API_KEY"
+        "JUPITER_API_KEY"
+        "RAYDIUM_API_KEY"
+    )
+    
+    missing_keys=()
+    for key in "${required_keys[@]}"; do
+        if ! grep -q "^${key}=" .env.production || grep -q "^${key}=your_" .env.production || grep -q "^${key}=REPLACE_WITH" .env.production; then
+            missing_keys+=("$key")
+        fi
+    done
+    
+    if [[ ${#missing_keys[@]} -gt 0 ]]; then
+        error "Missing or invalid API keys: ${missing_keys[*]}"
+    fi
+    
+    # Check trading parameters
+    trading_params=(
+        "TRADING_MODE"
+        "INITIAL_CAPITAL"
+        "MAX_TRADE_SIZE_SOL"
+        "MIN_TRADE_SIZE_SOL"
+        "MAX_SLIPPAGE_PERCENT"
+        "PROFIT_TARGET_PERCENT"
+        "STOP_LOSS_PERCENT"
+    )
+    
+    missing_params=()
+    for param in "${trading_params[@]}"; do
+        if ! grep -q "^${param}=" .env.production; then
+            missing_params+=("$param")
+        fi
+    done
+    
+    if [[ ${#missing_params[@]} -gt 0 ]]; then
+        error "Missing trading parameters: ${missing_params[*]}"
+    fi
+    
     success "Configuration validation passed"
-else
-    error "Configuration validation failed!"
-    echo ""
-    echo "Please check your .env.production file and ensure all required variables are set."
-    echo "Run this command to see detailed validation errors:"
-    echo "  python3 worker_ant_v1/core/config_validator.py"
-    echo ""
-    exit 1
-fi
+}
 
-# 3. SECURITY CHECKS
-log "Performing security checks..."
-
-# Check for default passwords
-if grep -q "CHANGE_ME" .env.production; then
-    error "Default passwords detected in .env.production!"
-    echo "Please change all CHANGE_ME placeholders to secure values."
-    exit 1
-fi
-
-# Check trading mode
-if [ "${TRADING_MODE:-}" = "LIVE" ]; then
-    warning "Trading mode is set to LIVE - real money will be used!"
-    echo -n "Are you sure you want to deploy in LIVE mode? (yes/no): "
-    read -r confirmation
-    if [ "$confirmation" != "yes" ]; then
-        echo "Deployment cancelled."
-        exit 1
+# Security checks
+security_checks() {
+    info "Performing security checks..."
+    
+    # Check for default passwords
+    if grep -q "admin123" .env.production; then
+        error "Default password detected in .env.production!"
     fi
-fi
-
-success "Security checks passed"
-
-# 4. DIRECTORY SETUP
-log "Setting up directories..."
-
-# Create necessary directories
-mkdir -p data logs wallets monitoring
-
-# Set proper permissions
-chmod 700 wallets
-chmod 755 data logs monitoring
-
-# Create backup directory
-mkdir -p data/backups
-
-success "Directory setup completed"
-
-# 5. BACKUP EXISTING DEPLOYMENT
-if [ -d "data" ] && [ "$(ls -A data)" ]; then
-    log "Creating backup of existing data..."
-    backup_name="backup_$(date +%Y%m%d_%H%M%S)"
-    ./backup.sh || warning "Backup creation failed, continuing..."
-fi
-
-# 6. BUILD AND DEPLOY
-log "Building Docker image..."
-docker-compose build --no-cache
-
-log "Starting services..."
-docker-compose up -d
-
-# 7. WAIT FOR SERVICES
-log "Waiting for services to initialize..."
-sleep 30
-
-# 8. HEALTH CHECKS
-log "Performing health checks..."
-
-# Check if services are running
-if ! docker-compose ps | grep -q "Up"; then
-    error "Some services failed to start!"
-    echo "Service status:"
-    docker-compose ps
-    exit 1
-fi
-
-# Check trading bot health endpoint
-for i in {1..10}; do
-    if curl -f -s http://localhost:8080/health >/dev/null 2>&1; then
-        break
+    
+    if grep -q "password123" .env.production; then
+        error "Default password detected in .env.production!"
     fi
-    if [ $i -eq 10 ]; then
-        error "Trading bot health check failed after 10 attempts!"
-        echo "Check logs with: docker-compose logs trading-bot"
-        exit 1
+    
+    # Check file permissions
+    if [[ $(stat -c %a .env.production) != "600" ]]; then
+        warning "Setting secure permissions on .env.production"
+        chmod 600 .env.production
     fi
-    log "Waiting for trading bot to be ready... (attempt $i/10)"
+    
+    # Check for sensitive data in logs
+    if [[ -d "logs" ]]; then
+        if grep -r "private_key\|secret\|password" logs/ 2>/dev/null; then
+            warning "Sensitive data found in logs directory"
+        fi
+    fi
+    
+    success "Security checks passed"
+}
+
+# Install dependencies
+install_dependencies() {
+    info "Installing Python dependencies..."
+    
+    if [[ ! -f "config/requirements.txt" ]]; then
+        error "requirements.txt not found"
+    fi
+    
+    pip3 install -r config/requirements.txt
+    
+    success "Dependencies installed successfully"
+}
+
+# Build Docker images
+build_docker() {
+    info "Building Docker images..."
+    
+    # Build main application
+    docker build -t smart-ape-bot:latest .
+    
+    success "Docker images built successfully"
+}
+
+# Start services
+start_services() {
+    info "Starting services..."
+    
+    # Start with docker-compose
+    docker-compose -f deployment/docker-compose.yml up -d
+    
+    success "Services started successfully"
+}
+
+# Health check
+health_check() {
+    info "Performing health check..."
+    
+    # Wait for services to start
     sleep 10
-done
+    
+    # Check if containers are running
+    if ! docker-compose -f deployment/docker-compose.yml ps | grep -q "Up"; then
+        error "Services failed to start properly"
+    fi
+    
+    # Check application health
+    if ! curl -f http://localhost:8080/health 2>/dev/null; then
+        warning "Application health check failed, but continuing..."
+    fi
+    
+    success "Health check completed"
+}
 
-# Check Prometheus
-if ! curl -f -s http://localhost:9090/-/ready >/dev/null 2>&1; then
-    warning "Prometheus health check failed, but continuing..."
-fi
+# Main deployment function
+main() {
+    echo "🚀 SMART APE TRADING BOT - DEPLOYMENT"
+    echo "====================================="
+    
+    check_prerequisites
+    validate_configuration
+    security_checks
+    install_dependencies
+    build_docker
+    start_services
+    health_check
+    
+    echo ""
+    echo "🎉 DEPLOYMENT COMPLETED SUCCESSFULLY!"
+    echo "====================================="
+    echo ""
+    echo "📊 Monitoring Dashboard: http://localhost:3000"
+    echo "📈 Prometheus Metrics: http://localhost:9090"
+    echo "🔧 Application Status: http://localhost:8080"
+    echo ""
+    echo "📋 Next Steps:"
+    echo "  • Monitor the application logs: docker-compose logs -f"
+    echo "  • Check trading performance in the dashboard"
+    echo "  • Review system metrics in Prometheus"
+    echo "  • Set up alerts for critical events"
+    echo ""
+    echo "🔒 Security Reminders:"
+    echo "  • Keep your API keys secure"
+    echo "  • Regularly update dependencies"
+    echo "  • Monitor for unusual activity"
+    echo "  • Never share your private keys or passwords"
+    echo ""
+}
 
-# Check Grafana
-if ! curl -f -s http://localhost:3000/api/health >/dev/null 2>&1; then
-    warning "Grafana health check failed, but continuing..."
-fi
-
-success "Health checks completed"
-
-# 9. DEPLOYMENT SUMMARY
-echo ""
-echo "====================================="
-echo "🎉 DEPLOYMENT COMPLETED SUCCESSFULLY!"
-echo "====================================="
-echo ""
-echo "📊 Monitoring Dashboard:"
-echo "  • Grafana: http://localhost:3000 (admin/admin)"
-echo "  • Prometheus: http://localhost:9090"
-echo ""
-echo "🤖 Trading Bot:"
-echo "  • Status: http://localhost:8080/health"
-echo "  • Mode: ${TRADING_MODE:-UNKNOWN}"
-echo "  • Capital: ${INITIAL_CAPITAL:-Unknown} SOL"
-echo ""
-echo "📋 Useful Commands:"
-echo "  • View logs: docker-compose logs -f trading-bot"
-echo "  • Stop system: docker-compose down"
-echo "  • Restart: docker-compose restart"
-echo "  • Update config: edit .env.production && docker-compose restart"
-echo ""
-echo "🔒 Security Reminders:"
-echo "  • Monitor your alerts (Discord/Telegram/Email)"
-echo "  • Check logs regularly for any issues"
-echo "  • Keep your .env.production file secure"
-echo "  • Never share your private keys or passwords"
-echo ""
-
-if [ "${TRADING_MODE:-}" = "LIVE" ]; then
-    echo "⚠️  LIVE TRADING ACTIVE - Monitor carefully!"
-else
-    echo "🛡️  Running in ${TRADING_MODE:-SIMULATION} mode"
-fi
-
-echo ""
-success "Smart Ape Mode is now running!"
+# Run main function
+main "$@"

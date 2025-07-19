@@ -53,6 +53,37 @@ class SurgicalTradeExecutor:
         self.rpc_client = rpc_client
         self.wallet_manager = wallet_manager
         self.logger.info("✅ Surgical trade executor initialized")
+    
+    async def prepare_trade(self, trade_params: Dict[str, Any]) -> Dict[str, Any]:
+        """Prepare trade parameters for execution"""
+        try:
+            prepared_trade = {
+                'token_address': trade_params.get('token_address', ''),
+                'amount': float(trade_params.get('amount', 0.0)),
+                'wallet': trade_params.get('wallet', ''),
+                'order_type': trade_params.get('order_type', 'buy'),
+                'max_slippage': float(trade_params.get('max_slippage', 2.0)),
+                'prepared_at': datetime.now().isoformat(),
+                'status': 'prepared'
+            }
+            
+            # Validate parameters
+            if not prepared_trade['token_address']:
+                raise ValueError("Token address is required")
+            if prepared_trade['amount'] <= 0:
+                raise ValueError("Amount must be positive")
+            if not prepared_trade['wallet']:
+                raise ValueError("Wallet is required")
+            
+            self.logger.info(f"📋 Prepared trade: {prepared_trade['order_type']} {prepared_trade['amount']} SOL")
+            return prepared_trade
+            
+        except Exception as e:
+            self.logger.error(f"Error preparing trade: {e}")
+            return {
+                'status': 'error',
+                'error': str(e)
+            }
         
     async def execute_buy(
         self,
@@ -266,8 +297,11 @@ class SurgicalTradeExecutor:
     async def _send_transaction(self, tx_data: str, wallet_keypair: Any) -> Optional[str]:
         """Send transaction to Solana network"""
         try:
-            from solana.transaction import Transaction
-            from solana.rpc.commitment import Confirmed
+            try:
+    from solana.transaction import Transaction
+    from solana.rpc.commitment import Confirmed
+except ImportError:
+    from ..utils.solana_compat import Transaction, Confirmed
             
             # Deserialize transaction
             transaction = Transaction.deserialize(bytes(tx_data))

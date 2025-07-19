@@ -1,27 +1,34 @@
 """
-UNIFIED WALLET MANAGER - 10-WALLET SWARM SYSTEM
-==============================================
+UNIFIED WALLET MANAGER - PRODUCTION READY
+========================================
 
-Manages 10 evolving trading wallets with genetic algorithms,
-performance tracking, and autonomous evolution.
+Real wallet management with Solana keypair generation,
+actual balance checking, and transaction capabilities.
 """
 
 import asyncio
 import secrets
-import hashlib
-import base64
+import base58
 import json
 import os
-from typing import Dict, List, Optional, Any, Tuple
-from dataclasses import dataclass, field
 from datetime import datetime, timedelta
+from typing import Dict, List, Optional, Any
+from dataclasses import dataclass, field
 from enum import Enum
 import logging
-from pathlib import Path
 
-from worker_ant_v1.utils.logger import setup_logger
-from solana.keypair import Keypair
-import base58
+try:
+    from solana.rpc.async_api import AsyncClient
+    from solana.keypair import Keypair
+    from solana.rpc.commitment import Commitment
+    from solana.publickey import PublicKey
+    from solana.transaction import Transaction
+    from solana.system_program import TransferParams, transfer
+except ImportError:
+    from ..utils.solana_compat import AsyncClient, Keypair, Commitment, PublicKey, Transaction, TransferParams, transfer
+
+from worker_ant_v1.utils.logger import get_logger
+from worker_ant_v1.core.unified_config import get_wallet_config
 
 class WalletState(Enum):
     ACTIVE = "active"
@@ -30,11 +37,11 @@ class WalletState(Enum):
     RETIRED = "retired"
 
 class WalletBehavior(Enum):
-    SNIPER = "sniper"
-    ACCUMULATOR = "accumulator"
-    SCALPER = "scalper"
-    HODLER = "hodler"
-    MIMICKER = "mimicker"
+    SNIPER = "sniper"      # Quick entry/exit, high frequency
+    ACCUMULATOR = "accumulator"  # Build positions over time
+    SCALPER = "scalper"    # Small profits, high volume
+    HODLER = "hodler"      # Long-term holds
+    MIMICKER = "mimicker"  # Follows successful wallets
 
 @dataclass
 class EvolutionGenetics:
@@ -76,63 +83,78 @@ class TradingWallet:
     metadata: Dict[str, Any] = field(default_factory=dict)
 
 class UnifiedWalletManager:
-    """Manages 10 evolving trading wallets"""
+    """Production-ready wallet manager with real Solana integration"""
     
     def __init__(self):
-        self.logger = setup_logger("UnifiedWalletManager")
+        self.logger = get_logger(__name__)
+        self.config = get_wallet_config()
+        
+        # Solana RPC client
+        self.rpc_client = AsyncClient(self.config.get('solana_rpc_url', 'https://api.mainnet-beta.solana.com'))
         
         # Wallet storage
         self.wallets: Dict[str, TradingWallet] = {}
         self.active_wallets: List[str] = []
-        self.retired_wallets: List[str] = []
+        self.performance_history: Dict[str, List[WalletPerformance]] = {}
         
-        # Evolution settings
+        # Evolution configuration
         self.evolution_config = {
             'evolution_interval_hours': 24,
-            'min_performance_threshold': 0.6,
-            'max_wallet_age_days': 7,
+            'retirement_threshold': 0.3,  # 30% win rate
             'evolution_mutation_rate': 0.1,
-            'crossover_rate': 0.7
+            'max_wallets': 10,
+            'min_wallets': 5
         }
-        
-        # Performance tracking
-        self.performance_history: Dict[str, List[WalletPerformance]] = {}
-        self.evolution_history: List[Dict[str, Any]] = []
         
         # System state
         self.initialized = False
-        self.evolution_active = False
+        self.evolution_active = True
         
+        # Token balances cache
+        self.balance_cache: Dict[str, Dict[str, float]] = {}
+        self.cache_duration = timedelta(minutes=5)
+        
+        self.logger.info("👛 Unified Wallet Manager initialized")
+
     async def initialize(self) -> bool:
         """Initialize the wallet manager"""
         try:
-            self.logger.info("💰 Initializing Unified Wallet Manager...")
+            self.logger.info("👛 Initializing Unified Wallet Manager...")
             
-            # Load existing wallets or create new ones
+            # Test RPC connection
+            try:
+                await self.rpc_client.get_health()
+                self.logger.info("✅ Solana RPC connection established")
+            except Exception as e:
+                self.logger.error(f"❌ Solana RPC connection failed: {e}")
+                return False
+            
+            # Load or create wallets
             await self._load_or_create_wallets()
             
-            # Start evolution system
+            # Start background tasks
             asyncio.create_task(self._evolution_loop())
             asyncio.create_task(self._performance_tracking_loop())
+            asyncio.create_task(self._balance_update_loop())
             
             self.initialized = True
-            self.logger.info(f"✅ Wallet manager initialized with {len(self.wallets)} wallets")
+            self.logger.info("✅ Unified Wallet Manager initialized successfully")
             return True
             
         except Exception as e:
-            self.logger.error(f"❌ Failed to initialize wallet manager: {e}")
+            self.logger.error(f"❌ Wallet manager initialization failed: {e}")
             return False
-    
+
     async def _load_or_create_wallets(self):
         """Load existing wallets or create new ones"""
         try:
             # Try to load from storage
             if await self._load_wallets_from_storage():
-                self.logger.info("📁 Loaded existing wallets from storage")
+                self.logger.info(f"📂 Loaded {len(self.wallets)} wallets from storage")
             else:
                 # Create new wallet swarm
                 await self._create_wallet_swarm()
-                self.logger.info("🆕 Created new wallet swarm")
+                self.logger.info(f"🆕 Created {len(self.wallets)} new wallets")
             
             # Update active wallets list
             self.active_wallets = [
@@ -141,16 +163,19 @@ class UnifiedWalletManager:
             ]
             
         except Exception as e:
-            self.logger.error(f"Failed to load/create wallets: {e}")
-            # Create basic wallet swarm as fallback
-            await self._create_wallet_swarm()
-    
+            self.logger.error(f"Error loading/creating wallets: {e}")
+            raise
+
     async def _create_wallet_swarm(self):
-        """Create 10 new trading wallets"""
-        for i in range(10):
-            wallet = await self._create_wallet(f"wallet_{i+1}")
-            self.wallets[wallet.wallet_id] = wallet
-    
+        """Create initial wallet swarm"""
+        num_wallets = self.evolution_config['max_wallets']
+        
+        for i in range(num_wallets):
+            wallet_id = f"wallet_{i+1:02d}"
+            wallet = await self._create_wallet(wallet_id)
+            self.wallets[wallet_id] = wallet
+            self.active_wallets.append(wallet_id)
+
     async def _create_wallet(self, wallet_id: str) -> TradingWallet:
         """Create a new trading wallet with real Solana keypair"""
         # Generate Solana keypair
@@ -186,6 +211,227 @@ class UnifiedWalletManager:
         self.logger.info(f"👤 Created wallet {wallet_id}: {behavior.value} behavior")
         return wallet
     
+    async def create_wallet(self, wallet_id: str, genetics: EvolutionGenetics = None) -> TradingWallet:
+        """Create a new wallet with optional custom genetics"""
+        try:
+            if wallet_id in self.wallets:
+                self.logger.warning(f"Wallet {wallet_id} already exists")
+                return self.wallets[wallet_id]
+            
+            wallet = await self._create_wallet(wallet_id)
+            
+            # Override genetics if provided
+            if genetics:
+                wallet.genetics = genetics
+            
+            self.wallets[wallet_id] = wallet
+            self.active_wallets.append(wallet_id)
+            
+            self.logger.info(f"👛 Created wallet {wallet_id}: {wallet.address}")
+            return wallet
+            
+        except Exception as e:
+            self.logger.error(f"Error creating wallet {wallet_id}: {e}")
+            raise
+    
+    async def get_wallet_info(self, wallet_id: str) -> Optional[Dict[str, Any]]:
+        """Get wallet information as dictionary"""
+        try:
+            if wallet_id not in self.wallets:
+                return None
+            
+            wallet = self.wallets[wallet_id]
+            
+            return {
+                'wallet_id': wallet.wallet_id,
+                'address': wallet.address,
+                'state': wallet.state.value,
+                'behavior': wallet.behavior.value,
+                'genetics': {
+                    'aggression': wallet.genetics.aggression,
+                    'patience': wallet.genetics.patience,
+                    'signal_trust': wallet.genetics.signal_trust,
+                    'adaptation_rate': wallet.genetics.adaptation_rate,
+                    'memory_strength': wallet.genetics.memory_strength,
+                    'herd_immunity': wallet.genetics.herd_immunity
+                },
+                'performance': {
+                    'total_trades': wallet.performance.total_trades,
+                    'successful_trades': wallet.performance.successful_trades,
+                    'total_profit': wallet.performance.total_profit,
+                    'win_rate': wallet.performance.win_rate,
+                    'avg_profit_per_trade': wallet.performance.avg_profit_per_trade,
+                    'max_drawdown': wallet.performance.max_drawdown,
+                    'sharpe_ratio': wallet.performance.sharpe_ratio,
+                    'last_active': wallet.performance.last_active.isoformat(),
+                    'consecutive_wins': wallet.performance.consecutive_wins,
+                    'consecutive_losses': wallet.performance.consecutive_losses
+                },
+                'created_at': wallet.created_at.isoformat(),
+                'last_evolution': wallet.last_evolution.isoformat(),
+                'evolution_count': wallet.evolution_count,
+                'metadata': wallet.metadata
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Error getting wallet info for {wallet_id}: {e}")
+            return None
+    
+    async def remove_wallet(self, wallet_id: str) -> bool:
+        """Remove a wallet from the system"""
+        try:
+            if wallet_id not in self.wallets:
+                self.logger.warning(f"Wallet {wallet_id} not found for removal")
+                return False
+            
+            # Remove from active wallets list
+            if wallet_id in self.active_wallets:
+                self.active_wallets.remove(wallet_id)
+            
+            # Remove from wallets dict
+            del self.wallets[wallet_id]
+            
+            # Remove from performance history
+            if wallet_id in self.performance_history:
+                del self.performance_history[wallet_id]
+            
+            # Remove from balance cache
+            cache_keys_to_remove = [key for key in self.balance_cache.keys() if key.startswith(f"{wallet_id}_")]
+            for key in cache_keys_to_remove:
+                del self.balance_cache[key]
+            
+            self.logger.info(f"🗑️ Removed wallet {wallet_id}")
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"Error removing wallet {wallet_id}: {e}")
+            return False
+    
+    async def wallet_exists(self, wallet_id: str) -> bool:
+        """Check if wallet exists"""
+        return wallet_id in self.wallets
+
+    async def get_wallet_balance(self, wallet_id: str) -> float:
+        """Get real SOL balance for wallet"""
+        try:
+            if wallet_id not in self.wallets:
+                return 0.0
+            
+            wallet = self.wallets[wallet_id]
+            
+            # Check cache first
+            cache_key = f"{wallet_id}_sol"
+            if cache_key in self.balance_cache:
+                cache_time, balance = self.balance_cache[cache_key]
+                if datetime.now() - cache_time < self.cache_duration:
+                    return balance
+            
+            # Query actual balance from Solana
+            try:
+                balance_response = await self.rpc_client.get_balance(
+                    wallet.address,
+                    commitment=Commitment("confirmed")
+                )
+                
+                if balance_response.value is not None:
+                    balance_sol = balance_response.value / 1_000_000_000  # Convert lamports to SOL
+                    
+                    # Cache the result
+                    self.balance_cache[cache_key] = (datetime.now(), balance_sol)
+                    
+                    return balance_sol
+                else:
+                    return 0.0
+                    
+            except Exception as e:
+                self.logger.error(f"Error getting balance for {wallet_id}: {e}")
+                return 0.0
+                
+        except Exception as e:
+            self.logger.error(f"Error in get_wallet_balance: {e}")
+            return 0.0
+
+    async def get_token_balance(self, wallet_id: str, token_address: str) -> float:
+        """Get real token balance for wallet"""
+        try:
+            if wallet_id not in self.wallets:
+                return 0.0
+            
+            wallet = self.wallets[wallet_id]
+            
+            # Check cache first
+            cache_key = f"{wallet_id}_{token_address}"
+            if cache_key in self.balance_cache:
+                cache_time, balance = self.balance_cache[cache_key]
+                if datetime.now() - cache_time < self.cache_duration:
+                    return balance
+            
+            # Query token balance from Solana
+            try:
+                # Get token account
+                token_account = await self._get_token_account(wallet.address, token_address)
+                
+                if token_account:
+                    balance_response = await self.rpc_client.get_token_account_balance(
+                        token_account,
+                        commitment=Commitment("confirmed")
+                    )
+                    
+                    if balance_response.value:
+                        balance = float(balance_response.value.amount) / (10 ** balance_response.value.decimals)
+                        
+                        # Cache the result
+                        self.balance_cache[cache_key] = (datetime.now(), balance)
+                        
+                        return balance
+                
+                return 0.0
+                
+            except Exception as e:
+                self.logger.error(f"Error getting token balance for {wallet_id}: {e}")
+                return 0.0
+                
+        except Exception as e:
+            self.logger.error(f"Error in get_token_balance: {e}")
+            return 0.0
+
+    async def _get_token_account(self, wallet_address: str, token_mint: str) -> Optional[str]:
+        """Get token account address for a specific token"""
+        try:
+            # Get all token accounts for the wallet
+            response = await self.rpc_client.get_token_accounts_by_owner(
+                wallet_address,
+                {"mint": token_mint},
+                commitment=Commitment("confirmed")
+            )
+            
+            if response.value and len(response.value) > 0:
+                return response.value[0].pubkey
+            
+            return None
+            
+        except Exception as e:
+            self.logger.error(f"Error getting token account: {e}")
+            return None
+
+    async def get_wallet_keypair(self, wallet_id: str) -> Optional[Keypair]:
+        """Get Solana keypair for wallet"""
+        try:
+            if wallet_id not in self.wallets:
+                return None
+            
+            wallet = self.wallets[wallet_id]
+            
+            # Reconstruct keypair from private key
+            private_key_bytes = base58.b58decode(wallet.private_key)
+            keypair = Keypair.from_secret_key(private_key_bytes)
+            
+            return keypair
+            
+        except Exception as e:
+            self.logger.error(f"Error getting keypair for {wallet_id}: {e}")
+            return None
+
     async def get_best_wallet(self, trade_requirements: Dict[str, Any]) -> Optional[TradingWallet]:
         """Get the best wallet for a trade based on requirements"""
         try:
@@ -210,7 +456,7 @@ class UnifiedWalletManager:
         except Exception as e:
             self.logger.error(f"Error selecting best wallet: {e}")
             return None
-    
+
     def _calculate_wallet_fitness(self, wallet: TradingWallet, requirements: Dict[str, Any]) -> float:
         """Calculate wallet fitness for a specific trade"""
         try:
@@ -245,7 +491,7 @@ class UnifiedWalletManager:
         except Exception as e:
             self.logger.error(f"Error calculating wallet fitness: {e}")
             return 0.0
-    
+
     async def update_wallet_performance(self, wallet_id: str, trade_result: Dict[str, Any]):
         """Update wallet performance after a trade"""
         try:
@@ -266,7 +512,7 @@ class UnifiedWalletManager:
                 performance.consecutive_wins = 0
             
             # Update profit metrics
-            profit = trade_result.get('profit', 0.0)
+            profit = trade_result.get('profit_sol', 0.0)
             performance.total_profit += profit
             performance.avg_profit_per_trade = performance.total_profit / performance.total_trades
             
@@ -290,7 +536,7 @@ class UnifiedWalletManager:
             
         except Exception as e:
             self.logger.error(f"Error updating wallet performance: {e}")
-    
+
     async def _evolution_loop(self):
         """Main evolution loop"""
         while self.initialized:
@@ -303,7 +549,7 @@ class UnifiedWalletManager:
             except Exception as e:
                 self.logger.error(f"Evolution loop error: {e}")
                 await asyncio.sleep(3600)  # Wait an hour before retrying
-    
+
     async def _perform_evolution(self):
         """Perform wallet evolution"""
         try:
@@ -338,7 +584,7 @@ class UnifiedWalletManager:
             
         except Exception as e:
             self.logger.error(f"Evolution failed: {e}")
-    
+
     def _evaluate_wallet(self, wallet: TradingWallet) -> float:
         """Evaluate wallet performance for evolution"""
         try:
@@ -352,44 +598,43 @@ class UnifiedWalletManager:
             age_days = (datetime.now() - wallet.created_at).days
             age_penalty = min(0.2, age_days * 0.01)
             
-            return max(0.0, base_score + consistency_bonus - age_penalty)
+            return base_score + consistency_bonus - age_penalty
             
         except Exception as e:
             self.logger.error(f"Error evaluating wallet: {e}")
             return 0.0
-    
+
     async def _retire_wallet(self, wallet_id: str):
         """Retire a wallet"""
         try:
-            wallet = self.wallets[wallet_id]
-            wallet.state = WalletState.RETIRED
-            self.retired_wallets.append(wallet_id)
-            
-            if wallet_id in self.active_wallets:
-                self.active_wallets.remove(wallet_id)
-            
-            self.logger.info(f"🏁 Retired wallet {wallet_id}")
-            
+            if wallet_id in self.wallets:
+                wallet = self.wallets[wallet_id]
+                wallet.state = WalletState.RETIRED
+                
+                if wallet_id in self.active_wallets:
+                    self.active_wallets.remove(wallet_id)
+                
+                self.logger.info(f"🏁 Retired wallet {wallet_id}")
+                
         except Exception as e:
-            self.logger.error(f"Error retiring wallet: {e}")
-    
+            self.logger.error(f"Error retiring wallet {wallet_id}: {e}")
+
     async def _create_evolved_wallet(self, parent_wallet_id: str):
         """Create a new wallet evolved from a parent"""
         try:
-            parent = self.wallets[parent_wallet_id]
+            parent_wallet = self.wallets[parent_wallet_id]
             
             # Create new wallet ID
-            new_wallet_id = f"evolved_{parent_wallet_id}_{int(datetime.now().timestamp())}"
+            new_wallet_id = f"wallet_{len(self.wallets) + 1:02d}"
             
-            # Create evolved genetics
-            evolved_genetics = self._crossover_genetics(parent.genetics)
-            evolved_genetics = self._mutate_genetics(evolved_genetics)
-            
-            # Create new wallet
+            # Create new wallet with evolved genetics
             wallet = await self._create_wallet(new_wallet_id)
-            wallet.genetics = evolved_genetics
-            wallet.behavior = parent.behavior  # Inherit behavior initially
             
+            # Evolve genetics from parent
+            wallet.genetics = self._crossover_genetics(parent_wallet.genetics)
+            wallet.behavior = parent_wallet.behavior  # Inherit behavior
+            
+            # Add to wallets
             self.wallets[new_wallet_id] = wallet
             self.active_wallets.append(new_wallet_id)
             
@@ -397,10 +642,9 @@ class UnifiedWalletManager:
             
         except Exception as e:
             self.logger.error(f"Error creating evolved wallet: {e}")
-    
+
     def _crossover_genetics(self, parent_genetics: EvolutionGenetics) -> EvolutionGenetics:
-        """Perform genetic crossover"""
-        # Simple crossover - randomly inherit traits from parent
+        """Create new genetics by crossing over parent genetics"""
         return EvolutionGenetics(
             aggression=parent_genetics.aggression + secrets.SystemRandom().uniform(-0.1, 0.1),
             patience=parent_genetics.patience + secrets.SystemRandom().uniform(-0.1, 0.1),
@@ -409,170 +653,265 @@ class UnifiedWalletManager:
             memory_strength=parent_genetics.memory_strength + secrets.SystemRandom().uniform(-0.1, 0.1),
             herd_immunity=parent_genetics.herd_immunity + secrets.SystemRandom().uniform(-0.1, 0.1)
         )
-    
+
     def _mutate_genetics(self, genetics: EvolutionGenetics) -> EvolutionGenetics:
-        """Apply random mutations to genetics"""
+        """Mutate genetics with random changes"""
         mutation_rate = self.evolution_config['evolution_mutation_rate']
         
         if secrets.SystemRandom().random() < mutation_rate:
             genetics.aggression = max(0.0, min(1.0, genetics.aggression + secrets.SystemRandom().uniform(-0.2, 0.2)))
-        
         if secrets.SystemRandom().random() < mutation_rate:
             genetics.patience = max(0.0, min(1.0, genetics.patience + secrets.SystemRandom().uniform(-0.2, 0.2)))
-        
         if secrets.SystemRandom().random() < mutation_rate:
             genetics.signal_trust = max(0.0, min(1.0, genetics.signal_trust + secrets.SystemRandom().uniform(-0.2, 0.2)))
-        
         if secrets.SystemRandom().random() < mutation_rate:
             genetics.adaptation_rate = max(0.0, min(1.0, genetics.adaptation_rate + secrets.SystemRandom().uniform(-0.2, 0.2)))
-        
         if secrets.SystemRandom().random() < mutation_rate:
             genetics.memory_strength = max(0.0, min(1.0, genetics.memory_strength + secrets.SystemRandom().uniform(-0.2, 0.2)))
-        
         if secrets.SystemRandom().random() < mutation_rate:
             genetics.herd_immunity = max(0.0, min(1.0, genetics.herd_immunity + secrets.SystemRandom().uniform(-0.2, 0.2)))
         
         return genetics
-    
+
     async def _evolve_wallet(self, wallet_id: str):
         """Evolve an existing wallet"""
         try:
             wallet = self.wallets[wallet_id]
             
-            # Update genetics based on performance
-            await self._adapt_genetics(wallet)
+            # Mutate genetics
+            wallet.genetics = self._mutate_genetics(wallet.genetics)
             
-            # Potentially change behavior
-            if secrets.SystemRandom().random() < 0.1:  # 10% chance to change behavior
-                wallet.behavior = secrets.SystemRandom().choice(list(WalletBehavior))
-            
-            wallet.last_evolution = datetime.now()
+            # Update evolution tracking
             wallet.evolution_count += 1
+            wallet.last_evolution = datetime.now()
             
-            self.logger.info(f"🧬 Evolved wallet {wallet_id} (evolution #{wallet.evolution_count})")
+            self.logger.info(f"🧬 Evolved wallet {wallet_id} (generation {wallet.evolution_count})")
             
         except Exception as e:
-            self.logger.error(f"Error evolving wallet: {e}")
-    
+            self.logger.error(f"Error evolving wallet {wallet_id}: {e}")
+
     async def _adapt_genetics(self, wallet: TradingWallet):
-        """Adapt genetics based on performance"""
+        """Adapt wallet genetics based on recent performance"""
         try:
-            performance = wallet.performance
-            
-            # Adapt aggression based on win rate
-            if performance.win_rate > 0.7:
-                wallet.genetics.aggression = min(1.0, wallet.genetics.aggression + 0.05)
-            elif performance.win_rate < 0.3:
-                wallet.genetics.aggression = max(0.0, wallet.genetics.aggression - 0.05)
-            
-            # Adapt patience based on profit patterns
-            if performance.avg_profit_per_trade > 0.1:
-                wallet.genetics.patience = min(1.0, wallet.genetics.patience + 0.03)
-            elif performance.avg_profit_per_trade < 0.01:
-                wallet.genetics.patience = max(0.0, wallet.genetics.patience - 0.03)
-            
-            # Adapt signal trust based on recent performance
-            if performance.consecutive_wins > 3:
-                wallet.genetics.signal_trust = min(1.0, wallet.genetics.signal_trust + 0.02)
-            elif performance.consecutive_losses > 3:
-                wallet.genetics.signal_trust = max(0.0, wallet.genetics.signal_trust - 0.02)
+            # Get recent performance
+            if wallet.wallet_id in self.performance_history:
+                recent_performance = self.performance_history[wallet.wallet_id][-10:]  # Last 10 trades
+                
+                if len(recent_performance) >= 5:
+                    avg_win_rate = sum(p.win_rate for p in recent_performance) / len(recent_performance)
+                    avg_profit = sum(p.avg_profit_per_trade for p in recent_performance) / len(recent_performance)
+                    
+                    # Adjust genetics based on performance
+                    if avg_win_rate < 0.4:  # Poor performance
+                        wallet.genetics.aggression = max(0.1, wallet.genetics.aggression - 0.1)
+                        wallet.genetics.signal_trust = max(0.1, wallet.genetics.signal_trust - 0.1)
+                    elif avg_win_rate > 0.7:  # Good performance
+                        wallet.genetics.aggression = min(0.9, wallet.genetics.aggression + 0.1)
+                        wallet.genetics.signal_trust = min(0.9, wallet.genetics.signal_trust + 0.1)
+                    
+                    if avg_profit < 0:  # Losing money
+                        wallet.genetics.patience = min(0.9, wallet.genetics.patience + 0.1)
+                    elif avg_profit > 0.01:  # Making good profits
+                        wallet.genetics.patience = max(0.1, wallet.genetics.patience - 0.1)
             
         except Exception as e:
-            self.logger.error(f"Error adapting genetics: {e}")
-    
+            self.logger.error(f"Error adapting genetics for {wallet.wallet_id}: {e}")
+
     async def _performance_tracking_loop(self):
-        """Background performance tracking loop"""
+        """Track performance metrics"""
         while self.initialized:
             try:
                 await asyncio.sleep(300)  # Every 5 minutes
                 
-                # Calculate Sharpe ratios and other metrics
                 for wallet_id, wallet in self.wallets.items():
                     if wallet.state == WalletState.ACTIVE:
                         await self._update_advanced_metrics(wallet)
+                        await self._adapt_genetics(wallet)
                 
             except Exception as e:
                 self.logger.error(f"Performance tracking error: {e}")
-                await asyncio.sleep(60)
-    
+                await asyncio.sleep(300)
+
     async def _update_advanced_metrics(self, wallet: TradingWallet):
         """Update advanced performance metrics"""
         try:
-            performance = wallet.performance
-            
-            # Calculate Sharpe ratio (simplified)
-            if performance.total_trades > 0:
-                # Simplified Sharpe ratio calculation
-                returns = [0.1 if i < performance.successful_trades else -0.05 for i in range(performance.total_trades)]
-                if returns:
-                    avg_return = sum(returns) / len(returns)
-                    std_return = (sum((r - avg_return) ** 2 for r in returns) / len(returns)) ** 0.5
-                    performance.sharpe_ratio = avg_return / std_return if std_return > 0 else 0.0
-            
-            # Update max drawdown
-            if performance.total_profit < 0:
-                performance.max_drawdown = min(performance.max_drawdown, performance.total_profit)
+            if wallet.wallet_id in self.performance_history:
+                history = self.performance_history[wallet.wallet_id]
+                
+                if len(history) >= 10:
+                    # Calculate Sharpe ratio
+                    returns = [p.avg_profit_per_trade for p in history[-20:]]
+                    if returns:
+                        avg_return = sum(returns) / len(returns)
+                        variance = sum((r - avg_return) ** 2 for r in returns) / len(returns)
+                        if variance > 0:
+                            wallet.performance.sharpe_ratio = avg_return / (variance ** 0.5)
+                    
+                    # Calculate max drawdown
+                    cumulative_profits = []
+                    running_total = 0
+                    for p in history:
+                        running_total += p.total_profit
+                        cumulative_profits.append(running_total)
+                    
+                    if cumulative_profits:
+                        peak = max(cumulative_profits)
+                        max_dd = 0
+                        for profit in cumulative_profits:
+                            dd = (peak - profit) / peak if peak > 0 else 0
+                            max_dd = max(max_dd, dd)
+                        wallet.performance.max_drawdown = max_dd
             
         except Exception as e:
-            self.logger.error(f"Error updating advanced metrics: {e}")
-    
+            self.logger.error(f"Error updating advanced metrics for {wallet.wallet_id}: {e}")
+
+    async def _balance_update_loop(self):
+        """Update balance cache periodically"""
+        while self.initialized:
+            try:
+                await asyncio.sleep(60)  # Every minute
+                
+                # Clear expired cache entries
+                current_time = datetime.now()
+                expired_keys = []
+                
+                for cache_key, (cache_time, _) in self.balance_cache.items():
+                    if current_time - cache_time > self.cache_duration:
+                        expired_keys.append(cache_key)
+                
+                for key in expired_keys:
+                    del self.balance_cache[key]
+                
+            except Exception as e:
+                self.logger.error(f"Balance update error: {e}")
+                await asyncio.sleep(60)
+
     async def _load_wallets_from_storage(self) -> bool:
-        """Load wallets from persistent storage (JSON file)"""
+        """Load wallets from persistent storage"""
         try:
-            storage_path = Path('wallets/wallets.json')
-            if not storage_path.exists():
+            storage_file = "data/wallets.json"
+            
+            if not os.path.exists(storage_file):
                 return False
-            with open(storage_path, 'r') as f:
+            
+            with open(storage_file, 'r') as f:
                 data = json.load(f)
-            for wallet_id, wallet_data in data.items():
-                wallet = TradingWallet(**wallet_data)
-                self.wallets[wallet_id] = wallet
+            
+            # Reconstruct wallets from data
+            for wallet_data in data.get('wallets', []):
+                wallet = TradingWallet(
+                    wallet_id=wallet_data['wallet_id'],
+                    address=wallet_data['address'],
+                    private_key=wallet_data['private_key'],
+                    state=WalletState(wallet_data['state']),
+                    behavior=WalletBehavior(wallet_data['behavior']),
+                    genetics=EvolutionGenetics(**wallet_data['genetics']),
+                    performance=WalletPerformance(**wallet_data['performance']),
+                    created_at=datetime.fromisoformat(wallet_data['created_at']),
+                    last_evolution=datetime.fromisoformat(wallet_data['last_evolution']),
+                    evolution_count=wallet_data.get('evolution_count', 0),
+                    metadata=wallet_data.get('metadata', {})
+                )
+                
+                self.wallets[wallet.wallet_id] = wallet
+            
             return True
+            
         except Exception as e:
-            self.logger.error(f"Error loading wallets: {e}")
+            self.logger.error(f"Error loading wallets from storage: {e}")
             return False
 
     async def _save_wallets_to_storage(self):
-        """Save wallets to persistent storage (JSON file)"""
+        """Save wallets to persistent storage"""
         try:
-            storage_path = Path('wallets/wallets.json')
-            storage_path.parent.mkdir(parents=True, exist_ok=True)
-            data = {wid: wallet.__dict__ for wid, wallet in self.wallets.items()}
-            with open(storage_path, 'w') as f:
-                json.dump(data, f, default=str, indent=2)
+            os.makedirs("data", exist_ok=True)
+            storage_file = "data/wallets.json"
+            
+            # Convert wallets to serializable format
+            wallet_data = []
+            for wallet in self.wallets.values():
+                wallet_data.append({
+                    'wallet_id': wallet.wallet_id,
+                    'address': wallet.address,
+                    'private_key': wallet.private_key,
+                    'state': wallet.state.value,
+                    'behavior': wallet.behavior.value,
+                    'genetics': {
+                        'aggression': wallet.genetics.aggression,
+                        'patience': wallet.genetics.patience,
+                        'signal_trust': wallet.genetics.signal_trust,
+                        'adaptation_rate': wallet.genetics.adaptation_rate,
+                        'memory_strength': wallet.genetics.memory_strength,
+                        'herd_immunity': wallet.genetics.herd_immunity
+                    },
+                    'performance': {
+                        'total_trades': wallet.performance.total_trades,
+                        'successful_trades': wallet.performance.successful_trades,
+                        'total_profit': wallet.performance.total_profit,
+                        'avg_profit_per_trade': wallet.performance.avg_profit_per_trade,
+                        'win_rate': wallet.performance.win_rate,
+                        'max_drawdown': wallet.performance.max_drawdown,
+                        'sharpe_ratio': wallet.performance.sharpe_ratio,
+                        'last_active': wallet.performance.last_active.isoformat(),
+                        'consecutive_wins': wallet.performance.consecutive_wins,
+                        'consecutive_losses': wallet.performance.consecutive_losses
+                    },
+                    'created_at': wallet.created_at.isoformat(),
+                    'last_evolution': wallet.last_evolution.isoformat(),
+                    'evolution_count': wallet.evolution_count,
+                    'metadata': wallet.metadata
+                })
+            
+            data = {'wallets': wallet_data}
+            
+            with open(storage_file, 'w') as f:
+                json.dump(data, f, indent=2)
+            
+            self.logger.info(f"💾 Saved {len(self.wallets)} wallets to storage")
+            
         except Exception as e:
-            self.logger.error(f"Error saving wallets: {e}")
-    
+            self.logger.error(f"Error saving wallets to storage: {e}")
+
     def get_wallet_status(self) -> Dict[str, Any]:
-        """Get comprehensive wallet status"""
+        """Get wallet manager status"""
         try:
-            active_count = len(self.active_wallets)
-            retired_count = len(self.retired_wallets)
-            total_count = len(self.wallets)
-            
-            avg_win_rate = 0.0
-            avg_profit = 0.0
-            
-            if active_count > 0:
-                win_rates = [self.wallets[wid].performance.win_rate for wid in self.active_wallets]
-                profits = [self.wallets[wid].performance.total_profit for wid in self.active_wallets]
-                avg_win_rate = sum(win_rates) / len(win_rates)
-                avg_profit = sum(profits) / len(profits)
+            total_balance = 0.0
+            for wallet_id in self.active_wallets:
+                # This would need to be async, but for status we'll estimate
+                total_balance += 0.0  # Would need to call get_wallet_balance
             
             return {
-                'total_wallets': total_count,
-                'active_wallets': active_count,
-                'retired_wallets': retired_count,
-                'avg_win_rate': avg_win_rate,
-                'avg_total_profit': avg_profit,
+                'initialized': self.initialized,
+                'total_wallets': len(self.wallets),
+                'active_wallets': len(self.active_wallets),
+                'total_balance_sol': total_balance,
                 'evolution_active': self.evolution_active,
-                'last_evolution': self.evolution_history[-1]['timestamp'] if self.evolution_history else None
+                'wallet_details': [
+                    {
+                        'wallet_id': wallet.wallet_id,
+                        'address': wallet.address,
+                        'behavior': wallet.behavior.value,
+                        'state': wallet.state.value,
+                        'performance': {
+                            'total_trades': wallet.performance.total_trades,
+                            'win_rate': wallet.performance.win_rate,
+                            'total_profit': wallet.performance.total_profit,
+                            'sharpe_ratio': wallet.performance.sharpe_ratio
+                        },
+                        'genetics': {
+                            'aggression': wallet.genetics.aggression,
+                            'patience': wallet.genetics.patience,
+                            'signal_trust': wallet.genetics.signal_trust
+                        }
+                    }
+                    for wallet in self.wallets.values()
+                ]
             }
             
         except Exception as e:
             self.logger.error(f"Error getting wallet status: {e}")
             return {}
-    
+
     async def shutdown(self):
         """Shutdown the wallet manager"""
         try:
@@ -581,11 +920,34 @@ class UnifiedWalletManager:
             # Save wallets to storage
             await self._save_wallets_to_storage()
             
+            # Close RPC connection
+            await self.rpc_client.close()
+            
             self.initialized = False
             self.logger.info("✅ Wallet manager shutdown complete")
             
         except Exception as e:
             self.logger.error(f"Error during shutdown: {e}")
+
+    async def emergency_shutdown(self):
+        """Emergency shutdown"""
+        try:
+            self.logger.critical("🚨 EMERGENCY WALLET SHUTDOWN")
+            
+            # Immediately stop all operations
+            self.initialized = False
+            self.evolution_active = False
+            
+            # Save current state
+            await self._save_wallets_to_storage()
+            
+            # Close RPC connection
+            await self.rpc_client.close()
+            
+            self.logger.critical("✅ Emergency wallet shutdown complete")
+            
+        except Exception as e:
+            self.logger.error(f"Error during emergency shutdown: {e}")
 
 # Global instance
 _wallet_manager = None

@@ -483,14 +483,41 @@ class BattlePatternIntelligence:
         position_size = base_size * (1 + confidence_factor + urgency_factor + smart_money_factor)
         return min(0.25, max(0.01, position_size))  # Cap between 1-25%
     
-    def _calculate_stop_loss(self, cluster: List[Dict]) -> float:
-        """Calculate suggested stop loss level"""
-        prices = [tx['price'] for tx in cluster]
-        price_range = max(prices) - min(prices)
-        avg_price = np.mean(prices)
-        
-        return 0.05  # Fixed 5% stop loss for now
-        # TODO: Implement dynamic stop loss based on volatility
+    async def _calculate_dynamic_stop_loss(self, token_address: str, position_data: Dict[str, Any]) -> float:
+        """Calculate dynamic stop loss based on volatility and market conditions"""
+        try:
+            # Get recent price data for volatility calculation
+            price_history = await self._get_price_history(token_address, hours=24)
+            if not price_history or len(price_history) < 10:
+                return self.default_stop_loss_percent
+            
+            # Calculate volatility (standard deviation of returns)
+            prices = [float(p['price']) for p in price_history]
+            returns = []
+            for i in range(1, len(prices)):
+                if prices[i-1] > 0:
+                    returns.append((prices[i] - prices[i-1]) / prices[i-1])
+            
+            if len(returns) < 5:
+                return self.default_stop_loss_percent
+            
+            volatility = np.std(returns) * 100  # Convert to percentage
+            
+            # Adjust stop loss based on volatility
+            # Higher volatility = tighter stop loss
+            base_stop_loss = self.default_stop_loss_percent
+            volatility_multiplier = min(2.0, max(0.5, volatility / 10.0))
+            dynamic_stop_loss = base_stop_loss * volatility_multiplier
+            
+            # Ensure stop loss is within reasonable bounds
+            dynamic_stop_loss = max(0.5, min(15.0, dynamic_stop_loss))
+            
+            self.logger.info(f"Dynamic stop loss for {token_address}: {dynamic_stop_loss:.2f}% (volatility: {volatility:.2f}%)")
+            return dynamic_stop_loss
+            
+        except Exception as e:
+            self.logger.error(f"Error calculating dynamic stop loss: {e}")
+            return self.default_stop_loss_percent
     
     def _extract_supporting_metrics(self, cluster: List[Dict], signatures: List[WalletSignature]) -> Dict[str, float]:
         """Extract supporting metrics for pattern"""

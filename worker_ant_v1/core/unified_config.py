@@ -51,7 +51,7 @@ class UnifiedConfigManager:
         # Get the project root directory (where worker_ant_v1 is located)
         self.project_root = Path(__file__).parent.parent.parent
         self.config_dir = self.project_root / "config"
-        self.config_file = self.config_dir / ".env.production"
+        self.config_file = self.config_dir / "env.production"
         self.template_file = self.config_dir / "env.template"
         self.load_config()
     
@@ -223,4 +223,19 @@ def mask_sensitive_value(value: str, mask_char: str = '*', visible_chars: int = 
 
 def get_config_manager() -> UnifiedConfigManager:
     """Get global config manager instance"""
-    return UnifiedConfigManager() 
+    return UnifiedConfigManager()
+
+def get_wallet_config() -> Dict[str, any]:
+    """Get wallet configuration"""
+    return {
+        'solana_rpc_url': os.getenv('SOLANA_RPC_URL', 'https://api.mainnet-beta.solana.com'),
+        'max_wallets': int(os.getenv('MAX_WALLETS', '10')),
+        'min_wallets': int(os.getenv('MIN_WALLETS', '5')),
+        'evolution_interval_hours': int(os.getenv('EVOLUTION_INTERVAL_HOURS', '24')),
+        'retirement_threshold': float(os.getenv('RETIREMENT_THRESHOLD', '0.3')),
+        'evolution_mutation_rate': float(os.getenv('EVOLUTION_MUTATION_RATE', '0.1')),
+        'wallet_encryption_enabled': os.getenv('WALLET_ENCRYPTION_ENABLED', 'true').lower() == 'true',
+        'wallet_password': os.getenv('WALLET_PASSWORD', ''),
+        'encrypted_wallet_key': os.getenv('ENCRYPTED_WALLET_KEY', ''),
+        'auto_create_wallet': os.getenv('AUTO_CREATE_WALLET', 'false').lower() == 'true'
+    } 

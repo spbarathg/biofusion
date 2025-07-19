@@ -10,8 +10,36 @@ import asyncio
 from datetime import datetime, timedelta
 import os
 import base64
+from dataclasses import dataclass
+from enum import Enum
 
 logger = get_logger(__name__)
+
+@dataclass
+class SentimentData:
+    """Sentiment analysis result data"""
+    overall_sentiment: float
+    confidence: float
+    positive_score: float
+    negative_score: float
+    neutral_score: float
+    timestamp: datetime
+    source: str
+    metadata: Dict[str, any] = None
+
+@dataclass
+class AggregatedSentiment:
+    """Aggregated sentiment data from multiple sources"""
+    token_address: str
+    overall_sentiment: float
+    confidence: float
+    positive_score: float
+    negative_score: float
+    neutral_score: float
+    sources: Dict[str, SentimentData]
+    timestamp: datetime
+    trend: str = "neutral"
+    volatility: float = 0.0
 
 class SentimentAnalyzer:
     """Sentiment analysis for crypto market intelligence"""
@@ -399,4 +427,54 @@ class SentimentAnalyzer:
             self.save_to_cache(token_symbol, "1h", sentiment_data)
             
         except Exception as e:
-            logger.error(f"Token sentiment update error: {e}") 
+            logger.error(f"Token sentiment update error: {e}")
+
+    async def analyze_token_sentiment(self, token_address: str, market_data: Dict[str, any]) -> SentimentData:
+        """Analyze sentiment for a specific token and return SentimentData object"""
+        try:
+            # Get token symbol from market data or address
+            token_symbol = market_data.get('symbol', token_address[:8].upper())
+            
+            # Get sentiment from cache or fetch fresh
+            sentiment_result = await self.get_token_sentiment(token_symbol, "1h")
+            
+            # Calculate overall sentiment score
+            sentiment = sentiment_result.get('sentiment', {})
+            positive = sentiment.get('positive', 0.0)
+            negative = sentiment.get('negative', 0.0)
+            neutral = sentiment.get('neutral', 0.0)
+            
+            # Calculate overall sentiment (-1 to 1 scale)
+            overall_sentiment = positive - negative
+            
+            # Calculate confidence based on sentiment strength
+            confidence = max(positive, negative, neutral)
+            
+            return SentimentData(
+                overall_sentiment=overall_sentiment,
+                confidence=confidence,
+                positive_score=positive,
+                negative_score=negative,
+                neutral_score=neutral,
+                timestamp=datetime.now(),
+                source="sentiment_analyzer",
+                metadata={
+                    'token_address': token_address,
+                    'token_symbol': token_symbol,
+                    'market_data': market_data
+                }
+            )
+            
+        except Exception as e:
+            logger.error(f"Error analyzing token sentiment: {e}")
+            # Return neutral sentiment on error
+            return SentimentData(
+                overall_sentiment=0.0,
+                confidence=0.0,
+                positive_score=0.0,
+                negative_score=0.0,
+                neutral_score=1.0,
+                timestamp=datetime.now(),
+                source="sentiment_analyzer",
+                metadata={'error': str(e)}
+            ) 

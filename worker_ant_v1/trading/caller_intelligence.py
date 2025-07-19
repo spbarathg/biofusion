@@ -13,6 +13,7 @@ import asyncio
 import time
 import json
 import sqlite3
+import aiosqlite
 import hashlib
 import re
 from typing import Dict, List, Optional, Any, Tuple, Set
@@ -21,6 +22,8 @@ from datetime import datetime, timedelta
 from enum import Enum
 import numpy as np
 from collections import deque, defaultdict
+import aiosqlite
+from worker_ant_v1.utils.logger import setup_logger
 
 class Platform(Enum):
     TELEGRAM = "telegram"
@@ -123,6 +126,7 @@ class AdvancedCallerIntelligence:
         self.database_path = database_path
         self.caller_profiles = {}
         self.call_analysis_cache = deque(maxlen=10000)
+        self.logger = setup_logger("CallerIntelligence")
         
         # Analysis parameters
         self.min_calls_for_rating = 5
@@ -773,6 +777,65 @@ class AdvancedCallerIntelligence:
         profile.last_seen = datetime.now()
         profile.follower_count = caller_data.get('followers', profile.follower_count)
     
+    async def _analyze_caller_credibility(self, caller_id: str, platform: Platform) -> Optional[Dict[str, Any]]:
+        """Analyze caller credibility based on historical performance"""
+        try:
+            # Get caller's historical data
+            caller_data = await self._get_caller_history(caller_id, platform)
+            if not caller_data:
+                return None
+            
+            # Calculate credibility metrics
+            total_calls = len(caller_data['calls'])
+            if total_calls < 5:  # Need minimum calls for analysis
+                return {
+                    'credibility_score': 0.3,
+                    'confidence': 0.2,
+                    'reason': 'Insufficient call history'
+                }
+            
+            # Calculate success rate
+            successful_calls = sum(1 for call in caller_data['calls'] if call.get('success', False))
+            success_rate = successful_calls / total_calls
+            
+            # Calculate average profit
+            profits = [call.get('profit_percent', 0) for call in caller_data['calls']]
+            avg_profit = sum(profits) / len(profits) if profits else 0
+            
+            # Calculate consistency (standard deviation of profits)
+            profit_std = np.std(profits) if len(profits) > 1 else 0
+            consistency_score = max(0, 1 - (profit_std / 10))  # Lower std = higher consistency
+            
+            # Calculate credibility score
+            credibility_score = (
+                success_rate * 0.4 +
+                min(avg_profit / 10, 1.0) * 0.3 +
+                consistency_score * 0.2 +
+                min(total_calls / 50, 1.0) * 0.1  # Bonus for experience
+            )
+            
+            # Determine confidence level
+            if total_calls >= 20 and success_rate >= 0.6:
+                confidence = 0.9
+            elif total_calls >= 10 and success_rate >= 0.5:
+                confidence = 0.7
+            else:
+                confidence = 0.5
+            
+            return {
+                'credibility_score': round(credibility_score, 3),
+                'confidence': round(confidence, 3),
+                'success_rate': round(success_rate, 3),
+                'avg_profit': round(avg_profit, 2),
+                'total_calls': total_calls,
+                'consistency_score': round(consistency_score, 3),
+                'last_updated': datetime.now().isoformat()
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Error analyzing caller credibility: {e}")
+            return None
+    
     async def _analyze_recent_activity(self, profile: CallerProfile):
         """Analyze recent activity patterns"""
         try:
@@ -1047,37 +1110,33 @@ class AdvancedCallerIntelligence:
         """Get recent calls from a specific source about a token"""
         
         try:
-            # Look up calls in the database
-            query = """
-            SELECT * FROM call_analysis 
-            WHERE caller_id = ? AND token_address = ? 
-            AND call_timestamp > datetime('now', '-{} hours')
-            ORDER BY call_timestamp DESC
-            """.format(hours)
-            
-            # For now, return mock data since we need to implement proper database integration
-            recent_calls = []
-            
-            # If this is a social media caller, check our recent analysis cache
-            for analysis in self.call_analysis_cache:
-                if (hasattr(analysis, 'caller_id') and analysis.caller_id == source_id and
-                    hasattr(analysis, 'token_address') and analysis.token_address == token_address):
-                    
-                    call_time = analysis.call_timestamp if hasattr(analysis, 'call_timestamp') else datetime.now()
-                    if call_time > datetime.now() - timedelta(hours=hours):
-                        recent_calls.append({
-                            'call_id': analysis.call_id if hasattr(analysis, 'call_id') else f"call_{int(time.time())}",
-                            'caller_id': analysis.caller_id,
-                            'token_address': analysis.token_address,
-                            'token_symbol': analysis.token_symbol if hasattr(analysis, 'token_symbol') else 'UNKNOWN',
-                            'call_timestamp': call_time,
-                            'call_text': analysis.call_text if hasattr(analysis, 'call_text') else '',
-                            'confidence_language': analysis.confidence_language if hasattr(analysis, 'confidence_language') else 0.5,
-                            'sentiment_score': getattr(analysis, 'sentiment_score', 0.0),
-                            'platform': analysis.platform.value if hasattr(analysis, 'platform') else 'twitter'
-                        })
-            
-            return recent_calls
+            # Query the actual database
+            async with aiosqlite.connect(self.database_path) as db:
+                query = """
+                SELECT * FROM call_analysis 
+                WHERE caller_id = ? AND token_address = ? 
+                AND call_timestamp > datetime('now', '-{} hours')
+                ORDER BY call_timestamp DESC
+                """.format(hours)
+                
+                cursor = await db.execute(query, (source_id, token_address))
+                rows = await cursor.fetchall()
+                
+                recent_calls = []
+                for row in rows:
+                    recent_calls.append({
+                        'call_id': row[0],
+                        'caller_id': row[1],
+                        'token_address': row[2],
+                        'token_symbol': row[3],
+                        'call_timestamp': datetime.fromisoformat(row[4]),
+                        'call_text': row[6],
+                        'confidence_language': row[7],
+                        'sentiment_score': getattr(row, 'sentiment_score', 0.0),
+                        'platform': row[5]
+                    })
+                
+                return recent_calls
             
         except Exception as e:
             self.logger.error(f"❌ Failed to get recent calls for {source_id}: {e}")

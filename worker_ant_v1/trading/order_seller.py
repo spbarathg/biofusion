@@ -15,12 +15,21 @@ from datetime import datetime
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
-from solana.rpc.async_api import AsyncClient
-from solana.rpc.commitment import Confirmed, Finalized, Processed
-from solana.transaction import Transaction
-from solders.keypair import Keypair
-from solders.pubkey import Pubkey
-from spl.token.constants import TOKEN_PROGRAM_ID
+try:
+    from solana.rpc.async_api import AsyncClient
+    from solana.rpc.commitment import Confirmed, Finalized, Processed
+    from solana.transaction import Transaction
+except ImportError:
+    from ..utils.solana_compat import AsyncClient, Confirmed, Finalized, Processed, Transaction
+try:
+    from solders.keypair import Keypair
+    from solders.pubkey import Pubkey
+except ImportError:
+    from ..utils.solana_compat import Keypair as Keypair, PublicKey as Pubkey
+try:
+    from spl.token.constants import TOKEN_PROGRAM_ID
+except ImportError:
+    TOKEN_PROGRAM_ID = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
 import base58
 
 # Internal imports

@@ -161,6 +161,66 @@ class TokenIntelligenceSystem:
             self.logger.error(f"Error analyzing token {token_address}: {e}")
             return self._create_fallback_analysis(token_address)
     
+    async def process_signals(self, market_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Process market signals for trading decisions"""
+        try:
+            signals = {
+                'buy_signal': False,
+                'sell_signal': False,
+                'hold_signal': True,
+                'confidence': 0.0,
+                'risk_level': 'medium',
+                'expected_profit': 0.0,
+                'stop_loss': 0.0,
+                'take_profit': 0.0,
+                'signals': []
+            }
+            
+            # Extract key metrics
+            price_change_24h = market_data.get('price_change_24h', 0.0)
+            volume_24h = market_data.get('volume_24h', 0.0)
+            liquidity = market_data.get('liquidity', 0.0)
+            sentiment_score = market_data.get('sentiment_score', 0.0)
+            
+            # Generate signals based on metrics
+            if price_change_24h > 10.0 and volume_24h > 1000.0:
+                signals['buy_signal'] = True
+                signals['hold_signal'] = False
+                signals['confidence'] = 0.8
+                signals['expected_profit'] = 0.15
+                signals['signals'].append('Strong price momentum')
+            
+            if sentiment_score > 0.6 and liquidity > 50.0:
+                signals['buy_signal'] = True
+                signals['hold_signal'] = False
+                signals['confidence'] = max(signals['confidence'], 0.7)
+                signals['expected_profit'] = max(signals['expected_profit'], 0.12)
+                signals['signals'].append('Positive sentiment')
+            
+            if price_change_24h < -15.0:
+                signals['sell_signal'] = True
+                signals['hold_signal'] = False
+                signals['confidence'] = 0.9
+                signals['risk_level'] = 'high'
+                signals['signals'].append('Sharp price decline')
+            
+            # Set stop loss and take profit
+            if signals['buy_signal']:
+                signals['stop_loss'] = -0.08  # 8% stop loss
+                signals['take_profit'] = signals['expected_profit'] + 0.05  # 5% buffer
+            
+            return signals
+            
+        except Exception as e:
+            self.logger.error(f"Error processing signals: {e}")
+            return {
+                'buy_signal': False,
+                'sell_signal': False,
+                'hold_signal': True,
+                'confidence': 0.0,
+                'signals': [f'Error: {str(e)}']
+            }
+    
     async def _get_token_metrics(self, token_address: str, market_data: Dict[str, Any] = None) -> TokenMetrics:
         """Get comprehensive token metrics"""
         try:

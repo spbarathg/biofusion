@@ -1,8 +1,9 @@
 """
-REAL MARKET SCANNER - LIVE DEX INTEGRATION
+REAL MARKET SCANNER - LIVE MEMECOIN HUNTER
 =========================================
 
-Connects to real DEX APIs to get live market data, liquidity, and trading opportunities.
+Connects to real DEX APIs to find live memecoin opportunities
+with sentiment-driven filtering and aggressive compounding targets.
 """
 
 import asyncio
@@ -14,8 +15,10 @@ from datetime import datetime, timedelta
 import time
 from dataclasses import dataclass
 import numpy as np
+import os
 
-from worker_ant_v1.utils.logger import setup_logger
+from worker_ant_v1.utils.logger import get_logger
+from worker_ant_v1.intelligence.sentiment_first_ai import get_sentiment_first_ai
 
 @dataclass
 class TokenData:
@@ -27,6 +30,9 @@ class TokenData:
     liquidity: float
     market_cap: float
     price_change_24h: float
+    price_change_1h: float
+    holder_count: int
+    age_hours: float
     last_updated: datetime
 
 @dataclass
@@ -39,37 +45,56 @@ class TradingOpportunity:
     price_impact_percent: float
     risk_score: float
     confidence: float
+    expected_profit: float
+    priority: int
+    memecoin_pattern: str
     timestamp: datetime
 
 class RealMarketScanner:
-    """Real market scanner with live DEX integration"""
+    """Real market scanner with live DEX integration for memecoin hunting"""
     
     def __init__(self):
-        self.logger = setup_logger("MarketScanner")
+        self.logger = get_logger("MarketScanner")
         
         # API endpoints
         self.jupiter_api = "https://price.jup.ag/v4"
         self.birdeye_api = "https://public-api.birdeye.so"
         self.dexscreener_api = "https://api.dexscreener.com/latest/dex"
+        self.helius_api = "https://api.helius.xyz/v0"
         
         # Data storage
         self.token_data: Dict[str, TokenData] = {}
         self.opportunities: List[TradingOpportunity] = []
         self.last_scan = datetime.now()
         
-        # Configuration
-        self.min_liquidity = 10.0  # Minimum liquidity in SOL
-        self.min_volume = 100.0    # Minimum 24h volume in SOL
-        self.max_price_impact = 3.0  # Maximum price impact percentage
+        # Memecoin-specific configuration
+        self.min_liquidity = 5.0  # Lower threshold for memecoins
+        self.min_volume = 50.0    # Lower volume threshold
+        self.max_price_impact = 5.0  # Higher price impact tolerance
+        self.max_age_hours = 168  # 1 week max age for memecoins
+        self.min_holder_count = 50  # Minimum holders
         
         # Rate limiting
         self.request_count = 0
         self.last_request_time = time.time()
         self.rate_limit_delay = 0.1  # 100ms between requests
         
+        # Sentiment AI
+        self.sentiment_ai = None
+        
+        # Performance tracking
+        self.scan_count = 0
+        self.opportunities_found = 0
+        self.successful_trades = 0
+        
+        self.logger.info("🔍 Real Market Scanner initialized for memecoin hunting")
+        
     async def initialize(self):
         """Initialize market scanner"""
         self.logger.info("🔍 Initializing real market scanner...")
+        
+        # Initialize sentiment AI
+        self.sentiment_ai = await get_sentiment_first_ai()
         
         # Test API connections
         await self._test_api_connections()
@@ -103,6 +128,8 @@ class RealMarketScanner:
     async def update_market_data(self):
         """Update market data from all sources"""
         try:
+            self.scan_count += 1
+            
             # Get trending tokens
             trending_tokens = await self._get_trending_tokens()
             
@@ -111,7 +138,7 @@ class RealMarketScanner:
                 await self._get_token_data(token_address)
                 await asyncio.sleep(self.rate_limit_delay)  # Rate limiting
                 
-            # Generate opportunities
+            # Generate opportunities with sentiment analysis
             await self._generate_opportunities()
             
             self.last_scan = datetime.now()
@@ -131,7 +158,7 @@ class RealMarketScanner:
                         if resp.status == 200:
                             data = await resp.json()
                             if 'data' in data:
-                                for token in data['data'][:20]:  # Top 20
+                                for token in data['data'][:30]:  # Top 30
                                     if 'address' in token:
                                         trending_tokens.add(token['address'])
                 except Exception as e:
@@ -143,11 +170,23 @@ class RealMarketScanner:
                         if resp.status == 200:
                             data = await resp.json()
                             if 'pairs' in data:
-                                for pair in data['pairs'][:20]:  # Top 20
+                                for pair in data['pairs'][:30]:  # Top 30
                                     if 'tokenAddress' in pair:
                                         trending_tokens.add(pair['tokenAddress'])
                 except Exception as e:
                     self.logger.warning(f"DexScreener trending fetch failed: {e}")
+                    
+                # Get from Jupiter trending
+                try:
+                    async with session.get(f"{self.jupiter_api}/trending") as resp:
+                        if resp.status == 200:
+                            data = await resp.json()
+                            if 'data' in data:
+                                for token in data['data'][:20]:  # Top 20
+                                    if 'address' in token:
+                                        trending_tokens.add(token['address'])
+                except Exception as e:
+                    self.logger.warning(f"Jupiter trending fetch failed: {e}")
                     
         except Exception as e:
             self.logger.error(f"Trending tokens fetch error: {e}")
@@ -164,17 +203,23 @@ class RealMarketScanner:
                 # Get additional data from Birdeye
                 birdeye_data = await self._get_birdeye_data(session, token_address)
                 
+                # Get token metadata from Helius (if available)
+                metadata = await self._get_token_metadata(session, token_address)
+                
                 # Combine data
                 if price_data and birdeye_data:
                     token_data = TokenData(
                         address=token_address,
-                        symbol=birdeye_data.get('symbol', 'UNKNOWN'),
-                        name=birdeye_data.get('name', 'Unknown Token'),
+                        symbol=birdeye_data.get('symbol', metadata.get('symbol', 'UNKNOWN')),
+                        name=birdeye_data.get('name', metadata.get('name', 'Unknown Token')),
                         price=price_data.get('price', 0),
                         volume_24h=birdeye_data.get('volume24h', 0),
                         liquidity=birdeye_data.get('liquidity', 0),
                         market_cap=birdeye_data.get('marketCap', 0),
                         price_change_24h=birdeye_data.get('priceChange24h', 0),
+                        price_change_1h=birdeye_data.get('priceChange1h', 0),
+                        holder_count=birdeye_data.get('holderCount', 0),
+                        age_hours=birdeye_data.get('ageHours', 0),
                         last_updated=datetime.now()
                     )
                     
@@ -199,144 +244,188 @@ class RealMarketScanner:
     async def _get_birdeye_data(self, session: aiohttp.ClientSession, token_address: str) -> Optional[Dict]:
         """Get token data from Birdeye API"""
         try:
-            async with session.get(f"{self.birdeye_api}/public/token_list?address={token_address}") as resp:
+            # Get token info
+            async with session.get(f"{self.birdeye_api}/public/token/{token_address}") as resp:
                 if resp.status == 200:
                     data = await resp.json()
-                    if 'data' in data and len(data['data']) > 0:
-                        return data['data'][0]
+                    if 'data' in data:
+                        token_info = data['data']
+                        
+                        # Get additional metrics
+                        metrics_data = await self._get_birdeye_metrics(session, token_address)
+                        
+                        return {
+                            'symbol': token_info.get('symbol', 'UNKNOWN'),
+                            'name': token_info.get('name', 'Unknown Token'),
+                            'volume24h': token_info.get('volume24h', 0),
+                            'liquidity': token_info.get('liquidity', 0),
+                            'marketCap': token_info.get('marketCap', 0),
+                            'priceChange24h': token_info.get('priceChange24h', 0),
+                            'priceChange1h': token_info.get('priceChange1h', 0),
+                            'holderCount': metrics_data.get('holderCount', 0),
+                            'ageHours': metrics_data.get('ageHours', 0)
+                        }
                 return None
         except Exception as e:
             self.logger.error(f"Birdeye data fetch error: {e}")
             return None
             
+    async def _get_birdeye_metrics(self, session: aiohttp.ClientSession, token_address: str) -> Dict:
+        """Get additional metrics from Birdeye"""
+        try:
+            async with session.get(f"{self.birdeye_api}/public/token/{token_address}/metrics") as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    if 'data' in data:
+                        return data['data']
+                return {}
+        except Exception as e:
+            self.logger.error(f"Birdeye metrics fetch error: {e}")
+            return {}
+            
+    async def _get_token_metadata(self, session: aiohttp.ClientSession, token_address: str) -> Dict:
+        """Get token metadata from Helius"""
+        try:
+            helius_key = os.getenv('HELIUS_API_KEY')
+            if not helius_key:
+                return {}
+                
+            url = f"{self.helius_api}/token-metadata?api-key={helius_key}"
+            payload = {"mintAccounts": [token_address]}
+            
+            async with session.post(url, json=payload) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    if data and len(data) > 0:
+                        return data[0].get('onChainMetadata', {}).get('metadata', {})
+                return {}
+        except Exception as e:
+            self.logger.error(f"Helius metadata fetch error: {e}")
+            return {}
+            
     async def _generate_opportunities(self):
-        """Generate trading opportunities from market data"""
-        opportunities = []
-        
-        for token_address, token_data in self.token_data.items():
-            try:
-                # Calculate sentiment score (simplified for now)
-                sentiment_score = self._calculate_sentiment_score(token_data)
+        """Generate trading opportunities with sentiment analysis"""
+        try:
+            self.opportunities.clear()
+            
+            for token_address, token_data in self.token_data.items():
+                # Apply memecoin filters
+                if not self._passes_memecoin_filters(token_data):
+                    continue
                 
-                # Calculate risk score
-                risk_score = self._calculate_risk_score(token_data)
+                # Get sentiment analysis
+                market_data = {
+                    'symbol': token_data.symbol,
+                    'price': token_data.price,
+                    'volume': token_data.volume_24h,
+                    'liquidity': token_data.liquidity,
+                    'price_change_24h': token_data.price_change_24h,
+                    'price_change_1h': token_data.price_change_1h,
+                    'holder_count': token_data.holder_count,
+                    'age_hours': token_data.age_hours
+                }
                 
-                # Calculate confidence
-                confidence = self._calculate_confidence(token_data)
+                sentiment_decision = await self.sentiment_ai.analyze_and_decide(
+                    token_address, market_data
+                )
                 
-                # Check if meets criteria
-                if (token_data.liquidity >= self.min_liquidity and 
-                    token_data.volume_24h >= self.min_volume and
-                    sentiment_score >= 0.6):
+                # Only consider BUY opportunities
+                if sentiment_decision.decision == "BUY":
+                    # Calculate additional metrics
+                    risk_score = self._calculate_risk_score(token_data)
+                    price_impact = self._calculate_price_impact(token_data)
                     
                     opportunity = TradingOpportunity(
                         token_address=token_address,
                         token_symbol=token_data.symbol,
-                        sentiment_score=sentiment_score,
+                        sentiment_score=sentiment_decision.sentiment_score,
                         liquidity_sol=token_data.liquidity,
                         volume_24h_sol=token_data.volume_24h,
-                        price_impact_percent=self._calculate_price_impact(token_data),
+                        price_impact_percent=price_impact,
                         risk_score=risk_score,
-                        confidence=confidence,
+                        confidence=sentiment_decision.confidence,
+                        expected_profit=sentiment_decision.expected_profit,
+                        priority=sentiment_decision.priority,
+                        memecoin_pattern=sentiment_decision.metadata.get('pattern', 'unknown'),
                         timestamp=datetime.now()
                     )
                     
-                    opportunities.append(opportunity)
-                    
-            except Exception as e:
-                self.logger.error(f"Opportunity generation error for {token_address}: {e}")
-                
-        # Sort by confidence and update
-        self.opportunities = sorted(opportunities, key=lambda x: x.confidence, reverse=True)
-        
-    def _calculate_sentiment_score(self, token_data: TokenData) -> float:
-        """Calculate sentiment score based on price action and volume"""
+                    self.opportunities.append(opportunity)
+            
+            # Sort by priority and expected profit
+            self.opportunities.sort(key=lambda x: (x.priority, x.expected_profit), reverse=True)
+            
+            self.opportunities_found = len(self.opportunities)
+            self.logger.info(f"🎯 Found {self.opportunities_found} memecoin opportunities")
+            
+        except Exception as e:
+            self.logger.error(f"Error generating opportunities: {e}")
+            
+    def _passes_memecoin_filters(self, token_data: TokenData) -> bool:
+        """Check if token passes memecoin-specific filters"""
         try:
-            # Base score from price change
-            price_score = min(max(token_data.price_change_24h / 100, 0), 1)
+            # Liquidity filter
+            if token_data.liquidity < self.min_liquidity:
+                return False
+                
+            # Volume filter
+            if token_data.volume_24h < self.min_volume:
+                return False
+                
+            # Age filter (not too old)
+            if token_data.age_hours > self.max_age_hours:
+                return False
+                
+            # Holder count filter
+            if token_data.holder_count < self.min_holder_count:
+                return False
+                
+            # Price impact filter
+            price_impact = self._calculate_price_impact(token_data)
+            if price_impact > self.max_price_impact:
+                return False
+                
+            return True
             
-            # Volume score
-            volume_score = min(token_data.volume_24h / 1000, 1)  # Normalize to 1000 SOL
-            
-            # Liquidity score
-            liquidity_score = min(token_data.liquidity / 100, 1)  # Normalize to 100 SOL
-            
-            # Weighted average
-            sentiment = (price_score * 0.4 + volume_score * 0.4 + liquidity_score * 0.2)
-            
-            return max(0, min(1, sentiment))  # Clamp to 0-1
-            
-        except Exception:
-            return 0.5
+        except Exception as e:
+            self.logger.error(f"Error in memecoin filters: {e}")
+            return False
             
     def _calculate_risk_score(self, token_data: TokenData) -> float:
-        """Calculate risk score (0 = low risk, 1 = high risk)"""
+        """Calculate risk score for memecoin"""
         try:
-            risk_factors = []
+            risk_score = 0.0
             
-            # Low liquidity = high risk
-            if token_data.liquidity < 50:
-                risk_factors.append(0.8)
-            elif token_data.liquidity < 100:
-                risk_factors.append(0.5)
-            else:
-                risk_factors.append(0.2)
+            # Low liquidity = higher risk
+            if token_data.liquidity < 10:
+                risk_score += 0.3
+            elif token_data.liquidity < 20:
+                risk_score += 0.2
                 
-            # High volatility = high risk
-            volatility = abs(token_data.price_change_24h)
-            if volatility > 50:
-                risk_factors.append(0.9)
-            elif volatility > 20:
-                risk_factors.append(0.6)
-            else:
-                risk_factors.append(0.3)
-                
-            # Low volume = high risk
-            if token_data.volume_24h < 200:
-                risk_factors.append(0.7)
+            # Low volume = higher risk
+            if token_data.volume_24h < 100:
+                risk_score += 0.2
             elif token_data.volume_24h < 500:
-                risk_factors.append(0.4)
-            else:
-                risk_factors.append(0.2)
+                risk_score += 0.1
                 
-            return np.mean(risk_factors)
-            
-        except Exception:
-            return 0.5
-            
-    def _calculate_confidence(self, token_data: TokenData) -> float:
-        """Calculate confidence in the opportunity"""
-        try:
-            confidence_factors = []
-            
-            # High liquidity = high confidence
-            if token_data.liquidity > 200:
-                confidence_factors.append(0.9)
-            elif token_data.liquidity > 100:
-                confidence_factors.append(0.7)
-            else:
-                confidence_factors.append(0.4)
+            # Few holders = higher risk
+            if token_data.holder_count < 100:
+                risk_score += 0.3
+            elif token_data.holder_count < 500:
+                risk_score += 0.2
                 
-            # High volume = high confidence
-            if token_data.volume_24h > 1000:
-                confidence_factors.append(0.9)
-            elif token_data.volume_24h > 500:
-                confidence_factors.append(0.7)
-            else:
-                confidence_factors.append(0.4)
+            # Very new token = higher risk
+            if token_data.age_hours < 24:
+                risk_score += 0.2
                 
-            # Recent data = high confidence
-            time_diff = (datetime.now() - token_data.last_updated).total_seconds()
-            if time_diff < 300:  # 5 minutes
-                confidence_factors.append(0.9)
-            elif time_diff < 900:  # 15 minutes
-                confidence_factors.append(0.7)
-            else:
-                confidence_factors.append(0.4)
+            # High price volatility = higher risk
+            if abs(token_data.price_change_1h) > 0.5:  # 50% hourly change
+                risk_score += 0.2
                 
-            return np.mean(confidence_factors)
+            return min(risk_score, 1.0)
             
-        except Exception:
+        except Exception as e:
+            self.logger.error(f"Error calculating risk score: {e}")
             return 0.5
             
     def _calculate_price_impact(self, token_data: TokenData) -> float:
@@ -344,79 +433,114 @@ class RealMarketScanner:
         try:
             # Simple estimation based on liquidity
             if token_data.liquidity > 0:
-                return (1.0 / token_data.liquidity) * 100  # Percentage
-            return 5.0  # Default high impact
+                # Rough estimation: price impact = trade_size / liquidity * 100
+                trade_size_sol = 1.0  # 1 SOL trade
+                price_impact = (trade_size_sol / token_data.liquidity) * 100
+                return min(price_impact, 10.0)  # Cap at 10%
+            return 5.0  # Default high impact if no liquidity data
             
-        except Exception:
-            return 3.0
+        except Exception as e:
+            self.logger.error(f"Error calculating price impact: {e}")
+            return 5.0
             
     async def scan_markets(self) -> List[Dict]:
-        """Scan markets for opportunities"""
-        # Convert opportunities to dict format
-        return [
-            {
-                'token_address': opp.token_address,
-                'token_symbol': opp.token_symbol,
-                'sentiment_score': opp.sentiment_score,
-                'liquidity_sol': opp.liquidity_sol,
-                'volume_24h_sol': opp.volume_24h_sol,
-                'price_impact_percent': opp.price_impact_percent,
-                'risk_score': opp.risk_score,
-                'confidence': opp.confidence,
-                'timestamp': opp.timestamp.isoformat()
-            }
-            for opp in self.opportunities[:10]  # Top 10 opportunities
-        ]
-        
+        """Scan markets for memecoin opportunities"""
+        try:
+            # Update market data
+            await self.update_market_data()
+            
+            # Return top opportunities
+            top_opportunities = self.opportunities[:10]  # Top 10
+            
+            return [
+                {
+                    'token_address': opp.token_address,
+                    'token_symbol': opp.token_symbol,
+                    'sentiment_score': opp.sentiment_score,
+                    'liquidity_sol': opp.liquidity_sol,
+                    'volume_24h_sol': opp.volume_24h_sol,
+                    'price_impact_percent': opp.price_impact_percent,
+                    'risk_score': opp.risk_score,
+                    'confidence': opp.confidence,
+                    'expected_profit': opp.expected_profit,
+                    'priority': opp.priority,
+                    'memecoin_pattern': opp.memecoin_pattern,
+                    'timestamp': opp.timestamp.isoformat()
+                }
+                for opp in top_opportunities
+            ]
+            
+        except Exception as e:
+            self.logger.error(f"Market scan error: {e}")
+            return []
+            
     async def get_token_price(self, token_address: str) -> Optional[float]:
         """Get current token price"""
         try:
             if token_address in self.token_data:
                 return self.token_data[token_address].price
+                
+            # Fetch fresh price
+            async with aiohttp.ClientSession() as session:
+                price_data = await self._get_jupiter_price(session, token_address)
+                if price_data:
+                    return price_data.get('price', 0)
+                    
             return None
+            
         except Exception as e:
-            self.logger.error(f"Price fetch error: {e}")
+            self.logger.error(f"Error getting token price: {e}")
             return None
             
     def get_system_status(self) -> Dict:
-        """Get system status"""
-        return {
-            'total_tokens_tracked': len(self.token_data),
-            'opportunities_found': len(self.opportunities),
-            'last_scan': self.last_scan.isoformat(),
-            'api_status': {
-                'jupiter': 'connected',
-                'birdeye': 'connected',
-                'dexscreener': 'connected'
+        """Get market scanner status"""
+        try:
+            return {
+                'initialized': True,
+                'scan_count': self.scan_count,
+                'opportunities_found': self.opportunities_found,
+                'successful_trades': self.successful_trades,
+                'last_scan': self.last_scan.isoformat(),
+                'total_tokens_tracked': len(self.token_data),
+                'current_opportunities': len(self.opportunities),
+                'api_status': {
+                    'jupiter': 'connected',
+                    'birdeye': 'connected',
+                    'dexscreener': 'connected'
+                },
+                'filters': {
+                    'min_liquidity_sol': self.min_liquidity,
+                    'min_volume_sol': self.min_volume,
+                    'max_price_impact_percent': self.max_price_impact,
+                    'max_age_hours': self.max_age_hours,
+                    'min_holder_count': self.min_holder_count
+                }
             }
-        }
-
-
-
-
-production_scanner = RealMarketScanner()
-
-
-profit_scanner = production_scanner
-
-
-__all__ = [
-    "TradingOpportunity", "ScanMode", "SecurityRisk", "ScannerMetrics",
-    "TokenFilter", "OpportunityAnalyzer", "RealTimeDataFeed", "ProductionScanner",
-    "production_scanner", "profit_scanner"
-]
-
+            
+        except Exception as e:
+            self.logger.error(f"Error getting system status: {e}")
+            return {'error': str(e)}
 
 class ScanResult:
-    """Result from market scanning operation"""
+    """Result of market scan"""
     
     def __init__(self, success: bool = True, opportunities: list = None, errors: list = None):
         self.success = success
         self.opportunities = opportunities or []
         self.errors = errors or []
-        self.scan_timestamp = datetime.now()
-        self.total_opportunities = len(self.opportunities)
-        
+        self.timestamp = datetime.now()
+    
     def __str__(self):
-        return f"ScanResult(success={self.success}, opportunities={self.total_opportunities})"
+        return f"ScanResult(success={self.success}, opportunities={len(self.opportunities)}, errors={len(self.errors)})"
+
+# Global instance
+_market_scanner = None
+
+async def get_market_scanner() -> RealMarketScanner:
+    """Get global market scanner instance"""
+    global _market_scanner
+    if _market_scanner is None:
+        _market_scanner = RealMarketScanner()
+        await _market_scanner.initialize()
+    return _market_scanner
 
