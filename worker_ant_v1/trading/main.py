@@ -834,40 +834,5 @@ class MemecoinTradingBot:
             self.logger.error(f"Error getting status: {e}")
             return {"error": str(e)}
 
-async def main():
-    """Main entry point."""
-    parser = argparse.ArgumentParser(description="Memecoin Trading Bot")
-    parser.add_argument(
-        "--capital", type=float, default=300.0, help="Initial capital in USD"
-    )
-    parser.add_argument(
-        "--mode",
-        choices=["production", "simulation"],
-        default="production",
-        help="Trading mode",
-    )
-    args = parser.parse_args()
-
-    # Create and initialize bot
-    bot = MemecoinTradingBot(initial_capital=args.capital)
-
-    try:
-        if await bot.initialize():
-            # Keep the bot running
-            while bot.trading_active:
-                await asyncio.sleep(1)
-        else:
-            print("❌ Failed to initialize bot")
-            sys.exit(1)
-
-    except KeyboardInterrupt:
-        print("\n🛑 Shutdown requested by user")
-    except Exception as e:
-        print(f"❌ Bot error: {e}")
-        traceback.print_exc()
-    finally:
-        await bot.shutdown()
-
-
-if __name__ == "__main__":
-    asyncio.run(main()) 
+# This file is now a module containing the HyperIntelligentTradingSwarm and MemecoinTradingBot classes.
+# Use entry_points/run_bot.py as the sole executable entry point. 

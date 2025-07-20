@@ -26,13 +26,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 import uuid
 
-# TimescaleDB integration
-from worker_ant_v1.core.database import (
-    get_database_manager, 
-    TradeRecord as DBTradeRecord,
-    SystemEvent as DBSystemEvent,
-    PerformanceMetric as DBPerformanceMetric
-)
+# TimescaleDB integration - using lazy imports to avoid circular dependency
 
 # Security imports
 try:
@@ -90,8 +84,11 @@ class TradeRecord:
             ).hexdigest()[:16]
             delattr(self, "tx_signature")
 
-    def to_db_record(self) -> DBTradeRecord:
+    def to_db_record(self):
         """Convert to TimescaleDB trade record"""
+        # Lazy import to avoid circular dependency
+        from worker_ant_v1.core.database import TradeRecord as DBTradeRecord
+        
         # Parse timestamp string to datetime
         if isinstance(self.timestamp, str):
             timestamp_dt = datetime.fromisoformat(self.timestamp.replace('Z', '+00:00'))
@@ -145,8 +142,11 @@ class HourlyReport:
     uptime_percent: float
     sharpe_ratio: float = 0.0
 
-    def to_system_event(self, session_id: str) -> DBSystemEvent:
+    def to_system_event(self, session_id: str):
         """Convert to TimescaleDB system event"""
+        # Lazy import to avoid circular dependency
+        from worker_ant_v1.core.database import SystemEvent as DBSystemEvent
+        
         return DBSystemEvent(
             timestamp=datetime.fromisoformat(self.hour_start),
             event_id=str(uuid.uuid4()),
@@ -278,6 +278,9 @@ class AsyncDatabaseManager:
             return
 
         try:
+            # Lazy import to avoid circular dependency
+            from worker_ant_v1.core.database import get_database_manager
+            
             self.db_manager = await get_database_manager()
             self.initialized = True
             self.logger.info("✅ AsyncDatabaseManager initialized with TimescaleDB")
@@ -762,4 +765,16 @@ def setup_logger(name: str) -> logging.Logger:
         logger.addHandler(handler)
         logger.setLevel(logging.INFO)
     
-    return logger 
+    return logger
+
+
+def get_logger(name: str) -> logging.Logger:
+    """Get a logger with the given name (alias for setup_logger).
+
+    Args:
+        name: Logger name
+
+    Returns:
+        Configured logger instance
+    """
+    return setup_logger(name) 

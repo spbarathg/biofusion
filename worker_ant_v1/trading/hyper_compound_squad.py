@@ -615,40 +615,5 @@ class HyperCompoundSwarm:
         except Exception as e:
             self.logger.error(f"❌ Shutdown error: {e}")
 
-async def main():
-    """Main entry point for the hyper compound swarm"""
-    
-    
-    swarm = HyperCompoundSwarm()
-    
-    
-    def signal_handler(sig, frame):
-        print("\n🛑 Shutdown signal received...")
-        asyncio.create_task(swarm.shutdown())
-        sys.exit(0)
-    
-    signal.signal(signal.SIGINT, signal_handler)
-    signal.signal(signal.SIGTERM, signal_handler)
-    
-    try:
-        success = await swarm.initialize_swarm()
-        if not success:
-            print("❌ Failed to initialize swarm")
-            return
-        
-        
-        await swarm.start_compound_mission()
-        
-    except KeyboardInterrupt:
-        print("\n🛑 Mission interrupted by user")
-    except Exception as e:
-        print(f"❌ Fatal error: {e}")
-    finally:
-        await swarm.shutdown()
-
-if __name__ == "__main__":
-    print("🚀 STARTING HYPER COMPOUND SWARM")
-    print("🎯 MISSION: $300 → $10K+ THROUGH SURGICAL COMPOUNDING")
-    print("=" * 60)
-    
-    asyncio.run(main()) 
+# This file is now a module containing the HyperCompoundSwarm class.
+# Use entry_points/run_bot.py as the sole executable entry point. 

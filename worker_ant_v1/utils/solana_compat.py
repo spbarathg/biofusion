@@ -1,9 +1,16 @@
 """
-Solana Compatibility Layer
-==========================
+SOLANA COMPATIBILITY LAYER
+===========================
 
-This module provides compatibility for solana imports when the main solana package
-is not available (e.g., on Python 3.13).
+IMPORTANT: This module provides a compatibility layer to allow the system to run on 
+environments where the `solana` and `solders` packages may not be available 
+(e.g., Python 3.13+). It is NOT a mock for testing and is essential for 
+environmental flexibility.
+
+This compatibility layer ensures the bot can operate across different Python versions
+and environments without requiring the full Solana development stack to be installed.
+The mock classes and functions provided here maintain API compatibility while allowing
+the system to function in constrained environments.
 """
 
 import asyncio

@@ -3,11 +3,12 @@ SMART APE TRADING BOT - UNIFIED LAUNCHER
 ======================================
 
 Single entry point for all bot operations.
-Choose your deployment mode and let the bot handle the rest.
+Choose your deployment mode, strategy, and let the bot handle the rest.
 
 Usage:
-  python run_bot.py --mode production
-  python run_bot.py --mode simulation
+  python run_bot.py --mode production --strategy hyper_intelligent
+  python run_bot.py --mode production --strategy hyper_compound
+  python run_bot.py --mode simulation --strategy hyper_compound
   python run_bot.py --mode test
 """
 
@@ -22,30 +23,35 @@ sys.path.append(str(Path(__file__).parent.parent))
 from tests.bulletproof_testing_suite import BulletproofTestingSuite
 from worker_ant_v1.core.system_validator import validate_production_config_sync
 from worker_ant_v1.trading.main import HyperIntelligentTradingSwarm
+from worker_ant_v1.trading.hyper_compound_squad import HyperCompoundSwarm
 
 
 class BotLauncher:
-    """Unified bot launcher with mode selection."""
+    """Unified bot launcher with mode and strategy selection."""
 
     def __init__(self):
         """Initialize the bot launcher."""
         self.mode = None
+        self.strategy = None
         self.capital = 10.0
 
-    async def launch(self, mode: str, capital: float = 10.0) -> int:
-        """Launch bot in specified mode.
+    async def launch(self, mode: str, strategy: str = "hyper_intelligent", capital: float = 10.0) -> int:
+        """Launch bot in specified mode with selected strategy.
 
         Args:
             mode: The operation mode (production, simulation, test)
+            strategy: The trading strategy (hyper_intelligent, hyper_compound)
             capital: Initial capital in SOL
 
         Returns:
             Exit code (0 for success, 1 for failure)
         """
         self.mode = mode
+        self.strategy = strategy
         self.capital = capital
 
         print(f"\n🚀 LAUNCHING SMART APE BOT - {mode.upper()} MODE")
+        print(f"🎯 STRATEGY: {strategy.upper().replace('_', ' ')}")
         print("=" * 60)
 
         # Validate production setup
@@ -94,6 +100,19 @@ class BotLauncher:
         print("✅ Production configuration valid")
         return True
 
+    def _create_trading_system(self):
+        """Create the appropriate trading system based on strategy.
+
+        Returns:
+            Trading system instance
+        """
+        if self.strategy == "hyper_intelligent":
+            return HyperIntelligentTradingSwarm(initial_capital=self.capital)
+        elif self.strategy == "hyper_compound":
+            return HyperCompoundSwarm()
+        else:
+            raise ValueError(f"Unknown strategy: {self.strategy}")
+
     async def _launch_production(self) -> int:
         """Launch full production system.
 
@@ -102,24 +121,35 @@ class BotLauncher:
         """
         print("🏭 Starting production trading system...")
 
-        swarm = HyperIntelligentTradingSwarm()
+        system = self._create_trading_system()
 
         try:
-            if not await swarm.initialize_all_systems():
-                print("❌ System initialization failed")
-                return 1
-
+            if hasattr(system, 'initialize_all_systems'):
+                if not await system.initialize_all_systems():
+                    print("❌ System initialization failed")
+                    return 1
+            elif hasattr(system, 'initialize'):
+                await system.initialize()
+            
             print("✅ All systems operational - starting trading")
-            await swarm.run()
+            
+            if hasattr(system, 'run'):
+                await system.run()
+            elif hasattr(system, 'start_compound_mission'):
+                await system.start_compound_mission()
+            
             return 0
 
         except KeyboardInterrupt:
             print("\n🛑 Shutdown requested")
-            await swarm.shutdown()
+            await system.shutdown()
             return 0
         except Exception as e:
             print(f"❌ Critical error: {e}")
-            await swarm.emergency_shutdown()
+            if hasattr(system, 'emergency_shutdown'):
+                await system.emergency_shutdown()
+            else:
+                await system.shutdown()
             return 1
 
     async def _launch_simulation(self) -> int:
@@ -133,24 +163,35 @@ class BotLauncher:
         # Set simulation environment
         os.environ["TRADING_MODE"] = "simulation"
 
-        swarm = HyperIntelligentTradingSwarm()
+        system = self._create_trading_system()
 
         try:
-            if not await swarm.initialize_all_systems():
-                print("❌ Simulation initialization failed")
-                return 1
+            if hasattr(system, 'initialize_all_systems'):
+                if not await system.initialize_all_systems():
+                    print("❌ Simulation initialization failed")
+                    return 1
+            elif hasattr(system, 'initialize'):
+                await system.initialize()
 
             print("✅ Simulation ready - running paper trading")
-            await swarm.run()
+            
+            if hasattr(system, 'run'):
+                await system.run()
+            elif hasattr(system, 'start_compound_mission'):
+                await system.start_compound_mission()
+            
             return 0
 
         except KeyboardInterrupt:
             print("\n🛑 Simulation stopped")
-            await swarm.shutdown()
+            await system.shutdown()
             return 0
         except Exception as e:
             print(f"❌ Simulation error: {e}")
-            await swarm.emergency_shutdown()
+            if hasattr(system, 'emergency_shutdown'):
+                await system.emergency_shutdown()
+            else:
+                await system.shutdown()
             return 1
 
     async def _launch_test(self) -> int:
@@ -162,9 +203,15 @@ class BotLauncher:
         print("🧪 Starting test mode...")
 
         try:
+            # Import here to avoid dependency issues at startup
+            from tests.bulletproof_testing_suite import BulletproofTestingSuite
             suite = BulletproofTestingSuite()
             await suite.run_comprehensive_tests()
             return 0
+        except ImportError as e:
+            print(f"❌ Test suite not available: {e}")
+            print("   Run: pip install -r requirements.txt")
+            return 1
         except Exception as e:
             print(f"❌ Test suite error: {e}")
             return 1
@@ -179,6 +226,13 @@ def main():
         choices=["production", "live", "simulation", "test"],
         default="simulation",
         help="Bot operation mode (default: simulation)",
+    )
+
+    parser.add_argument(
+        "--strategy",
+        choices=["hyper_intelligent", "hyper_compound"],
+        default="hyper_intelligent",
+        help="Trading strategy (default: hyper_intelligent)",
     )
 
     parser.add_argument(
@@ -201,6 +255,7 @@ def main():
     print("\n🦍 SMART APE TRADING BOT")
     print("=" * 40)
     print(f"Mode: {args.mode.upper()}")
+    print(f"Strategy: {args.strategy.upper().replace('_', ' ')}")
     print(f"Capital: {args.capital} SOL")
     print(f"Config: {args.config}")
     print("=" * 40)
@@ -209,7 +264,7 @@ def main():
     launcher = BotLauncher()
 
     try:
-        exit_code = asyncio.run(launcher.launch(args.mode, args.capital))
+        exit_code = asyncio.run(launcher.launch(args.mode, args.strategy, args.capital))
         sys.exit(exit_code)
     except Exception as e:
         print(f"❌ Launch failed: {e}")
