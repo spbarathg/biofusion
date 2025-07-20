@@ -109,6 +109,7 @@ class HyperCompoundEngine:
         self.current_phase = GrowthPhase.BOOTSTRAP
         self.compounding_active = False
         self.last_compound_time = datetime.now()
+        self.blitzscaling_active = False
         
         # Queues and storage
         self.pending_profits: List[Tuple[float, datetime]] = []
@@ -270,15 +271,21 @@ class HyperCompoundEngine:
     async def _calculate_compound_amount(self, total_profit: float) -> float:
         """Calculate how much profit to reinvest"""
         try:
-            # Get phase-specific reinvestment rate
-            if self.current_phase == GrowthPhase.BOOTSTRAP:
-                reinvestment_rate = self.config.bootstrap_aggression
-            elif self.current_phase == GrowthPhase.MOMENTUM:
-                reinvestment_rate = self.config.momentum_aggression
-            elif self.current_phase == GrowthPhase.ACCELERATION:
-                reinvestment_rate = self.config.acceleration_aggression
-            else:  # MASTERY
-                reinvestment_rate = 0.5  # Conservative in mastery phase
+            # Check if blitzscaling is active
+            if hasattr(self, 'blitzscaling_active') and self.blitzscaling_active:
+                # Blitzscaling mode: Override normal rates for maximum aggression
+                reinvestment_rate = 0.98  # 98% reinvestment in blitzscaling mode
+                self.logger.info("🚀 Blitzscaling mode: Using 98% compound rate")
+            else:
+                # Normal mode: Use phase-specific rates
+                if self.current_phase == GrowthPhase.BOOTSTRAP:
+                    reinvestment_rate = self.config.bootstrap_aggression
+                elif self.current_phase == GrowthPhase.MOMENTUM:
+                    reinvestment_rate = self.config.momentum_aggression
+                elif self.current_phase == GrowthPhase.ACCELERATION:
+                    reinvestment_rate = self.config.acceleration_aggression
+                else:  # MASTERY
+                    reinvestment_rate = 0.5  # Conservative in mastery phase
             
             compound_amount = total_profit * reinvestment_rate
             
@@ -286,6 +293,11 @@ class HyperCompoundEngine:
             min_compound = self.config.min_profit_threshold
             if compound_amount < min_compound:
                 compound_amount = min_compound
+            
+            # Blitzscaling mode: Increase max position scale
+            if hasattr(self, 'blitzscaling_active') and self.blitzscaling_active:
+                compound_amount *= 1.5  # 50% larger positions in blitzscaling mode
+                self.logger.info("🚀 Blitzscaling mode: 50% larger position scaling applied")
             
             return compound_amount
             
@@ -746,6 +758,19 @@ class HyperCompoundEngine:
             
         except Exception as e:
             self.logger.error(f"Error adjusting aggression: {e}")
+    
+    async def set_blitzscaling_mode(self, active: bool):
+        """Set blitzscaling mode for the compound engine"""
+        self.blitzscaling_active = active
+        self.logger.info(f"🚀 Blitzscaling mode {'ACTIVATED' if active else 'DEACTIVATED'} for compound engine")
+        
+        if active:
+            # Increase max position scale in blitzscaling mode
+            self.config.max_position_scale = min(0.8, self.config.max_position_scale * 1.5)
+            self.logger.info(f"🚀 Blitzscaling: Max position scale increased to {self.config.max_position_scale}")
+        else:
+            # Reset to normal limits based on current phase
+            await self._configure_phase_settings()
     
     async def shutdown(self):
         """Shutdown the compound engine"""

@@ -180,6 +180,26 @@ class UnifiedTradingEngine:
             if self.kill_switch and self.kill_switch.is_triggered:
                 return self._create_trade_result(None, False, error_message="Kill switch triggered")
             
+            # Get wallet for trade execution
+            wallet_id = trade_params.get('wallet_id')
+            if not wallet_id or not self.wallet_manager:
+                return self._create_trade_result(None, False, error_message="No wallet specified or wallet manager not available")
+            
+            # Get wallet and perform self-assessment
+            wallet = await self.wallet_manager.get_wallet_info(wallet_id)
+            if not wallet:
+                return self._create_trade_result(None, False, error_message=f"Wallet {wallet_id} not found")
+            
+            # Check for active squad ruleset first, then personal risk profile
+            if wallet.get('active_squad_ruleset'):
+                # Use squad rules for assessment
+                if not self._assess_squad_trade(wallet, trade_params):
+                    return self._create_trade_result(None, False, error_message=f"Wallet {wallet_id} vetoed trade due to squad rules")
+            else:
+                # Use personal risk profile for assessment
+                if not self._assess_personal_trade(wallet, trade_params):
+                    return self._create_trade_result(None, False, error_message=f"Wallet {wallet_id} vetoed trade due to personal risk profile")
+            
             # Create trade order
             order = await self._create_trade_order(token_address, trade_params)
             self.active_orders[order.order_id] = order
@@ -365,6 +385,72 @@ class UnifiedTradingEngine:
             execution_time_ms=0,
             error_message="Order execution timeout"
         )
+
+    def _assess_personal_trade(self, wallet: Dict[str, Any], trade_params: Dict[str, Any]) -> bool:
+        """Assess trade using wallet's personal risk profile and genetics"""
+        try:
+            genetics = wallet.get('genetics', {})
+            personal_profile = wallet.get('personal_risk_profile', {})
+            
+            risk_level = trade_params.get('risk_level', 'medium')
+            position_size = trade_params.get('position_size_sol', 0.0)
+            token_age_hours = trade_params.get('token_age_hours', 24)
+            
+            # Check aggression level against risk
+            aggression = genetics.get('aggression', 0.5)
+            if risk_level == 'high' and aggression < 0.6:
+                self.logger.info(f"Wallet vetoed high-risk trade (aggression: {aggression})")
+                return False
+            
+            # Check patience level against token age
+            patience = genetics.get('patience', 0.5)
+            if token_age_hours < 1 and patience > 0.7:
+                self.logger.info(f"Wallet vetoed new token trade (patience: {patience})")
+                return False
+            
+            # Check position size against personal limits
+            max_position = personal_profile.get('max_position_size_sol', 10.0)
+            if position_size > max_position:
+                self.logger.info(f"Wallet vetoed large position (size: {position_size}, max: {max_position})")
+                return False
+            
+            # Check herd immunity against trending tokens
+            herd_immunity = genetics.get('herd_immunity', 0.5)
+            if trade_params.get('is_trending', False) and herd_immunity > 0.8:
+                self.logger.info(f"Wallet vetoed trending token (herd_immunity: {herd_immunity})")
+                return False
+            
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"Error in personal trade assessment: {e}")
+            return True  # Default to allowing trade if assessment fails
+    
+    def _assess_squad_trade(self, wallet: Dict[str, Any], trade_params: Dict[str, Any]) -> bool:
+        """Assess trade using squad ruleset"""
+        try:
+            squad_rules = wallet.get('active_squad_ruleset', {})
+            if not squad_rules:
+                return True
+            
+            position_size = trade_params.get('position_size_sol', 0.0)
+            squad_max_position = squad_rules.get('max_position_size_sol', 50.0)
+            
+            # Only check squad-specific limits
+            if position_size > squad_max_position:
+                self.logger.info(f"Wallet vetoed squad trade (size: {position_size}, squad_max: {squad_max_position})")
+                return False
+            
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"Error in squad trade assessment: {e}")
+            return True  # Default to allowing trade if assessment fails
+    
+    async def set_blitzscaling_mode(self, active: bool):
+        """Set blitzscaling mode for the trading engine"""
+        self.logger.info(f"🚀 Blitzscaling mode {'ACTIVATED' if active else 'DEACTIVATED'} for trading engine")
+        # Additional blitzscaling logic can be added here
 
     def _create_trade_result(self, order: Optional[TradeOrder], success: bool, **kwargs) -> TradeResult:
         """Create trade result"""

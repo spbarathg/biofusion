@@ -28,6 +28,7 @@ from worker_ant_v1.core.vault_wallet_system import VaultWalletSystem
 from worker_ant_v1.core.unified_trading_engine import UnifiedTradingEngine
 from worker_ant_v1.safety.enhanced_rug_detector import EnhancedRugDetector
 from worker_ant_v1.safety.kill_switch import EnhancedKillSwitch
+from worker_ant_v1.trading.squad_manager import SquadManager
 from worker_ant_v1.utils.logger import setup_logger
 from worker_ant_v1.utils.constants import SentimentDecision as SentimentDecisionEnum
 
@@ -75,6 +76,7 @@ class SwarmDecision:
     execution_timing: datetime
     stealth_parameters: Dict[str, Any]
     risk_assessment: Dict[str, Any]
+    squad_id: Optional[str] = None  # Reference to squad if one was formed
 
 class SwarmDecisionEngine:
     """The brain of the 10-wallet neural swarm"""
@@ -144,6 +146,10 @@ class SwarmDecisionEngine:
             self.kill_switch = EnhancedKillSwitch()
             await self.kill_switch.initialize()
             
+            # Initialize squad manager
+            self.squad_manager = SquadManager()
+            await self.squad_manager.initialize(self.wallet_manager)
+            
             
             self.neural_command_center.wallet_manager = self.wallet_manager
             self.neural_command_center.vault_system = self.vault_system
@@ -176,15 +182,24 @@ class SwarmDecisionEngine:
                 urgency=market_data.get('urgency', 5)
             )
             
+            # Check if we should form a squad for this opportunity
+            squad = None
+            if self.squad_manager:
+                squad = await self.squad_manager.form_squad_for_opportunity(market_data)
+                if squad:
+                    self.logger.info(f"🎯 Formed {squad.squad_type.value} squad for {token_address}")
             
             consensus = await self._run_consensus_analysis(opportunity)
             
-            
             risk_assessment = await self._assess_risks(opportunity, consensus)
             
-            
             if consensus.action == "BUY":
-                wallet_allocation = await self._calculate_wallet_allocation(consensus.position_size)
+                # Use squad wallets if available, otherwise normal allocation
+                if squad:
+                    wallet_allocation = await self._calculate_squad_allocation(squad, consensus.position_size)
+                else:
+                    wallet_allocation = await self._calculate_wallet_allocation(consensus.position_size)
+                
                 stealth_params = await self._generate_stealth_parameters()
                 
                 decision = SwarmDecision(
@@ -196,6 +211,9 @@ class SwarmDecisionEngine:
                     risk_assessment=risk_assessment
                 )
                 
+                # Store squad reference for later disbanding
+                if squad:
+                    decision.squad_id = squad.squad_id
                 
                 self.decision_history.append(decision)
                 self.performance_metrics['total_decisions'] += 1
@@ -203,6 +221,10 @@ class SwarmDecisionEngine:
                 return decision
             
             else:
+                # Disband squad if consensus is not to buy
+                if squad:
+                    await self.squad_manager.disband_squad(squad.squad_id, "consensus_rejected")
+                
                 return SwarmDecision(
                     opportunity=opportunity,
                     consensus=consensus,
@@ -440,6 +462,27 @@ class SwarmDecisionEngine:
             
         except Exception as e:
             self.logger.error(f"Wallet allocation failed: {e}")
+            return {}
+    
+    async def _calculate_squad_allocation(self, squad, total_position_size: float) -> Dict[str, float]:
+        """Calculate wallet allocation for squad members"""
+        try:
+            allocation = {}
+            
+            if not squad or not squad.wallet_ids:
+                return allocation
+            
+            # Distribute equally among squad members
+            position_per_wallet = total_position_size / len(squad.wallet_ids)
+            
+            for wallet_id in squad.wallet_ids:
+                allocation[wallet_id] = position_per_wallet
+            
+            self.logger.info(f"🎯 Squad allocation: {len(squad.wallet_ids)} wallets, {position_per_wallet:.6f} SOL each")
+            return allocation
+            
+        except Exception as e:
+            self.logger.error(f"Error calculating squad allocation: {e}")
             return {}
     
     async def _generate_stealth_parameters(self) -> Dict[str, Any]:

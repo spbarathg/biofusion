@@ -43,6 +43,9 @@ class RealMarketScanner:
         self.max_age_hours = 168  # 1 week max age for memecoins
         self.min_holder_count = 50  # Minimum holders
         
+        # Blitzscaling mode
+        self.blitzscaling_active = False
+        
         # Sentiment AI
         self.sentiment_ai = None
         
@@ -107,12 +110,23 @@ class RealMarketScanner:
     def _passes_memecoin_filters(self, token_data: TokenMarketData) -> bool:
         """Check if token passes memecoin-specific filters"""
         try:
+            # Blitzscaling mode: Looser filters for higher volume
+            if self.blitzscaling_active:
+                min_liquidity = self.min_liquidity * 0.5  # 50% lower liquidity requirement
+                min_volume = self.min_volume * 0.7       # 30% lower volume requirement
+                min_holders = self.min_holder_count * 0.6  # 40% lower holder requirement
+                self.logger.debug("🚀 Blitzscaling mode: Using relaxed filters")
+            else:
+                min_liquidity = self.min_liquidity
+                min_volume = self.min_volume
+                min_holders = self.min_holder_count
+            
             # Liquidity filter
-            if token_data.liquidity < self.min_liquidity:
+            if token_data.liquidity < min_liquidity:
                 return False
                 
             # Volume filter
-            if token_data.volume_24h < self.min_volume:
+            if token_data.volume_24h < min_volume:
                 return False
                 
             # Age filter (not too old)
@@ -120,7 +134,7 @@ class RealMarketScanner:
                 return False
                 
             # Holder count filter
-            if token_data.holder_count < self.min_holder_count:
+            if token_data.holder_count < min_holders:
                 return False
                 
             # Price impact filter (simplified)
@@ -246,6 +260,7 @@ class RealMarketScanner:
                 'last_scan': self.last_scan.isoformat(),
                 'total_tokens_tracked': len(self.token_data),
                 'current_opportunities': len(self.opportunities),
+                'blitzscaling_active': self.blitzscaling_active,
                 'api_status': {
                     'jupiter': 'connected',
                     'birdeye': 'connected',
@@ -263,6 +278,16 @@ class RealMarketScanner:
         except Exception as e:
             self.logger.error(f"Error getting system status: {e}")
             return {'error': str(e)}
+    
+    async def set_blitzscaling_mode(self, active: bool):
+        """Set blitzscaling mode for the market scanner"""
+        self.blitzscaling_active = active
+        self.logger.info(f"🚀 Blitzscaling mode {'ACTIVATED' if active else 'DEACTIVATED'} for market scanner")
+        
+        if active:
+            self.logger.info("🚀 Blitzscaling: Using relaxed filtering criteria for higher trade volume")
+        else:
+            self.logger.info("🔄 Normal mode: Using standard filtering criteria")
 
 class ScanResult:
     """Result of market scan"""

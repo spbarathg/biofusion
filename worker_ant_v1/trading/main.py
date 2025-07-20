@@ -31,9 +31,19 @@ from worker_ant_v1.utils.constants import SentimentDecision as SentimentDecision
 class HyperIntelligentTradingSwarm:
     """Hyper-intelligent trading swarm that orchestrates all systems."""
 
-    def __init__(self):
-        """Initialize the trading swarm."""
+    def __init__(self, config_file: str = None, initial_capital: float = 300.0):
+        """Initialize the trading swarm.
+        
+        Args:
+            config_file: Path to swarm-specific configuration file
+            initial_capital: Initial capital allocation for this swarm
+        """
         self.logger = get_logger("TradingSwarm")
+        
+        # Swarm configuration
+        self.config_file = config_file
+        self.initial_capital = initial_capital
+        self.swarm_id = os.getenv('SWARM_ID', 'default_swarm')
 
         # Core systems
         self.trading_engine = None
@@ -47,8 +57,11 @@ class HyperIntelligentTradingSwarm:
         self.initialized = False
         self.trading_active = False
         self.start_time = None
+        
+        # Blitzscaling mode
+        self.blitzscaling_active = False
 
-        self.logger.info("🚀 HyperIntelligentTradingSwarm initialized")
+        self.logger.info(f"🚀 HyperIntelligentTradingSwarm {self.swarm_id} initialized with {initial_capital} SOL")
 
     async def initialize_all_systems(self) -> bool:
         """Initialize all trading systems.
@@ -57,7 +70,12 @@ class HyperIntelligentTradingSwarm:
             True if initialization successful, False otherwise
         """
         try:
-            self.logger.info("🚀 Initializing HyperIntelligentTradingSwarm...")
+            self.logger.info(f"🚀 Initializing HyperIntelligentTradingSwarm {self.swarm_id}...")
+
+            # Load swarm-specific configuration if provided
+            if self.config_file and os.path.exists(self.config_file):
+                await self._load_swarm_config()
+                self.logger.info(f"📋 Loaded swarm configuration from {self.config_file}")
 
             # Initialize core systems
             self.trading_engine = await get_trading_engine()
@@ -78,11 +96,11 @@ class HyperIntelligentTradingSwarm:
             self.trading_active = True
             self.start_time = datetime.now()
 
-            self.logger.info("✅ HyperIntelligentTradingSwarm initialized successfully")
+            self.logger.info(f"✅ HyperIntelligentTradingSwarm {self.swarm_id} initialized successfully")
             return True
 
         except Exception as e:
-            self.logger.error(f"❌ Swarm initialization failed: {e}")
+            self.logger.error(f"❌ Swarm {self.swarm_id} initialization failed: {e}")
             return False
 
     async def run(self):
@@ -140,6 +158,52 @@ class HyperIntelligentTradingSwarm:
         except Exception as e:
             self.logger.error(f"Emergency shutdown error: {e}")
 
+    async def _load_swarm_config(self):
+        """Load swarm-specific configuration from file"""
+        try:
+            if not self.config_file or not os.path.exists(self.config_file):
+                return
+            
+            # Load environment variables from config file
+            with open(self.config_file, 'r') as f:
+                for line in f:
+                    if '=' in line and not line.startswith('#'):
+                        key, value = line.strip().split('=', 1)
+                        if key and value:
+                            os.environ[key] = value
+            
+            self.logger.info(f"📋 Swarm configuration loaded from {self.config_file}")
+            
+        except Exception as e:
+            self.logger.error(f"❌ Error loading swarm config: {e}")
+    
+    async def set_blitzscaling_mode(self, active: bool):
+        """Set blitzscaling mode for this swarm"""
+        self.blitzscaling_active = active
+        self.logger.info(f"🚀 Blitzscaling mode {'ACTIVATED' if active else 'DEACTIVATED'} for swarm {self.swarm_id}")
+        
+        # Notify core systems of blitzscaling mode change
+        if self.trading_engine and hasattr(self.trading_engine, 'set_blitzscaling_mode'):
+            await self.trading_engine.set_blitzscaling_mode(active)
+        
+        if self.wallet_manager and hasattr(self.wallet_manager, 'set_blitzscaling_mode'):
+            await self.wallet_manager.set_blitzscaling_mode(active)
+    
+    def get_status(self) -> Dict[str, Any]:
+        """Get swarm status for colony monitoring"""
+        return {
+            'swarm_id': self.swarm_id,
+            'initialized': self.initialized,
+            'trading_active': self.trading_active,
+            'blitzscaling_active': self.blitzscaling_active,
+            'start_time': self.start_time.isoformat() if self.start_time else None,
+            'initial_capital': self.initial_capital,
+            'current_capital': self.initial_capital,  # This would be updated from actual trading
+            'total_trades': 0,  # This would be updated from actual trading
+            'successful_trades': 0,  # This would be updated from actual trading
+            'total_profit': 0.0,  # This would be updated from actual trading
+        }
+
     def _signal_handler(self, signum, frame):
         """Handle shutdown signals.
 
@@ -147,7 +211,7 @@ class HyperIntelligentTradingSwarm:
             signum: Signal number
             frame: Current stack frame
         """
-        self.logger.info(f"🛑 Received signal {signum}, shutting down...")
+        self.logger.info(f"🛑 Received signal {signum}, shutting down swarm {self.swarm_id}...")
         asyncio.create_task(self.shutdown())
 
 

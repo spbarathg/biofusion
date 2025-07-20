@@ -81,6 +81,62 @@ class TradingWallet:
     last_evolution: datetime
     evolution_count: int = 0
     metadata: Dict[str, Any] = field(default_factory=dict)
+    personal_risk_profile: Dict[str, Any] = field(default_factory=dict)
+    active_squad_ruleset: Optional[Dict[str, Any]] = None
+    
+    def self_assess_trade(self, trade_params: Dict[str, Any]) -> bool:
+        """Self-assessment method allowing wallet to veto trades based on its genetics
+        
+        Args:
+            trade_params: Trade parameters including risk, size, token info
+            
+        Returns:
+            True if trade is acceptable, False if wallet vetoes the trade
+        """
+        # If squad rules are active, use those instead of personal profile
+        if self.active_squad_ruleset:
+            return self._assess_squad_trade(trade_params)
+        
+        # Personal risk assessment based on genetics
+        risk_level = trade_params.get('risk_level', 'medium')
+        position_size = trade_params.get('position_size_sol', 0.0)
+        token_age_hours = trade_params.get('token_age_hours', 24)
+        
+        # Check aggression level against risk
+        if risk_level == 'high' and self.genetics.aggression < 0.6:
+            return False  # Conservative wallet rejects high-risk trades
+        
+        # Check patience level against token age
+        if token_age_hours < 1 and self.genetics.patience > 0.7:
+            return False  # Patient wallet rejects very new tokens
+        
+        # Check position size against personal limits
+        max_position = self.personal_risk_profile.get('max_position_size_sol', 10.0)
+        if position_size > max_position:
+            return False  # Position too large for this wallet
+        
+        # Check herd immunity against popular tokens
+        if trade_params.get('is_trending', False) and self.genetics.herd_immunity > 0.8:
+            return False  # Independent wallet rejects trending tokens
+        
+        return True
+    
+    def _assess_squad_trade(self, trade_params: Dict[str, Any]) -> bool:
+        """Assess trade using squad ruleset instead of personal profile"""
+        if not self.active_squad_ruleset:
+            return True
+        
+        # Squad rules override personal preferences
+        squad_risk_level = self.active_squad_ruleset.get('risk_level', 'medium')
+        squad_max_position = self.active_squad_ruleset.get('max_position_size_sol', 50.0)
+        
+        position_size = trade_params.get('position_size_sol', 0.0)
+        
+        # Only check squad-specific limits
+        if position_size > squad_max_position:
+            return False
+        
+        return True
 
 class UnifiedWalletManager:
     """Production-ready wallet manager with real Solana integration"""
@@ -109,6 +165,7 @@ class UnifiedWalletManager:
         # System state
         self.initialized = False
         self.evolution_active = True
+        self.blitzscaling_active = False
         
         # Token balances cache
         self.balance_cache: Dict[str, Dict[str, float]] = {}
@@ -565,6 +622,47 @@ class UnifiedWalletManager:
             # Sort by performance
             wallet_scores.sort(key=lambda x: x[1], reverse=True)
             
+            if self.blitzscaling_active:
+                # Blitzscaling mode: Clone and expand instead of retire and replace
+                await self._perform_blitzscaling_evolution(wallet_scores)
+            else:
+                # Normal mode: Retire and replace
+                await self._perform_normal_evolution(wallet_scores)
+            
+            self.logger.info("✅ Evolution complete")
+            
+        except Exception as e:
+            self.logger.error(f"Evolution failed: {e}")
+    
+    async def _perform_blitzscaling_evolution(self, wallet_scores: List[Tuple[str, float]]):
+        """Perform evolution in blitzscaling mode - clone and expand"""
+        try:
+            self.logger.info("🚀 Performing blitzscaling evolution - cloning top performers")
+            
+            # Clone top performers to increase swarm size
+            num_to_clone = min(3, len(wallet_scores) // 2)  # Clone top 50%
+            for i in range(num_to_clone):
+                wallet_id, score = wallet_scores[i]
+                if score > 0.6:  # Clone good performers
+                    await self._clone_wallet(wallet_id)
+            
+            # Evolve top performers
+            num_to_evolve = min(2, len(wallet_scores) // 3)
+            for i in range(num_to_evolve):
+                wallet_id, score = wallet_scores[i]
+                if score > 0.7:
+                    await self._evolve_wallet(wallet_id)
+            
+            # Maintain minimum population
+            while len([w for w in self.wallets.values() if w.state == WalletState.ACTIVE]) < self.evolution_config['min_wallets']:
+                await self._create_evolved_wallet("best_performer")
+            
+        except Exception as e:
+            self.logger.error(f"❌ Blitzscaling evolution error: {e}")
+    
+    async def _perform_normal_evolution(self, wallet_scores: List[Tuple[str, float]]):
+        """Perform evolution in normal mode - retire and replace"""
+        try:
             # Retire bottom 20%
             retirement_count = max(1, len(wallet_scores) // 5)
             for i in range(retirement_count):
@@ -579,11 +677,69 @@ class UnifiedWalletManager:
             # Evolve remaining wallets
             for wallet_id, _ in wallet_scores[:-retirement_count]:
                 await self._evolve_wallet(wallet_id)
+                
+        except Exception as e:
+            self.logger.error(f"❌ Normal evolution error: {e}")
+    
+    async def _clone_wallet(self, parent_wallet_id: str):
+        """Clone a wallet with similar genetics"""
+        try:
+            parent_wallet = self.wallets.get(parent_wallet_id)
+            if not parent_wallet:
+                return
             
-            self.logger.info(f"✅ Evolution complete: {retirement_count} wallets retired and replaced")
+            # Create new wallet ID
+            clone_id = f"clone_{parent_wallet_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+            
+            # Generate new keypair
+            keypair = Keypair.generate()
+            private_key = base58.b58encode(keypair.secret_key).decode()
+            address = str(keypair.public_key)
+            
+            # Clone genetics with slight mutations
+            cloned_genetics = EvolutionGenetics(
+                aggression=parent_wallet.genetics.aggression + secrets.SystemRandom().uniform(-0.1, 0.1),
+                patience=parent_wallet.genetics.patience + secrets.SystemRandom().uniform(-0.1, 0.1),
+                signal_trust=parent_wallet.genetics.signal_trust + secrets.SystemRandom().uniform(-0.1, 0.1),
+                adaptation_rate=parent_wallet.genetics.adaptation_rate + secrets.SystemRandom().uniform(-0.1, 0.1),
+                memory_strength=parent_wallet.genetics.memory_strength + secrets.SystemRandom().uniform(-0.1, 0.1),
+                herd_immunity=parent_wallet.genetics.herd_immunity + secrets.SystemRandom().uniform(-0.1, 0.1)
+            )
+            
+            # Create clone wallet
+            clone_wallet = TradingWallet(
+                wallet_id=clone_id,
+                address=address,
+                private_key=private_key,
+                state=WalletState.ACTIVE,
+                behavior=parent_wallet.behavior,
+                genetics=cloned_genetics,
+                performance=WalletPerformance(),
+                created_at=datetime.now(),
+                last_evolution=datetime.now(),
+                evolution_count=0,
+                personal_risk_profile=parent_wallet.personal_risk_profile.copy()
+            )
+            
+            self.wallets[clone_id] = clone_wallet
+            self.active_wallets.append(clone_id)
+            
+            self.logger.info(f"🧬 Cloned wallet {parent_wallet_id} -> {clone_id}")
             
         except Exception as e:
-            self.logger.error(f"Evolution failed: {e}")
+            self.logger.error(f"❌ Error cloning wallet {parent_wallet_id}: {e}")
+    
+    async def set_blitzscaling_mode(self, active: bool):
+        """Set blitzscaling mode for the wallet manager"""
+        self.blitzscaling_active = active
+        self.logger.info(f"🚀 Blitzscaling mode {'ACTIVATED' if active else 'DEACTIVATED'} for wallet manager")
+        
+        if active:
+            # Increase max wallets in blitzscaling mode
+            self.evolution_config['max_wallets'] = 20  # Double the normal limit
+        else:
+            # Reset to normal limits
+            self.evolution_config['max_wallets'] = 10
 
     def _evaluate_wallet(self, wallet: TradingWallet) -> float:
         """Evaluate wallet performance for evolution"""
