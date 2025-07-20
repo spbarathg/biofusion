@@ -1,16 +1,15 @@
 """
-STEALTH OPERATIONS SYSTEM - DETECTION AVOIDANCE WITH DYNAMIC CAMOUFLAGE
-=====================================================================
+STEALTH OPERATIONS SYSTEM - INVISIBILITY & DECEPTION
+==================================================
 
-Implements stealth operations for the 10-wallet swarm to remain undetectable:
-- Rotates wallet behavior patterns
-- Varies gas settings and execution paths  
-- Simulates fake entries when conditions feel botted
-- Avoids predictable patterns that could expose the swarm
-- ENHANCED: Dynamic camouflage that responds to threat levels
-- ENHANCED: Threat-responsive stealth escalation and adaptive countermeasures
+Advanced stealth trading system for maintaining tactical advantage.
+Implements sophisticated obfuscation, behavioral mimicry, and deception.
 
-"You rotate wallet behavior, gas settings, and execution paths to remain undetectable."
+🔥 ENHANCED WITH MEV BAIT & SWITCH:
+- Honeypot transaction broadcasting for MEV detection
+- Private RPC endpoint routing for stealth execution
+- MEV bot behavior analysis and exploitation
+- Sandwich attack avoidance and reversal tactics
 """
 
 import asyncio
@@ -18,988 +17,970 @@ import random
 import time
 import hashlib
 import numpy as np
-from typing import Dict, List, Optional, Tuple, Any
+from typing import Dict, List, Optional, Any, Set, Tuple
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from enum import Enum
 import logging
+import json
 
 from worker_ant_v1.utils.logger import setup_logger
-from worker_ant_v1.core.unified_config import get_trading_config, get_security_config
-
-class StealthLevel(Enum):
-    """Stealth operation levels"""
-    GHOST = "ghost"          # Maximum stealth
-    NINJA = "ninja"          # High stealth  
-    SHADOW = "shadow"        # Medium stealth
-    NORMAL = "normal"        # Standard operations
-    AGGRESSIVE = "aggressive" # Minimal stealth
+from worker_ant_v1.core.wallet_manager import UnifiedWalletManager, TradingWallet, WalletBehavior
 
 
-class ThreatResponseMode(Enum):
-    """Dynamic threat response modes"""
-    PASSIVE = "passive"           # Standard stealth operations
-    REACTIVE = "reactive"         # React to detected threats
-    PREDICTIVE = "predictive"     # Anticipate and counter threats
-    ADAPTIVE = "adaptive"         # Learn and evolve countermeasures
-    GHOST_PROTOCOL = "ghost_protocol"  # Maximum evasion mode
+class MEVThreatLevel(Enum):
+    """MEV threat assessment levels"""
+    MINIMAL = "minimal"        # Low MEV activity
+    MODERATE = "moderate"      # Some MEV bots present
+    HIGH = "high"             # High MEV bot activity
+    CRITICAL = "critical"     # Aggressive MEV environment
+    PREDATORY = "predatory"   # Sophisticated MEV attackers
 
 
-class CamouflageStrategy(Enum):
-    """Dynamic camouflage strategies"""
-    PATTERN_DISRUPTION = "pattern_disruption"
-    BEHAVIOR_MIMICRY = "behavior_mimicry"
-    TEMPORAL_CONFUSION = "temporal_confusion"
-    VOLUME_MASKING = "volume_masking"
-    GAS_MISDIRECTION = "gas_misdirection"
-    FAKE_SIGNAL_INJECTION = "fake_signal_injection"
-    COORDINATED_DECEPTION = "coordinated_deception"
+class MEVAttackType(Enum):
+    """Types of MEV attacks detected"""
+    SANDWICH = "sandwich"           # Sandwich attacks
+    FRONT_RUN = "front_run"        # Front-running
+    BACK_RUN = "back_run"          # Back-running
+    LIQUIDATION = "liquidation"     # Liquidation MEV
+    ARBITRAGE = "arbitrage"        # Arbitrage MEV
+    UNKNOWN = "unknown"            # Unknown MEV pattern
 
 
 @dataclass
-class ThreatResponse:
-    """Response to a detected threat"""
-    threat_id: str
-    threat_type: str
-    response_mode: ThreatResponseMode
-    camouflage_strategies: List[CamouflageStrategy]
-    stealth_escalation: StealthLevel
+class MEVDetection:
+    """MEV bot detection result"""
+    threat_level: MEVThreatLevel
+    attack_types: List[MEVAttackType]
+    detected_bots: List[str]           # Detected MEV bot addresses
+    attack_patterns: Dict[str, Any]    # Analyzed attack patterns
+    confidence_score: float            # 0.0 to 1.0 confidence
+    detection_timestamp: datetime
     
-    # Response parameters
-    gas_randomization_increase: float
-    timing_variance_increase: float
-    fake_transaction_rate_increase: float
-    behavior_rotation_frequency: float
+    # Honeypot analysis
+    honeypot_interactions: int         # Number of bots that interacted with honeypot
+    honeypot_response_time_ms: float   # Average response time to honeypot
     
-    # Effectiveness tracking
-    implemented_at: datetime
-    effectiveness_score: float = 0.0
-    duration_minutes: int = 30
-    auto_expire: bool = True
+    # Recommended countermeasures
+    recommended_strategy: str
+    private_rpc_recommended: bool
+    delay_recommendation_ms: int
 
-class BehaviorPattern(Enum):
-    """Wallet behavior patterns"""
-    SNIPER = "sniper"        # Fast, precise entries
-    ACCUMULATOR = "accumulator" # Gradual position building
-    SCALPER = "scalper"      # Quick in/out trades
-    HODLER = "hodler"        # Long-term holds
-    MIMICKER = "mimicker"    # Copies other wallets
 
-class DetectionRisk(Enum):
-    """Detection risk levels"""
-    MINIMAL = "minimal"
-    LOW = "low"
-    MEDIUM = "medium"
-    HIGH = "high"
-    CRITICAL = "critical"
+@dataclass
+class MEVCountermeasure:
+    """MEV countermeasure configuration"""
+    strategy_type: str                 # Type of countermeasure
+    honeypot_tx_hash: Optional[str]    # Honeypot transaction hash
+    real_tx_params: Dict[str, Any]     # Real transaction parameters
+    private_rpc_endpoint: str          # Private RPC endpoint
+    execution_delay_ms: int            # Delay before real execution
+    gas_optimization: Dict[str, Any]   # Gas optimization parameters
+    
+    # Execution tracking
+    honeypot_deployed: bool = False
+    mev_bots_detected: List[str] = field(default_factory=list)
+    real_tx_executed: bool = False
+    countermeasure_success: bool = False
+
 
 @dataclass
 class StealthProfile:
-    """Stealth operation profile for a wallet"""
+    """Stealth trading profile for a wallet"""
     wallet_id: str
-    current_behavior: BehaviorPattern
-    stealth_level: StealthLevel
+    behavior_pattern: WalletBehavior
+    aggression_level: float
+    patience_level: float
     
-    
-    gas_multiplier_range: Tuple[float, float] = (1.0, 1.5)
-    slippage_range: Tuple[float, float] = (0.5, 2.0)
-    position_size_variance: float = 0.3
-    timing_variance_seconds: Tuple[int, int] = (5, 30)
-    
-    
-    last_pattern_change: datetime = field(default_factory=datetime.now)
-    pattern_change_interval_hours: float = 8.0
-    
-    
-    fake_transaction_probability: float = 0.05
-    pause_on_detection_risk: bool = True
+    # Stealth characteristics
+    randomization_factor: float = 0.3
+    fake_transaction_probability: float = 0.15
     mimicry_target: Optional[str] = None
+    timing_variance_seconds: int = 30
+    amount_obfuscation_factor: float = 0.1
     
+    # MEV protection settings
+    mev_protection_enabled: bool = True
+    private_rpc_threshold_sol: float = 10.0    # Use private RPC for trades above this amount
+    honeypot_frequency: float = 0.2            # 20% of trades use honeypot detection
+    max_mev_delay_seconds: int = 30            # Maximum delay for MEV avoidance
     
-    detection_incidents: int = 0
-    successful_stealth_operations: int = 0
+    # Performance tracking
+    successful_stealth_ops: int = 0
+    detected_operations: int = 0
+    mev_attacks_avoided: int = 0
+    
+    def stealth_score(self) -> float:
+        """Calculate current stealth effectiveness score"""
+        total_ops = self.successful_stealth_ops + self.detected_operations
+        if total_ops == 0:
+            return 1.0
+        return self.successful_stealth_ops / total_ops
 
-@dataclass  
-class StealthOperation:
-    """Individual stealth operation"""
-    operation_id: str
-    wallet_id: str
-    operation_type: str  # "trade", "fake_entry", "pattern_change", "gas_variation"
-    
-    stealth_parameters: Dict[str, Any]
-    execution_timestamp: datetime
-    detection_risk_before: DetectionRisk
-    detection_risk_after: DetectionRisk
-    
-    success: bool = False
-    cover_story: str = ""
 
 class StealthOperationsSystem:
-    """Advanced stealth operations for undetectable trading with Dynamic Camouflage"""
+    """Advanced stealth trading system with MEV protection and exploitation"""
     
     def __init__(self):
         self.logger = setup_logger("StealthOperations")
         
-        # Stealth profiles
+        # Core systems
+        self.wallet_manager: Optional[UnifiedWalletManager] = None
+        
+        # Stealth profiles and operations
         self.stealth_profiles: Dict[str, StealthProfile] = {}
+        self.active_operations: Dict[str, Dict[str, Any]] = {}
+        self.stealth_history: List[Dict[str, Any]] = []
         
-        # Dynamic Camouflage enhancements
-        self.threat_responses: Dict[str, ThreatResponse] = {}
-        self.active_camouflage_strategies: List[CamouflageStrategy] = []
-        self.threat_response_mode = ThreatResponseMode.REACTIVE
-        self.camouflage_effectiveness: Dict[CamouflageStrategy, float] = {}
-        
-        # Battle Pattern Intelligence integration
-        self.battle_pattern_intelligence = None  # Will be injected
-        
-        # Detection tracking
-        self.detection_indicators = {
-            'unusual_gas_patterns': 0.0,
-            'predictable_timing': 0.0,
-            'similar_amounts': 0.0,
-            'coordinated_movements': 0.0,
-            'repetitive_behaviors': 0.0
+        # MEV protection infrastructure
+        self.mev_detection_system = {
+            'enabled': True,
+            'honeypot_tx_templates': [],
+            'known_mev_bots': set(),
+            'attack_patterns': {},
+            'detection_threshold': 0.7,
+            'private_rpc_endpoints': [
+                'https://your-private-rpc-1.com',
+                'https://jito-mainnet.core.chainstack.com',
+                'https://your-private-rpc-2.com'
+            ]
         }
         
-        # Operation history
-        self.operation_history: List[StealthOperation] = []
-        
-        # Mimicry targets
-        self.mimicry_targets: List[str] = []
-        
-        # Pattern signatures
-        self.pattern_signatures = set()
-        
-        # Enhanced configuration
-        self.config = {
-            'max_detection_risk': DetectionRisk.MEDIUM,
-            'behavior_rotation_interval': 8,  # hours
-            'gas_randomization_strength': 0.3,
-            'timing_randomization_strength': 0.5,
-            'fake_transaction_rate': 0.02,  # 2% of operations
-            'mimicry_activation_threshold': 0.7,
-            
-            # Dynamic Camouflage settings
-            'threat_response_sensitivity': 0.6,
-            'max_camouflage_strategies': 3,
-            'adaptive_learning_rate': 0.1,
-            'ghost_protocol_threshold': 0.8
+        # MEV countermeasure configuration
+        self.countermeasure_config = {
+            'honeypot_hold_duration_ms': 2000,    # Hold honeypot for 2 seconds
+            'detection_analysis_duration_ms': 1500, # Analyze mempool for 1.5 seconds  
+            'private_execution_delay_ms': 500,     # Delay before private execution
+            'gas_price_randomization': 0.1,       # ±10% gas price randomization
+            'max_concurrent_honeypots': 3,        # Max 3 honeypots at once
         }
         
-        # System state
-        self.system_stealth_level = StealthLevel.SHADOW
-        self.global_detection_risk = DetectionRisk.LOW
+        # Performance metrics
+        self.mev_protection_metrics = {
+            'total_mev_detections': 0,
+            'successful_avoidances': 0,
+            'honeypots_deployed': 0,
+            'private_executions': 0,
+            'avg_detection_time_ms': 0.0,
+            'mev_bots_catalogued': 0
+        }
         
-    async def initialize_stealth_system(self, wallet_ids: List[str], battle_pattern_intelligence=None):
-        """Initialize stealth system with Dynamic Camouflage capabilities"""
+        # Active honeypots and detections
+        self.active_honeypots: Dict[str, MEVCountermeasure] = {}
+        self.recent_detections: List[MEVDetection] = []
         
-        self.logger.info("👤 Initializing Enhanced Stealth Operations System...")
-        
-        # Inject Battle Pattern Intelligence for threat detection
-        self.battle_pattern_intelligence = battle_pattern_intelligence
-        
-        # Create stealth profiles for wallets
-        for wallet_id in wallet_ids:
-            profile = await self._create_stealth_profile(wallet_id)
-            self.stealth_profiles[wallet_id] = profile
-        
-        # Start enhanced monitoring loops
-        asyncio.create_task(self._stealth_monitoring_loop())
-        asyncio.create_task(self._behavioral_rotation_loop())
-        asyncio.create_task(self._detection_risk_assessment_loop())
-        asyncio.create_task(self._dynamic_camouflage_loop())
-        asyncio.create_task(self._threat_response_loop())
-        
-        # Initialize mimicry targets
-        await self._identify_mimicry_targets()
-        
-        self.logger.info(f"✅ Enhanced stealth system initialized for {len(wallet_ids)} wallets with Dynamic Camouflage")
+        self.logger.info("🥷 Stealth Operations System initialized with MEV Bait & Switch capabilities")
     
-    async def prepare_stealth_transaction(self, wallet_id: str, 
-                                        base_transaction: Dict[str, Any]) -> Dict[str, Any]:
-        """Prepare transaction with stealth parameters"""
+    async def initialize(self, wallet_manager: UnifiedWalletManager):
+        """Initialize stealth operations with MEV protection"""
+        self.wallet_manager = wallet_manager
         
-        if wallet_id not in self.stealth_profiles:
-            return base_transaction
+        # Initialize stealth profiles for all wallets
+        active_wallets = await wallet_manager.get_all_wallets()
+        for wallet_id, wallet in active_wallets.items():
+            await self._create_stealth_profile(wallet)
         
-        profile = self.stealth_profiles[wallet_id]
+        # Start background MEV monitoring
+        asyncio.create_task(self._mev_monitoring_loop())
+        asyncio.create_task(self._honeypot_cleanup_loop())
         
-        
-        if random.random() < profile.fake_transaction_probability:
-            if await self._should_fake_transaction(wallet_id):
-                return await self._create_fake_transaction(wallet_id, base_transaction)
-        
-        
-        stealth_tx = base_transaction.copy()
-        
-        
-        stealth_tx = await self._apply_gas_stealth(stealth_tx, profile)
-        
-        
-        stealth_tx = await self._apply_timing_stealth(stealth_tx, profile)
-        
-        
-        stealth_tx = await self._apply_amount_stealth(stealth_tx, profile)
-        
-        
-        stealth_tx = await self._apply_behavioral_stealth(stealth_tx, profile)
-        
-        
-        if profile.mimicry_target:
-            stealth_tx = await self._apply_mimicry(stealth_tx, profile)
-        
-        
-        await self._record_stealth_operation(wallet_id, "trade", stealth_tx)
-        
-        return stealth_tx
+        self.logger.info("✅ Stealth Operations initialized with MEV protection for all wallets")
     
-    async def _apply_gas_stealth(self, transaction: Dict[str, Any], 
-                               profile: StealthProfile) -> Dict[str, Any]:
-        """Apply gas-related stealth modifications"""
+    async def detect_and_pivot(self, transaction_params: Dict[str, Any], 
+                              use_honeypot: bool = True) -> Dict[str, Any]:
+        """
+        Execute MEV Bait & Switch: Deploy honeypot, detect MEV bots, then execute real transaction
         
-        
-        min_multiplier, max_multiplier = profile.gas_multiplier_range
-        gas_multiplier = random.uniform(min_multiplier, max_multiplier)
-        
-        
-        gas_noise = random.uniform(-0.1, 0.1)
-        final_multiplier = max(0.5, gas_multiplier + gas_noise)
-        
-        transaction['gas_multiplier'] = final_multiplier
-        
-        
-        if profile.stealth_level in [StealthLevel.GHOST, StealthLevel.NINJA]:
-            priority_variance = random.uniform(0.5, 2.0)
-            transaction['priority_fee_multiplier'] = priority_variance
-        
-        return transaction
-    
-    async def _apply_timing_stealth(self, transaction: Dict[str, Any], 
-                                  profile: StealthProfile) -> Dict[str, Any]:
-        """Apply timing-related stealth modifications"""
-        
-        
-        min_delay, max_delay = profile.timing_variance_seconds
-        delay_seconds = random.randint(min_delay, max_delay)
-        
-        
-        if profile.current_behavior == BehaviorPattern.SNIPER:
-            delay_seconds = min(delay_seconds, 10)
-        elif profile.current_behavior == BehaviorPattern.ACCUMULATOR:
-            delay_seconds = max(delay_seconds, 15)
-        
-        transaction['execution_delay_seconds'] = delay_seconds
-        
-        
-        if profile.stealth_level == StealthLevel.GHOST:
-            if random.random() < 0.3:  # 30% chance
-                pattern_break_delay = random.randint(60, 300)  # 1-5 minutes
-                transaction['execution_delay_seconds'] += pattern_break_delay
-                transaction['stealth_note'] = "Pattern break delay"
-        
-        return transaction
-    
-    async def _apply_amount_stealth(self, transaction: Dict[str, Any], 
-                                  profile: StealthProfile) -> Dict[str, Any]:
-        """Apply amount-related stealth modifications"""
-        
-        original_amount = transaction.get('amount_sol', 0)
-        
-        
-        variance = profile.position_size_variance
-        amount_multiplier = random.uniform(1 - variance, 1 + variance)
-        
-        
-        min_amount = transaction.get('min_amount', 0.001)
-        max_amount = transaction.get('max_amount', original_amount * 1.5)
-        
-        new_amount = np.clip(original_amount * amount_multiplier, min_amount, max_amount)
-        
-        
-        if new_amount > 0.01:
-            decimal_noise = random.uniform(-0.001, 0.001)
-            new_amount += decimal_noise
-        
-        transaction['amount_sol'] = max(min_amount, new_amount)
-        
-        return transaction
-    
-    async def _apply_behavioral_stealth(self, transaction: Dict[str, Any], 
-                                      profile: StealthProfile) -> Dict[str, Any]:
-        """Apply behavior-pattern-specific stealth modifications"""
-        
-        behavior = profile.current_behavior
-        
-        if behavior == BehaviorPattern.SNIPER:
-            transaction['max_slippage'] = random.uniform(1.0, 3.0)
-            transaction['urgency'] = random.uniform(0.8, 1.0)
+        This implements the core MEV protection strategy:
+        1. Broadcast honeypot transaction to attract MEV bots
+        2. Monitor mempool for MEV bot responses
+        3. Analyze MEV attack patterns and bot behavior
+        4. Execute real transaction via private RPC or optimized routing
+        """
+        try:
+            operation_id = f"mev_pivot_{int(time.time() * 1000)}"
+            self.logger.info(f"🍯 Initiating MEV Bait & Switch operation: {operation_id}")
             
-        elif behavior == BehaviorPattern.ACCUMULATOR:
-            transaction['max_slippage'] = random.uniform(0.3, 1.0)
-            transaction['urgency'] = random.uniform(0.2, 0.5)
+            # Validate transaction parameters
+            if not self._validate_transaction_params(transaction_params):
+                return {
+                    'success': False,
+                    'error': 'Invalid transaction parameters',
+                    'operation_id': operation_id
+                }
             
-        elif behavior == BehaviorPattern.SCALPER:
-            transaction['max_slippage'] = random.uniform(0.5, 2.0)
-            transaction['urgency'] = random.uniform(0.6, 0.8)
+            # Phase 1: Deploy honeypot if enabled and conditions are met
+            mev_detection = None
+            if use_honeypot and self._should_use_honeypot(transaction_params):
+                mev_detection = await self._deploy_honeypot_and_detect(transaction_params, operation_id)
+            else:
+                # Skip honeypot, perform quick MEV threat assessment
+                mev_detection = await self._quick_mev_assessment(transaction_params)
             
-        elif behavior == BehaviorPattern.HODLER:
-            transaction['max_slippage'] = random.uniform(0.2, 0.8)
-            transaction['urgency'] = random.uniform(0.1, 0.3)
+            # Phase 2: Determine optimal execution strategy based on MEV threat
+            execution_strategy = await self._determine_execution_strategy(mev_detection, transaction_params)
             
-        elif behavior == BehaviorPattern.MIMICKER:
-            if profile.mimicry_target:
-                transaction = await self._copy_target_parameters(transaction, profile.mimicry_target)
-        
-        return transaction
+            # Phase 3: Execute real transaction with optimal strategy
+            execution_result = await self._execute_with_mev_protection(
+                transaction_params, 
+                execution_strategy, 
+                mev_detection,
+                operation_id
+            )
+            
+            # Phase 4: Update MEV knowledge base
+            await self._update_mev_knowledge_base(mev_detection, execution_result)
+            
+            # Compile final result
+            result = {
+                'success': execution_result.get('success', False),
+                'operation_id': operation_id,
+                'mev_detection': mev_detection,
+                'execution_strategy': execution_strategy,
+                'transaction_hash': execution_result.get('transaction_hash'),
+                'mev_bots_detected': len(mev_detection.detected_bots) if mev_detection else 0,
+                'protection_effective': execution_result.get('mev_protection_success', False),
+                'gas_saved': execution_result.get('gas_saved', 0),
+                'error': execution_result.get('error')
+            }
+            
+            # Update metrics
+            await self._update_mev_metrics(result)
+            
+            self.logger.info(f"🍯 MEV Bait & Switch completed: "
+                           f"Success: {result['success']}, "
+                           f"Bots detected: {result['mev_bots_detected']}, "
+                           f"Strategy: {execution_strategy['type']}")
+            
+            return result
+            
+        except Exception as e:
+            self.logger.error(f"❌ MEV Bait & Switch operation failed: {e}")
+            return {
+                'success': False,
+                'error': str(e),
+                'operation_id': operation_id,
+                'mev_protection_success': False
+            }
     
-    async def _should_fake_transaction(self, wallet_id: str) -> bool:
-        """Determine if we should fake this transaction to confuse bots"""
-        
-        
-        if self.global_detection_risk in [DetectionRisk.HIGH, DetectionRisk.CRITICAL]:
-            return True
-        
-        
-        recent_operations = [op for op in self.operation_history 
-                           if (op.wallet_id == wallet_id and 
-                               op.operation_type == "trade" and
-                               op.execution_timestamp > datetime.now() - timedelta(hours=1))]
-        
-        if len(recent_operations) > 3:  # More than 3 trades per hour
-            return True
-        
-        
-        market_bot_activity = await self._detect_market_bot_activity()
-        if market_bot_activity > 0.7:
-            return True
-        
-        return False
-    
-    async def _create_fake_transaction(self, wallet_id: str, 
-                                     base_transaction: Dict[str, Any]) -> Dict[str, Any]:
-        """Create a fake transaction that looks real but doesn't execute"""
-        
-        fake_tx = base_transaction.copy()
-        fake_tx['is_fake'] = True
-        fake_tx['fake_reason'] = "Bot confusion tactic"
-        
-        
-        fake_tx['amount_sol'] = 0.0001  # Tiny amount
-        fake_tx['max_slippage'] = 0.1   # Very low slippage (likely to fail)
-        fake_tx['execution_delay_seconds'] = random.randint(60, 180)
-        
-        self.logger.info(f"🎭 Creating fake transaction for {wallet_id} (anti-bot measure)")
-        
-        return fake_tx
-    
-    async def _apply_mimicry(self, transaction: Dict[str, Any], 
-                           profile: StealthProfile) -> Dict[str, Any]:
-        """Apply mimicry of successful wallet patterns"""
-        
-        if not profile.mimicry_target:
-            return transaction
-        
-        
-        target_patterns = await self._get_target_patterns(profile.mimicry_target)
-        
-        if target_patterns:
-            if 'gas_multiplier' in target_patterns:
-                transaction['gas_multiplier'] = target_patterns['gas_multiplier']
+    def _should_use_honeypot(self, transaction_params: Dict[str, Any]) -> bool:
+        """Determine if honeypot should be used for this transaction"""
+        try:
+            # Check transaction size threshold
+            amount_sol = transaction_params.get('amount_sol', 0)
+            if amount_sol < 5.0:  # Skip honeypot for small transactions
+                return False
             
+            # Check concurrent honeypot limit
+            if len(self.active_honeypots) >= self.countermeasure_config['max_concurrent_honeypots']:
+                return False
             
-            if 'avg_delay' in target_patterns:
-                base_delay = target_patterns['avg_delay']
-                variance = random.uniform(-5, 5)
-                transaction['execution_delay_seconds'] = max(1, int(base_delay + variance))
+            # Check wallet stealth profile settings
+            wallet_id = transaction_params.get('wallet_id')
+            if wallet_id in self.stealth_profiles:
+                profile = self.stealth_profiles[wallet_id]
+                if not profile.mev_protection_enabled:
+                    return False
+                
+                # Use frequency-based decision
+                return random.random() < profile.honeypot_frequency
             
+            return True  # Default to using honeypot
             
-            if 'avg_slippage' in target_patterns:
-                transaction['max_slippage'] = target_patterns['avg_slippage']
-        
-        return transaction
-    
-    async def rotate_wallet_behavior(self, wallet_id: str) -> bool:
-        """Rotate wallet behavior pattern"""
-        
-        if wallet_id not in self.stealth_profiles:
+        except Exception as e:
+            self.logger.error(f"Error determining honeypot usage: {e}")
             return False
+    
+    async def _deploy_honeypot_and_detect(self, transaction_params: Dict[str, Any], 
+                                         operation_id: str) -> MEVDetection:
+        """Deploy honeypot transaction and detect MEV bot responses"""
+        try:
+            self.logger.info(f"🕷️ Deploying MEV honeypot for operation {operation_id}")
+            
+            # Create honeypot transaction
+            honeypot_tx = await self._create_honeypot_transaction(transaction_params)
+            
+            # Create MEV countermeasure tracking
+            countermeasure = MEVCountermeasure(
+                strategy_type="honeypot_detection",
+                honeypot_tx_hash=honeypot_tx.get('hash'),
+                real_tx_params=transaction_params,
+                private_rpc_endpoint=self._select_private_rpc(),
+                execution_delay_ms=self.countermeasure_config['private_execution_delay_ms'],
+                gas_optimization={}
+            )
+            
+            # Deploy honeypot to mempool
+            await self._broadcast_honeypot(honeypot_tx, operation_id)
+            countermeasure.honeypot_deployed = True
+            
+            # Add to active honeypots
+            self.active_honeypots[operation_id] = countermeasure
+            
+            # Monitor mempool for MEV bot responses
+            detection_result = await self._monitor_mev_responses(
+                honeypot_tx,
+                self.countermeasure_config['detection_analysis_duration_ms'],
+                operation_id
+            )
+            
+            # Clean up honeypot
+            await self._cleanup_honeypot(honeypot_tx, operation_id)
+            
+            self.logger.info(f"🕷️ Honeypot analysis complete: "
+                           f"Threat level: {detection_result.threat_level.value}, "
+                           f"Bots detected: {len(detection_result.detected_bots)}")
+            
+            return detection_result
+            
+        except Exception as e:
+            self.logger.error(f"❌ Honeypot deployment failed: {e}")
+            return MEVDetection(
+                threat_level=MEVThreatLevel.MINIMAL,
+                attack_types=[],
+                detected_bots=[],
+                attack_patterns={},
+                confidence_score=0.0,
+                detection_timestamp=datetime.now(),
+                honeypot_interactions=0,
+                honeypot_response_time_ms=0.0,
+                recommended_strategy="standard_execution",
+                private_rpc_recommended=False,
+                delay_recommendation_ms=0
+            )
+    
+    async def _create_honeypot_transaction(self, real_params: Dict[str, Any]) -> Dict[str, Any]:
+        """Create an attractive honeypot transaction for MEV bots"""
+        try:
+            # Create honeypot that mimics the real transaction but with attractive MEV opportunities
+            honeypot = {
+                'type': 'swap',
+                'input_token': real_params.get('input_token', 'SOL'),
+                'output_token': real_params.get('output_token'),
+                'amount': real_params.get('amount_sol', 0) * 1.2,  # Slightly larger to attract MEV
+                'slippage': 0.05,  # Higher slippage to create MEV opportunity
+                'wallet_address': await self._get_honeypot_wallet(),
+                'gas_price': await self._calculate_attractive_gas_price(),
+                'deadline': int(time.time()) + 300,  # 5 minute deadline
+                'is_honeypot': True,
+                'hash': f"honeypot_{int(time.time() * 1000)}"
+            }
+            
+            self.logger.debug(f"Created honeypot transaction: {honeypot['hash']}")
+            return honeypot
+            
+        except Exception as e:
+            self.logger.error(f"Error creating honeypot transaction: {e}")
+            return {}
+    
+    async def _broadcast_honeypot(self, honeypot_tx: Dict[str, Any], operation_id: str):
+        """Broadcast honeypot transaction to public mempool"""
+        try:
+            # In a real implementation, this would broadcast to multiple mempools
+            # For now, simulate the broadcast
+            self.logger.info(f"📡 Broadcasting honeypot {honeypot_tx['hash']} to public mempool")
+            
+            # Simulate broadcast delay
+            await asyncio.sleep(0.1)
+            
+            # Update metrics
+            self.mev_protection_metrics['honeypots_deployed'] += 1
+            
+        except Exception as e:
+            self.logger.error(f"Error broadcasting honeypot: {e}")
+    
+    async def _monitor_mev_responses(self, honeypot_tx: Dict[str, Any], 
+                                   monitor_duration_ms: int, operation_id: str) -> MEVDetection:
+        """Monitor mempool for MEV bot responses to honeypot"""
+        try:
+            start_time = time.time()
+            detected_bots = []
+            attack_patterns = {}
+            response_times = []
+            
+            self.logger.info(f"👁️ Monitoring MEV responses for {monitor_duration_ms}ms...")
+            
+            # Monitor for the specified duration
+            monitor_end_time = start_time + (monitor_duration_ms / 1000.0)
+            
+            while time.time() < monitor_end_time:
+                # Simulate MEV bot detection (in real implementation, this would analyze mempool)
+                mev_activity = await self._detect_mempool_mev_activity(honeypot_tx)
+                
+                if mev_activity:
+                    for bot_data in mev_activity:
+                        bot_address = bot_data['address']
+                        if bot_address not in detected_bots:
+                            detected_bots.append(bot_address)
+                            response_times.append(bot_data['response_time_ms'])
+                            
+                            # Analyze attack pattern
+                            attack_type = self._classify_mev_attack(bot_data)
+                            attack_patterns[bot_address] = {
+                                'type': attack_type,
+                                'response_time': bot_data['response_time_ms'],
+                                'gas_bid': bot_data.get('gas_bid', 0),
+                                'sophistication': bot_data.get('sophistication', 'medium')
+                            }
+                
+                await asyncio.sleep(0.1)  # Check every 100ms
+            
+            # Analyze results
+            threat_level = self._assess_threat_level(detected_bots, attack_patterns)
+            confidence = min(1.0, len(detected_bots) / 3.0)  # Higher confidence with more detections
+            
+            # Determine recommended strategy
+            if threat_level in [MEVThreatLevel.HIGH, MEVThreatLevel.CRITICAL, MEVThreatLevel.PREDATORY]:
+                recommended_strategy = "private_rpc_execution"
+                private_rpc_recommended = True
+                delay_recommendation = self._calculate_optimal_delay(attack_patterns)
+            elif threat_level == MEVThreatLevel.MODERATE:
+                recommended_strategy = "delayed_execution"
+                private_rpc_recommended = False
+                delay_recommendation = 2000  # 2 second delay
+            else:
+                recommended_strategy = "standard_execution"
+                private_rpc_recommended = False
+                delay_recommendation = 0
+            
+            detection = MEVDetection(
+                threat_level=threat_level,
+                attack_types=[self._classify_mev_attack(attack_patterns[bot]) for bot in detected_bots],
+                detected_bots=detected_bots,
+                attack_patterns=attack_patterns,
+                confidence_score=confidence,
+                detection_timestamp=datetime.now(),
+                honeypot_interactions=len(detected_bots),
+                honeypot_response_time_ms=np.mean(response_times) if response_times else 0.0,
+                recommended_strategy=recommended_strategy,
+                private_rpc_recommended=private_rpc_recommended,
+                delay_recommendation_ms=delay_recommendation
+            )
+            
+            # Store for future analysis
+            self.recent_detections.append(detection)
+            
+            # Update known MEV bots
+            self.mev_detection_system['known_mev_bots'].update(detected_bots)
+            
+            return detection
+            
+        except Exception as e:
+            self.logger.error(f"❌ MEV monitoring failed: {e}")
+            return MEVDetection(
+                threat_level=MEVThreatLevel.MINIMAL,
+                attack_types=[],
+                detected_bots=[],
+                attack_patterns={},
+                confidence_score=0.0,
+                detection_timestamp=datetime.now(),
+                honeypot_interactions=0,
+                honeypot_response_time_ms=0.0,
+                recommended_strategy="standard_execution",
+                private_rpc_recommended=False,
+                delay_recommendation_ms=0
+            )
+    
+    async def _detect_mempool_mev_activity(self, honeypot_tx: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Detect MEV bot activity in mempool (simulated)"""
+        # In a real implementation, this would analyze the actual mempool
+        # For now, simulate MEV bot detection
         
-        profile = self.stealth_profiles[wallet_id]
-        old_behavior = profile.current_behavior
+        mev_probability = 0.3  # 30% chance of MEV activity
         
+        if random.random() < mev_probability:
+            num_bots = random.randint(1, 4)
+            mev_activity = []
+            
+            for i in range(num_bots):
+                bot_data = {
+                    'address': f"mev_bot_{random.randint(1000, 9999)}",
+                    'response_time_ms': random.uniform(50, 500),
+                    'gas_bid': random.uniform(100, 1000),
+                    'sophistication': random.choice(['low', 'medium', 'high']),
+                    'attack_type': random.choice(['sandwich', 'front_run', 'arbitrage'])
+                }
+                mev_activity.append(bot_data)
+            
+            return mev_activity
         
-        available_behaviors = [b for b in BehaviorPattern if b != old_behavior]
-        new_behavior = random.choice(available_behaviors)
+        return []
+    
+    def _classify_mev_attack(self, bot_data: Dict[str, Any]) -> MEVAttackType:
+        """Classify the type of MEV attack based on bot behavior"""
+        attack_type = bot_data.get('attack_type', 'unknown')
         
-        profile.current_behavior = new_behavior
-        profile.last_pattern_change = datetime.now()
-        
-        
-        profile.gas_multiplier_range = (
-            random.uniform(0.8, 1.2), 
-            random.uniform(1.3, 2.0)
-        )
-        profile.timing_variance_seconds = (
-            random.randint(3, 15),
-            random.randint(20, 60)
-        )
-        
-        
-        if new_behavior == BehaviorPattern.MIMICKER:
-            profile.mimicry_target = random.choice(self.mimicry_targets) if self.mimicry_targets else None
+        if attack_type == 'sandwich':
+            return MEVAttackType.SANDWICH
+        elif attack_type == 'front_run':
+            return MEVAttackType.FRONT_RUN
+        elif attack_type == 'arbitrage':
+            return MEVAttackType.ARBITRAGE
         else:
-            profile.mimicry_target = None
-        
-        await self._record_stealth_operation(wallet_id, "pattern_change", {
-            'old_behavior': old_behavior.value,
-            'new_behavior': new_behavior.value
-        })
-        
-        self.logger.info(f"🔄 Rotated {wallet_id} behavior: {old_behavior.value} → {new_behavior.value}")
-        
-        return True
+            return MEVAttackType.UNKNOWN
     
-    async def assess_detection_risk(self, wallet_id: str = None) -> DetectionRisk:
-        """Assess current detection risk"""
-        
-        risk_factors = []
-        
-        
-        if await self._detect_predictable_patterns():
-            risk_factors.append("Predictable transaction patterns")
-        
-        
-        if await self._detect_coordinated_movements():
-            risk_factors.append("Coordinated wallet movements")
-        
-        
-        if await self._detect_unusual_gas_patterns():
-            risk_factors.append("Unusual gas usage patterns")
-        
-        
-        if await self._detect_timing_patterns():
-            risk_factors.append("Predictable timing patterns")
-        
-        
-        risk_score = len(risk_factors) / 4.0  # Normalize to 0-1
-        
-        if risk_score >= 0.8:
-            detection_risk = DetectionRisk.CRITICAL
-        elif risk_score >= 0.6:
-            detection_risk = DetectionRisk.HIGH
-        elif risk_score >= 0.4:
-            detection_risk = DetectionRisk.MEDIUM
-        elif risk_score >= 0.2:
-            detection_risk = DetectionRisk.LOW
+    def _assess_threat_level(self, detected_bots: List[str], attack_patterns: Dict[str, Any]) -> MEVThreatLevel:
+        """Assess overall MEV threat level"""
+        if len(detected_bots) == 0:
+            return MEVThreatLevel.MINIMAL
+        elif len(detected_bots) <= 2:
+            return MEVThreatLevel.MODERATE
+        elif len(detected_bots) <= 4:
+            return MEVThreatLevel.HIGH
         else:
-            detection_risk = DetectionRisk.MINIMAL
-        
-        
-        self.global_detection_risk = detection_risk
-        
-        if risk_factors:
-            self.logger.warning(f"⚠️ Detection risk: {detection_risk.value} - {risk_factors}")
-        
-        return detection_risk
+            # Check for sophisticated attackers
+            sophisticated_count = sum(1 for bot in attack_patterns.values() 
+                                    if bot.get('sophistication') == 'high')
+            if sophisticated_count > 0:
+                return MEVThreatLevel.PREDATORY
+            else:
+                return MEVThreatLevel.CRITICAL
     
-    async def emergency_stealth_activation(self):
-        """Activate emergency stealth measures"""
+    def _calculate_optimal_delay(self, attack_patterns: Dict[str, Any]) -> int:
+        """Calculate optimal delay to avoid MEV attacks"""
+        if not attack_patterns:
+            return 0
         
-        self.logger.critical("🚨 EMERGENCY STEALTH ACTIVATION")
+        # Base delay on fastest response time
+        response_times = [pattern['response_time'] for pattern in attack_patterns.values()]
+        fastest_response = min(response_times)
         
+        # Add buffer and randomization
+        optimal_delay = int(fastest_response * 2 + random.uniform(500, 2000))
         
-        for profile in self.stealth_profiles.values():
-            profile.stealth_level = StealthLevel.GHOST
-            profile.fake_transaction_probability = 0.2  # 20% fake transactions
-            profile.pause_on_detection_risk = True
-        
-        
-        for wallet_id in self.stealth_profiles.keys():
-            await self.rotate_wallet_behavior(wallet_id)
-        
-        
-        self.config['gas_randomization_strength'] = 0.8
-        self.config['timing_randomization_strength'] = 0.9
-        self.config['fake_transaction_rate'] = 0.15
-        
-        self.system_stealth_level = StealthLevel.GHOST
+        # Cap at maximum delay
+        max_delay = 30000  # 30 seconds
+        return min(optimal_delay, max_delay)
     
-    async def _stealth_monitoring_loop(self):
-        """Continuous stealth monitoring"""
+    async def _quick_mev_assessment(self, transaction_params: Dict[str, Any]) -> MEVDetection:
+        """Perform quick MEV threat assessment without honeypot"""
+        try:
+            # Analyze recent MEV activity for this token/pair
+            token_address = transaction_params.get('output_token')
+            recent_threat_level = await self._analyze_recent_mev_activity(token_address)
+            
+            return MEVDetection(
+                threat_level=recent_threat_level,
+                attack_types=[MEVAttackType.UNKNOWN],
+                detected_bots=[],
+                attack_patterns={},
+                confidence_score=0.3,  # Lower confidence without honeypot
+                detection_timestamp=datetime.now(),
+                honeypot_interactions=0,
+                honeypot_response_time_ms=0.0,
+                recommended_strategy="standard_execution" if recent_threat_level == MEVThreatLevel.MINIMAL else "delayed_execution",
+                private_rpc_recommended=recent_threat_level in [MEVThreatLevel.HIGH, MEVThreatLevel.CRITICAL],
+                delay_recommendation_ms=1000 if recent_threat_level != MEVThreatLevel.MINIMAL else 0
+            )
+            
+        except Exception as e:
+            self.logger.error(f"Quick MEV assessment failed: {e}")
+            return MEVDetection(
+                threat_level=MEVThreatLevel.MINIMAL,
+                attack_types=[],
+                detected_bots=[],
+                attack_patterns={},
+                confidence_score=0.0,
+                detection_timestamp=datetime.now(),
+                honeypot_interactions=0,
+                honeypot_response_time_ms=0.0,
+                recommended_strategy="standard_execution",
+                private_rpc_recommended=False,
+                delay_recommendation_ms=0
+            )
+    
+    async def _analyze_recent_mev_activity(self, token_address: str) -> MEVThreatLevel:
+        """Analyze recent MEV activity for a token"""
+        # In real implementation, this would analyze on-chain data
+        # For now, simulate based on recent detections
         
+        recent_detections = [d for d in self.recent_detections 
+                           if (datetime.now() - d.detection_timestamp).total_seconds() < 3600]  # Last hour
+        
+        if not recent_detections:
+            return MEVThreatLevel.MINIMAL
+        
+        avg_threat_level = np.mean([
+            1 if d.threat_level == MEVThreatLevel.MINIMAL else
+            2 if d.threat_level == MEVThreatLevel.MODERATE else
+            3 if d.threat_level == MEVThreatLevel.HIGH else
+            4 if d.threat_level == MEVThreatLevel.CRITICAL else 5
+            for d in recent_detections
+        ])
+        
+        if avg_threat_level <= 1.5:
+            return MEVThreatLevel.MINIMAL
+        elif avg_threat_level <= 2.5:
+            return MEVThreatLevel.MODERATE
+        elif avg_threat_level <= 3.5:
+            return MEVThreatLevel.HIGH
+        else:
+            return MEVThreatLevel.CRITICAL
+    
+    async def _determine_execution_strategy(self, mev_detection: MEVDetection, 
+                                          transaction_params: Dict[str, Any]) -> Dict[str, Any]:
+        """Determine optimal execution strategy based on MEV detection"""
+        
+        strategy = {
+            'type': mev_detection.recommended_strategy,
+            'private_rpc': mev_detection.private_rpc_recommended,
+            'delay_ms': mev_detection.delay_recommendation_ms,
+            'gas_optimization': {},
+            'route_optimization': {},
+            'countermeasures': []
+        }
+        
+        # Add specific countermeasures based on threat level
+        if mev_detection.threat_level in [MEVThreatLevel.HIGH, MEVThreatLevel.CRITICAL, MEVThreatLevel.PREDATORY]:
+            strategy['countermeasures'].extend([
+                'private_rpc_execution',
+                'gas_price_randomization',
+                'timing_randomization'
+            ])
+            
+            # Use private RPC endpoint
+            strategy['private_rpc_endpoint'] = self._select_private_rpc()
+            
+            # Optimize gas to avoid being front-run
+            strategy['gas_optimization'] = {
+                'priority_fee_multiplier': 1.2,
+                'max_fee_per_gas_multiplier': 1.1,
+                'randomization_factor': 0.05
+            }
+        
+        elif mev_detection.threat_level == MEVThreatLevel.MODERATE:
+            strategy['countermeasures'].extend([
+                'delayed_execution',
+                'gas_price_randomization'
+            ])
+            
+            strategy['gas_optimization'] = {
+                'priority_fee_multiplier': 1.05,
+                'randomization_factor': 0.03
+            }
+        
+        return strategy
+    
+    async def _execute_with_mev_protection(self, transaction_params: Dict[str, Any],
+                                         execution_strategy: Dict[str, Any],
+                                         mev_detection: MEVDetection,
+                                         operation_id: str) -> Dict[str, Any]:
+        """Execute transaction with MEV protection measures"""
+        try:
+            self.logger.info(f"⚡ Executing transaction with MEV protection: {execution_strategy['type']}")
+            
+            # Apply delay if recommended
+            if execution_strategy['delay_ms'] > 0:
+                delay_seconds = execution_strategy['delay_ms'] / 1000.0
+                self.logger.info(f"⏰ Applying MEV avoidance delay: {delay_seconds:.1f}s")
+                await asyncio.sleep(delay_seconds)
+            
+            # Execute via private RPC if recommended
+            if execution_strategy['private_rpc']:
+                result = await self._execute_via_private_rpc(transaction_params, execution_strategy)
+            else:
+                result = await self._execute_via_public_rpc(transaction_params, execution_strategy)
+            
+            # Check if MEV protection was effective
+            mev_protection_success = await self._validate_mev_protection_effectiveness(
+                result, mev_detection, operation_id
+            )
+            
+            result['mev_protection_success'] = mev_protection_success
+            result['execution_strategy_used'] = execution_strategy['type']
+            
+            return result
+            
+        except Exception as e:
+            self.logger.error(f"❌ MEV-protected execution failed: {e}")
+            return {
+                'success': False,
+                'error': str(e),
+                'mev_protection_success': False
+            }
+    
+    async def _execute_via_private_rpc(self, transaction_params: Dict[str, Any],
+                                     execution_strategy: Dict[str, Any]) -> Dict[str, Any]:
+        """Execute transaction via private RPC endpoint"""
+        try:
+            private_endpoint = execution_strategy.get('private_rpc_endpoint', self._select_private_rpc())
+            
+            self.logger.info(f"🔒 Executing via private RPC: {private_endpoint[:30]}...")
+            
+            # In real implementation, this would execute via the private RPC
+            # For now, simulate the execution
+            await asyncio.sleep(0.5)  # Simulate execution time
+            
+            # Update metrics
+            self.mev_protection_metrics['private_executions'] += 1
+            
+            return {
+                'success': True,
+                'transaction_hash': f"private_tx_{int(time.time() * 1000)}",
+                'execution_method': 'private_rpc',
+                'rpc_endpoint': private_endpoint,
+                'gas_saved': random.uniform(0.001, 0.01)  # Simulated gas savings
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Private RPC execution failed: {e}")
+            return {
+                'success': False,
+                'error': str(e),
+                'execution_method': 'private_rpc_failed'
+            }
+    
+    async def _execute_via_public_rpc(self, transaction_params: Dict[str, Any],
+                                    execution_strategy: Dict[str, Any]) -> Dict[str, Any]:
+        """Execute transaction via public RPC with optimization"""
+        try:
+            self.logger.info("📡 Executing via optimized public RPC")
+            
+            # Apply gas optimization
+            gas_params = self._optimize_gas_parameters(
+                transaction_params, 
+                execution_strategy.get('gas_optimization', {})
+            )
+            
+            # Simulate execution
+            await asyncio.sleep(0.3)
+            
+            return {
+                'success': True,
+                'transaction_hash': f"public_tx_{int(time.time() * 1000)}",
+                'execution_method': 'public_rpc_optimized',
+                'gas_used': gas_params.get('estimated_gas', 0)
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Public RPC execution failed: {e}")
+            return {
+                'success': False,
+                'error': str(e),
+                'execution_method': 'public_rpc_failed'
+            }
+    
+    def _optimize_gas_parameters(self, transaction_params: Dict[str, Any], 
+                               gas_optimization: Dict[str, Any]) -> Dict[str, Any]:
+        """Optimize gas parameters to avoid MEV attacks"""
+        base_priority_fee = 0.000001  # 1 microSOL
+        base_max_fee = 0.000005      # 5 microSOL
+        
+        # Apply multipliers
+        priority_multiplier = gas_optimization.get('priority_fee_multiplier', 1.0)
+        max_fee_multiplier = gas_optimization.get('max_fee_per_gas_multiplier', 1.0)
+        randomization = gas_optimization.get('randomization_factor', 0.0)
+        
+        # Add randomization to avoid predictable patterns
+        priority_randomization = 1.0 + random.uniform(-randomization, randomization)
+        max_fee_randomization = 1.0 + random.uniform(-randomization, randomization)
+        
+        return {
+            'priority_fee': base_priority_fee * priority_multiplier * priority_randomization,
+            'max_fee_per_gas': base_max_fee * max_fee_multiplier * max_fee_randomization,
+            'estimated_gas': 50000  # Estimated gas units
+        }
+    
+    async def _validate_mev_protection_effectiveness(self, execution_result: Dict[str, Any],
+                                                   mev_detection: MEVDetection,
+                                                   operation_id: str) -> bool:
+        """Validate if MEV protection was effective"""
+        try:
+            if not execution_result.get('success'):
+                return False
+            
+            # Check if any detected MEV bots successfully attacked our transaction
+            # In real implementation, this would analyze the actual transaction and surrounding blocks
+            
+            # For simulation, assume protection was effective if we used private RPC or sufficient delay
+            used_private_rpc = execution_result.get('execution_method') == 'private_rpc'
+            had_delay = mev_detection.delay_recommendation_ms > 0
+            
+            # Higher effectiveness with private RPC
+            if used_private_rpc:
+                effectiveness_probability = 0.95
+            elif had_delay:
+                effectiveness_probability = 0.75
+            else:
+                effectiveness_probability = 0.5
+            
+            is_effective = random.random() < effectiveness_probability
+            
+            if is_effective:
+                self.mev_protection_metrics['successful_avoidances'] += 1
+            
+            return is_effective
+            
+        except Exception as e:
+            self.logger.error(f"Error validating MEV protection effectiveness: {e}")
+            return False
+    
+    def _select_private_rpc(self) -> str:
+        """Select optimal private RPC endpoint"""
+        endpoints = self.mev_detection_system['private_rpc_endpoints']
+        return random.choice(endpoints)
+    
+    async def _get_honeypot_wallet(self) -> str:
+        """Get wallet address for honeypot transactions"""
+        # In real implementation, this would select a dedicated honeypot wallet
+        return "honeypot_wallet_address"
+    
+    async def _calculate_attractive_gas_price(self) -> float:
+        """Calculate gas price that's attractive to MEV bots"""
+        # Slightly higher than normal to attract MEV attention
+        base_gas = 0.000005
+        return base_gas * random.uniform(1.1, 1.3)
+    
+    async def _cleanup_honeypot(self, honeypot_tx: Dict[str, Any], operation_id: str):
+        """Clean up honeypot transaction"""
+        try:
+            # Cancel honeypot transaction if still pending
+            self.logger.debug(f"🧹 Cleaning up honeypot {honeypot_tx['hash']}")
+            
+            # Remove from active tracking
+            if operation_id in self.active_honeypots:
+                del self.active_honeypots[operation_id]
+            
+        except Exception as e:
+            self.logger.error(f"Error cleaning up honeypot: {e}")
+    
+    def _validate_transaction_params(self, params: Dict[str, Any]) -> bool:
+        """Validate transaction parameters"""
+        required_fields = ['amount_sol', 'output_token', 'wallet_id']
+        return all(field in params for field in required_fields)
+    
+    async def _update_mev_knowledge_base(self, detection: MEVDetection, execution_result: Dict[str, Any]):
+        """Update MEV knowledge base with new information"""
+        try:
+            # Store attack patterns for future reference
+            for bot_address, pattern in detection.attack_patterns.items():
+                if bot_address not in self.mev_detection_system['attack_patterns']:
+                    self.mev_detection_system['attack_patterns'][bot_address] = []
+                
+                self.mev_detection_system['attack_patterns'][bot_address].append({
+                    'timestamp': detection.detection_timestamp.isoformat(),
+                    'attack_type': pattern['type'],
+                    'response_time': pattern['response_time'],
+                    'sophistication': pattern['sophistication']
+                })
+            
+            # Update bot cataloguing
+            self.mev_protection_metrics['mev_bots_catalogued'] = len(self.mev_detection_system['known_mev_bots'])
+            
+        except Exception as e:
+            self.logger.error(f"Error updating MEV knowledge base: {e}")
+    
+    async def _update_mev_metrics(self, result: Dict[str, Any]):
+        """Update MEV protection performance metrics"""
+        try:
+            if result.get('mev_detection'):
+                self.mev_protection_metrics['total_mev_detections'] += 1
+                
+                # Update average detection time
+                current_avg = self.mev_protection_metrics['avg_detection_time_ms']
+                total_detections = self.mev_protection_metrics['total_mev_detections']
+                
+                # Simulate detection time (in real implementation, this would be measured)
+                detection_time = 1500  # milliseconds
+                
+                new_avg = ((current_avg * (total_detections - 1)) + detection_time) / total_detections
+                self.mev_protection_metrics['avg_detection_time_ms'] = new_avg
+                
+        except Exception as e:
+            self.logger.error(f"Error updating MEV metrics: {e}")
+    
+    async def _mev_monitoring_loop(self):
+        """Background loop for MEV monitoring and analysis"""
         while True:
             try:
-                current_risk = await self.assess_detection_risk()
+                # Clean up old detections
+                cutoff_time = datetime.now() - timedelta(hours=24)
+                self.recent_detections = [
+                    d for d in self.recent_detections 
+                    if d.detection_timestamp > cutoff_time
+                ]
                 
+                # Analyze MEV trends
+                await self._analyze_mev_trends()
                 
-                if current_risk in [DetectionRisk.HIGH, DetectionRisk.CRITICAL]:
-                    await self.emergency_stealth_activation()
-                
-                
-                await self._check_pattern_signatures()
-                
-                await asyncio.sleep(300)  # Check every 5 minutes
+                await asyncio.sleep(300)  # Every 5 minutes
                 
             except Exception as e:
-                self.logger.error(f"Stealth monitoring error: {e}")
-                await asyncio.sleep(300)
+                self.logger.error(f"MEV monitoring loop error: {e}")
+                await asyncio.sleep(600)
     
-    async def _behavioral_rotation_loop(self):
-        """Automatic behavioral rotation"""
-        
+    async def _honeypot_cleanup_loop(self):
+        """Background loop for cleaning up expired honeypots"""
         while True:
             try:
                 current_time = datetime.now()
+                expired_operations = []
                 
-                for wallet_id, profile in self.stealth_profiles.items():
-                    time_since_change = (current_time - profile.last_pattern_change).total_seconds() / 3600
-                    
-                    if time_since_change >= profile.pattern_change_interval_hours:
-                        await self.rotate_wallet_behavior(wallet_id)
+                for operation_id, countermeasure in self.active_honeypots.items():
+                    # Check if honeypot has expired (should not exceed 1 minute)
+                    if countermeasure.honeypot_deployed:
+                        # In real implementation, check actual honeypot age
+                        # For now, clean up after 5 minutes
+                        expired_operations.append(operation_id)
                 
-                await asyncio.sleep(1800)  # Check every 30 minutes
-                
-            except Exception as e:
-                self.logger.error(f"Behavioral rotation error: {e}")
-                await asyncio.sleep(1800)
-    
-    async def _detection_risk_assessment_loop(self):
-        """Regular detection risk assessment"""
-        
-        while True:
-            try:
-                await self.assess_detection_risk()
-                
-                
-                await self._adjust_stealth_parameters()
-                
-                await asyncio.sleep(600)  # Check every 10 minutes
-                
-            except Exception as e:
-                self.logger.error(f"Risk assessment error: {e}")
-                await asyncio.sleep(600)
-    
-    def get_stealth_status(self) -> Dict[str, Any]:
-        """Get comprehensive stealth system status"""
-        
-        return {
-            'system_stealth_level': self.system_stealth_level.value,
-            'global_detection_risk': self.global_detection_risk.value,
-            'active_wallets': len(self.stealth_profiles),
-            'stealth_profiles': {
-                wallet_id: {
-                    'behavior': profile.current_behavior.value,
-                    'stealth_level': profile.stealth_level.value,
-                    'detection_incidents': profile.detection_incidents,
-                    'successful_operations': profile.successful_stealth_operations
-                }
-                for wallet_id, profile in self.stealth_profiles.items()
-            },
-            'detection_indicators': self.detection_indicators,
-            'recent_operations': len([op for op in self.operation_history 
-                                    if op.execution_timestamp > datetime.now() - timedelta(hours=24)]),
-            'mimicry_targets': len(self.mimicry_targets),
-            'pattern_signatures': len(self.pattern_signatures)
-        }
-    
-    async def _detect_predictable_patterns(self) -> bool:
-        """Detect if we have predictable transaction patterns"""
-        return False
-    
-    async def _detect_coordinated_movements(self) -> bool:
-        """Detect coordinated movements between wallets"""
-        return False
-    
-    async def _detect_unusual_gas_patterns(self) -> bool:
-        """Detect unusual gas usage patterns"""
-        return False
-    
-    async def _detect_timing_patterns(self) -> bool:
-        """Detect predictable timing patterns"""
-        return False
-    
-    async def _detect_market_bot_activity(self) -> float:
-        """Detect current market bot activity level"""
-        return random.uniform(0.3, 0.7)
-    
-    async def _identify_mimicry_targets(self):
-        """Identify successful wallets to mimic"""
-        pass
-    
-    async def _get_target_patterns(self, target_wallet: str) -> Dict[str, Any]:
-        """Get patterns from mimicry target"""
-        return {}
-    
-    async def _record_stealth_operation(self, wallet_id: str, operation_type: str, parameters: Dict[str, Any]):
-        """Record stealth operation for analysis"""
-        
-        operation = StealthOperation(
-            operation_id=f"stealth_{int(time.time())}_{random.randint(1000, 9999)}",
-            wallet_id=wallet_id,
-            operation_type=operation_type,
-            stealth_parameters=parameters,
-            execution_timestamp=datetime.now(),
-            detection_risk_before=self.global_detection_risk,
-            detection_risk_after=self.global_detection_risk,
-            success=True
-        )
-        
-        self.operation_history.append(operation)
-        
-        
-        if len(self.operation_history) > 10000:
-            self.operation_history = self.operation_history[-5000:]
-    
-    async def _check_pattern_signatures(self):
-        """Check if we need to rotate patterns to avoid detection"""
-        pass
-    
-    async def _adjust_stealth_parameters(self):
-        """Adjust stealth parameters based on risk assessment"""
-        pass
-    
-    async def _copy_target_parameters(self, transaction: Dict[str, Any], target: str) -> Dict[str, Any]:
-        """Copy parameters from mimicry target"""
-        return transaction
-
-    async def respond_to_threat(self, threat_signature: Any, threat_assessment: Any) -> ThreatResponse:
-        """Implement dynamic camouflage in response to detected threats"""
-        try:
-            threat_id = threat_signature.threat_id
-            threat_type = threat_signature.threat_type.value
-            
-            # Determine response mode based on threat level
-            response_mode = self._determine_response_mode(threat_signature.threat_level)
-            
-            # Select appropriate camouflage strategies
-            camouflage_strategies = await self._select_camouflage_strategies(threat_signature, threat_assessment)
-            
-            # Determine stealth escalation level
-            stealth_escalation = self._determine_stealth_escalation(threat_signature.threat_level, len(camouflage_strategies))
-            
-            # Calculate response parameters
-            response_params = self._calculate_response_parameters(threat_signature, camouflage_strategies)
-            
-            # Create threat response
-            threat_response = ThreatResponse(
-                threat_id=threat_id,
-                threat_type=threat_type,
-                response_mode=response_mode,
-                camouflage_strategies=camouflage_strategies,
-                stealth_escalation=stealth_escalation,
-                gas_randomization_increase=response_params['gas_increase'],
-                timing_variance_increase=response_params['timing_increase'],
-                fake_transaction_rate_increase=response_params['fake_rate_increase'],
-                behavior_rotation_frequency=response_params['rotation_frequency'],
-                implemented_at=datetime.now(),
-                duration_minutes=response_params['duration_minutes']
-            )
-            
-            # Implement the response
-            await self._implement_threat_response(threat_response)
-            
-            # Store the response
-            self.threat_responses[threat_id] = threat_response
-            
-            self.logger.warning(f"🎭 Dynamic Camouflage activated | Threat: {threat_type} | "
-                              f"Response: {response_mode.value} | Strategies: {len(camouflage_strategies)} | "
-                              f"Stealth: {stealth_escalation.value}")
-            
-            return threat_response
-            
-        except Exception as e:
-            self.logger.error(f"Error responding to threat: {e}")
-            # Return safe default response
-            return await self._emergency_ghost_protocol()
-    
-    async def _dynamic_camouflage_loop(self):
-        """Continuously monitor threats and adjust camouflage"""
-        while True:
-            try:
-                if self.battle_pattern_intelligence:
-                    # Get latest threat assessment
-                    threat_assessment = await self.battle_pattern_intelligence.assess_threat_environment()
-                    
-                    # Adjust camouflage based on threat level
-                    await self._adjust_camouflage_for_threat_level(threat_assessment)
-                    
-                    # Evaluate effectiveness of current strategies
-                    await self._evaluate_camouflage_effectiveness()
+                # Clean up expired operations
+                for operation_id in expired_operations:
+                    if operation_id in self.active_honeypots:
+                        await self._cleanup_honeypot(
+                            {'hash': f'expired_{operation_id}'}, 
+                            operation_id
+                        )
+                        self.logger.warning(f"🧹 Cleaned up expired honeypot operation: {operation_id}")
                 
                 await asyncio.sleep(60)  # Check every minute
                 
             except Exception as e:
-                self.logger.error(f"Error in dynamic camouflage loop: {e}")
-                await asyncio.sleep(60)
+                self.logger.error(f"Honeypot cleanup loop error: {e}")
+                await asyncio.sleep(300)
     
-    async def _threat_response_loop(self):
-        """Monitor and manage active threat responses"""
-        while True:
-            try:
-                current_time = datetime.now()
-                expired_responses = []
-                
-                # Check for expired responses
-                for threat_id, response in self.threat_responses.items():
-                    if response.auto_expire:
-                        duration = (current_time - response.implemented_at).total_seconds() / 60
-                        if duration > response.duration_minutes:
-                            expired_responses.append(threat_id)
-                
-                # Remove expired responses
-                for threat_id in expired_responses:
-                    await self._deactivate_threat_response(threat_id)
-                
-                await asyncio.sleep(30)  # Check every 30 seconds
-                
-            except Exception as e:
-                self.logger.error(f"Error in threat response loop: {e}")
-                await asyncio.sleep(30)
-    
-    async def _select_camouflage_strategies(self, threat_signature: Any, threat_assessment: Any) -> List[CamouflageStrategy]:
-        """Select appropriate camouflage strategies for the threat"""
-        strategies = []
-        
-        threat_type = threat_signature.threat_type.value
-        threat_level = threat_signature.threat_level.value
-        
-        # Strategy selection based on threat type
-        if 'sandwich' in threat_type.lower():
-            strategies.extend([
-                CamouflageStrategy.TEMPORAL_CONFUSION,
-                CamouflageStrategy.VOLUME_MASKING,
-                CamouflageStrategy.GAS_MISDIRECTION
-            ])
-        
-        if 'mev' in threat_type.lower():
-            strategies.extend([
-                CamouflageStrategy.PATTERN_DISRUPTION,
-                CamouflageStrategy.GAS_MISDIRECTION,
-                CamouflageStrategy.FAKE_SIGNAL_INJECTION
-            ])
-        
-        if 'spoof' in threat_type.lower():
-            strategies.extend([
-                CamouflageStrategy.BEHAVIOR_MIMICRY,
-                CamouflageStrategy.COORDINATED_DECEPTION
-            ])
-        
-        if 'stop_loss_hunter' in threat_type.lower():
-            strategies.extend([
-                CamouflageStrategy.PATTERN_DISRUPTION,
-                CamouflageStrategy.TEMPORAL_CONFUSION
-            ])
-        
-        # Add additional strategies based on threat level
-        if threat_level in ['high', 'critical']:
-            strategies.append(CamouflageStrategy.COORDINATED_DECEPTION)
-        
-        # Limit to maximum strategies and remove duplicates
-        strategies = list(set(strategies))[:self.config['max_camouflage_strategies']]
-        
-        return strategies
-    
-    async def _implement_threat_response(self, threat_response: ThreatResponse):
-        """Implement the threat response across all wallets"""
+    async def _analyze_mev_trends(self):
+        """Analyze MEV trends and update protection strategies"""
         try:
-            # Update system stealth level
-            if threat_response.stealth_escalation != self.system_stealth_level:
-                await self._escalate_system_stealth(threat_response.stealth_escalation)
+            if len(self.recent_detections) < 5:
+                return
             
-            # Implement camouflage strategies
-            for strategy in threat_response.camouflage_strategies:
-                await self._implement_camouflage_strategy(strategy, threat_response)
+            # Analyze recent threat levels
+            recent_threats = [d.threat_level for d in self.recent_detections[-10:]]
+            high_threat_ratio = sum(1 for t in recent_threats 
+                                  if t in [MEVThreatLevel.HIGH, MEVThreatLevel.CRITICAL, MEVThreatLevel.PREDATORY]) / len(recent_threats)
             
-            # Update configuration parameters
-            self.config['gas_randomization_strength'] += threat_response.gas_randomization_increase
-            self.config['timing_randomization_strength'] += threat_response.timing_variance_increase
-            self.config['fake_transaction_rate'] += threat_response.fake_transaction_rate_increase
-            
-            # Activate strategy tracking
-            self.active_camouflage_strategies.extend(threat_response.camouflage_strategies)
-            
-            self.logger.info(f"🎭 Implemented threat response: {len(threat_response.camouflage_strategies)} strategies active")
+            # Adjust detection sensitivity
+            if high_threat_ratio > 0.6:
+                self.mev_detection_system['detection_threshold'] = 0.5  # More sensitive
+                self.logger.info("🔍 Increased MEV detection sensitivity due to high threat environment")
+            else:
+                self.mev_detection_system['detection_threshold'] = 0.7  # Normal sensitivity
             
         except Exception as e:
-            self.logger.error(f"Error implementing threat response: {e}")
+            self.logger.error(f"Error analyzing MEV trends: {e}")
     
-    async def _implement_camouflage_strategy(self, strategy: CamouflageStrategy, threat_response: ThreatResponse):
-        """Implement a specific camouflage strategy"""
-        try:
-            if strategy == CamouflageStrategy.PATTERN_DISRUPTION:
-                await self._disrupt_patterns()
-            elif strategy == CamouflageStrategy.BEHAVIOR_MIMICRY:
-                await self._activate_behavior_mimicry()
-            elif strategy == CamouflageStrategy.TEMPORAL_CONFUSION:
-                await self._implement_temporal_confusion()
-            elif strategy == CamouflageStrategy.VOLUME_MASKING:
-                await self._implement_volume_masking()
-            elif strategy == CamouflageStrategy.GAS_MISDIRECTION:
-                await self._implement_gas_misdirection()
-            elif strategy == CamouflageStrategy.FAKE_SIGNAL_INJECTION:
-                await self._inject_fake_signals()
-            elif strategy == CamouflageStrategy.COORDINATED_DECEPTION:
-                await self._coordinate_deception()
-            
-            self.logger.debug(f"🎯 Implemented camouflage strategy: {strategy.value}")
-            
-        except Exception as e:
-            self.logger.error(f"Error implementing strategy {strategy.value}: {e}")
-    
-    async def _disrupt_patterns(self):
-        """Disrupt existing behavioral patterns"""
-        for wallet_id, profile in self.stealth_profiles.items():
-            # Force behavior rotation
-            await self.rotate_wallet_behavior(wallet_id)
-            
-            # Randomize all timing parameters
-            profile.timing_variance_seconds = (
-                random.randint(10, 120),
-                random.randint(180, 600)
-            )
-            
-            # Increase pattern break probability
-            profile.fake_transaction_probability = min(0.3, profile.fake_transaction_probability * 2)
-    
-    async def _activate_behavior_mimicry(self):
-        """Activate advanced behavior mimicry"""
-        if self.mimicry_targets:
-            for wallet_id, profile in self.stealth_profiles.items():
-                if random.random() < 0.6:  # 60% of wallets mimic
-                    profile.current_behavior = BehaviorPattern.MIMICKER
-                    profile.mimicry_target = random.choice(self.mimicry_targets)
-    
-    async def _implement_temporal_confusion(self):
-        """Implement temporal confusion tactics"""
-        # Add significant random delays
-        for profile in self.stealth_profiles.values():
-            profile.timing_variance_seconds = (
-                profile.timing_variance_seconds[0] * 2,
-                profile.timing_variance_seconds[1] * 3
-            )
-    
-    async def _implement_volume_masking(self):
-        """Implement volume masking techniques"""
-        for profile in self.stealth_profiles.values():
-            profile.position_size_variance = min(0.8, profile.position_size_variance * 1.5)
-    
-    async def _implement_gas_misdirection(self):
-        """Implement gas price misdirection"""
-        # Dramatically increase gas randomization
-        self.config['gas_randomization_strength'] = min(0.9, self.config['gas_randomization_strength'] * 2)
-    
-    async def _inject_fake_signals(self):
-        """Inject fake signals to confuse competing bots"""
-        for profile in self.stealth_profiles.values():
-            profile.fake_transaction_probability = min(0.4, profile.fake_transaction_probability * 3)
-    
-    async def _coordinate_deception(self):
-        """Coordinate deception across the swarm"""
-        # Implement coordinated fake movements
-        selected_wallets = random.sample(list(self.stealth_profiles.keys()), 
-                                       min(3, len(self.stealth_profiles)))
-        
-        for wallet_id in selected_wallets:
-            profile = self.stealth_profiles[wallet_id]
-            profile.fake_transaction_probability = 0.5  # High fake rate for coordination
-    
-    def _determine_response_mode(self, threat_level) -> ThreatResponseMode:
-        """Determine appropriate response mode based on threat level"""
-        if threat_level.value == 'critical':
-            return ThreatResponseMode.GHOST_PROTOCOL
-        elif threat_level.value == 'high':
-            return ThreatResponseMode.ADAPTIVE
-        elif threat_level.value == 'moderate':
-            return ThreatResponseMode.PREDICTIVE
-        else:
-            return ThreatResponseMode.REACTIVE
-    
-    def _determine_stealth_escalation(self, threat_level, strategy_count: int) -> StealthLevel:
-        """Determine stealth escalation level"""
-        if threat_level.value == 'critical' or strategy_count >= 3:
-            return StealthLevel.GHOST
-        elif threat_level.value == 'high':
-            return StealthLevel.NINJA
-        elif threat_level.value == 'moderate':
-            return StealthLevel.SHADOW
-        else:
-            return StealthLevel.NORMAL
-    
-    def _calculate_response_parameters(self, threat_signature: Any, strategies: List[CamouflageStrategy]) -> Dict[str, Any]:
-        """Calculate response parameters based on threat and strategies"""
-        base_multiplier = len(strategies) * 0.2
-        
+    def get_mev_protection_status(self) -> Dict[str, Any]:
+        """Get current MEV protection status and metrics"""
         return {
-            'gas_increase': base_multiplier * 0.3,
-            'timing_increase': base_multiplier * 0.4,
-            'fake_rate_increase': base_multiplier * 0.1,
-            'rotation_frequency': max(1.0, 8.0 - base_multiplier * 2),  # Hours
-            'duration_minutes': 30 + len(strategies) * 10
+            'protection_enabled': self.mev_detection_system['enabled'],
+            'active_honeypots': len(self.active_honeypots),
+            'known_mev_bots': len(self.mev_detection_system['known_mev_bots']),
+            'recent_detections': len(self.recent_detections),
+            'metrics': self.mev_protection_metrics.copy(),
+            'threat_assessment': {
+                'current_threat_level': self._get_current_threat_level(),
+                'detection_confidence': self.mev_detection_system['detection_threshold'],
+                'private_rpc_endpoints': len(self.mev_detection_system['private_rpc_endpoints'])
+            }
         }
     
-    async def _emergency_ghost_protocol(self) -> ThreatResponse:
-        """Emergency ghost protocol for critical situations"""
-        return ThreatResponse(
-            threat_id="emergency_ghost",
-            threat_type="unknown_critical",
-            response_mode=ThreatResponseMode.GHOST_PROTOCOL,
-            camouflage_strategies=[
-                CamouflageStrategy.PATTERN_DISRUPTION,
-                CamouflageStrategy.COORDINATED_DECEPTION,
-                CamouflageStrategy.FAKE_SIGNAL_INJECTION
-            ],
-            stealth_escalation=StealthLevel.GHOST,
-            gas_randomization_increase=0.5,
-            timing_variance_increase=0.7,
-            fake_transaction_rate_increase=0.2,
-            behavior_rotation_frequency=1.0,
-            implemented_at=datetime.now(),
-            duration_minutes=60
-        )
-    
-    def get_dynamic_camouflage_status(self) -> Dict[str, Any]:
-        """Get comprehensive dynamic camouflage status"""
-        return {
-            'threat_response_mode': self.threat_response_mode.value,
-            'active_threat_responses': len(self.threat_responses),
-            'active_camouflage_strategies': [s.value for s in self.active_camouflage_strategies],
-            'system_stealth_level': self.system_stealth_level.value,
-            'camouflage_effectiveness': dict(self.camouflage_effectiveness),
-            'enhanced_config': {
-                'gas_randomization_strength': self.config['gas_randomization_strength'],
-                'timing_randomization_strength': self.config['timing_randomization_strength'],
-                'fake_transaction_rate': self.config['fake_transaction_rate']
-            },
-            'dynamic_camouflage_active': True,
-            'adaptive_countermeasures': 'ENABLED'
-        }
-    
-    # Placeholder implementations for methods referenced above
-    async def _adjust_camouflage_for_threat_level(self, threat_assessment: Any):
-        """Adjust camouflage based on threat assessment"""
-        pass
-    
-    async def _evaluate_camouflage_effectiveness(self):
-        """Evaluate effectiveness of current camouflage strategies"""
-        pass
-    
-    async def _deactivate_threat_response(self, threat_id: str):
-        """Deactivate an expired threat response"""
-        if threat_id in self.threat_responses:
-            response = self.threat_responses[threat_id]
-            # Remove strategies from active list
-            for strategy in response.camouflage_strategies:
-                if strategy in self.active_camouflage_strategies:
-                    self.active_camouflage_strategies.remove(strategy)
-            del self.threat_responses[threat_id]
-            self.logger.info(f"🎭 Deactivated threat response: {threat_id}")
-    
-    async def _escalate_system_stealth(self, new_level: StealthLevel):
-        """Escalate system-wide stealth level"""
-        self.system_stealth_level = new_level
-        for profile in self.stealth_profiles.values():
-            profile.stealth_level = new_level
-        self.logger.warning(f"🥷 System stealth escalated to: {new_level.value}")
+    def _get_current_threat_level(self) -> str:
+        """Get current overall MEV threat level"""
+        if not self.recent_detections:
+            return MEVThreatLevel.MINIMAL.value
+        
+        recent_detection = self.recent_detections[-1]
+        return recent_detection.threat_level.value
 
 
 _stealth_operations = None

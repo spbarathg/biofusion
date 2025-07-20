@@ -7,6 +7,12 @@ on-chain data, and AI predictions. Enforces strict consensus: only trades when
 AI model + on-chain + Twitter ALL agree. No exceptions.
 
 Implements the complete vision: survival-focused, learning-driven, cold calculation.
+
+🔥 ENHANCED WITH HIGH AVAILABILITY:
+- Redis-based leader election
+- Automatic failover and standby promotion  
+- Heartbeat monitoring and health checks
+- Graceful degradation during leadership transitions
 """
 
 import asyncio
@@ -22,6 +28,8 @@ import json
 from pathlib import Path
 import discord
 import hashlib
+import redis.asyncio as redis
+import uuid
 
 from worker_ant_v1.intelligence.sentiment_analyzer import SentimentAnalyzer
 from worker_ant_v1.intelligence.twitter_sentiment_analyzer import TwitterSentimentAnalyzer
@@ -34,6 +42,77 @@ from worker_ant_v1.core.vault_wallet_system import VaultWalletSystem
 from worker_ant_v1.utils.logger import setup_logger
 from worker_ant_v1.utils.constants import SentimentDecision as SentimentDecisionEnum
 from ..core.unified_config import UnifiedConfig
+
+
+class LeadershipStatus(Enum):
+    """Leadership status in the colony"""
+    CANDIDATE = "candidate"          # Competing for leadership
+    LEADER = "leader"               # Currently leading the colony
+    FOLLOWER = "follower"           # Following current leader
+    INTERIM_LEADER = "interim_leader"  # Temporary leader during failover
+    STANDBY = "standby"             # Ready to become leader
+    OFFLINE = "offline"             # Not participating
+
+
+class ColonyRole(Enum):
+    """Colony-wide roles for different commander instances"""
+    PRIMARY_COMMANDER = "primary_commander"
+    STANDBY_COMMANDER = "standby_commander"
+    INTELLIGENCE_SPECIALIST = "intelligence_specialist"
+    RISK_MANAGER = "risk_manager"
+    EXECUTION_COORDINATOR = "execution_coordinator"
+
+
+@dataclass
+class LeadershipState:
+    """Current leadership state information"""
+    node_id: str
+    status: LeadershipStatus
+    role: ColonyRole
+    elected_at: Optional[datetime]
+    last_heartbeat: datetime
+    term_number: int
+    leader_node_id: Optional[str]
+    votes_received: int
+    election_timeout: datetime
+    health_score: float = 1.0
+    
+    def is_leader(self) -> bool:
+        return self.status in [LeadershipStatus.LEADER, LeadershipStatus.INTERIM_LEADER]
+    
+    def can_make_decisions(self) -> bool:
+        return self.status in [
+            LeadershipStatus.LEADER, 
+            LeadershipStatus.INTERIM_LEADER,
+            LeadershipStatus.STANDBY  # Standby can make defensive decisions
+        ]
+
+
+@dataclass
+class DefensiveCommand:
+    """Emergency defensive commands for interim leaders"""
+    command_type: str  # RETREAT, HIBERNATE, EMERGENCY_STOP
+    issued_by: str
+    issued_at: datetime
+    authority_level: str  # INTERIM, EMERGENCY, FULL
+    parameters: Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class CommanderNode:
+    """Information about a commander node in the colony"""
+    node_id: str
+    instance_name: str
+    role: ColonyRole
+    status: LeadershipStatus
+    last_seen: datetime
+    health_score: float
+    capabilities: List[str]
+    location: str = "unknown"
+    
+    def is_alive(self, timeout_seconds: int = 30) -> bool:
+        return (datetime.now() - self.last_seen).total_seconds() < timeout_seconds
+
 
 class SwarmDecision(Enum):
     """Swarm-level decisions"""
@@ -292,10 +371,50 @@ class SanityChecker:
         return False
 
 class ColonyCommander:
-    """The neural command center of the 10-wallet swarm"""
+    """The neural command center of the 10-wallet swarm with high availability"""
     
-    def __init__(self):
+    def __init__(self, role: ColonyRole = ColonyRole.PRIMARY_COMMANDER):
         self.logger = setup_logger("ColonyCommander")
+        
+        # High Availability Configuration
+        self.node_id = str(uuid.uuid4())
+        self.instance_name = f"commander_{self.node_id[:8]}"
+        self.leadership_state = LeadershipState(
+            node_id=self.node_id,
+            status=LeadershipStatus.CANDIDATE,
+            role=role,
+            elected_at=None,
+            last_heartbeat=datetime.now(),
+            term_number=0,
+            leader_node_id=None,
+            votes_received=0,
+            election_timeout=datetime.now() + timedelta(seconds=30)
+        )
+        
+        # Redis connection for leader election
+        self.redis_client: Optional[redis.Redis] = None
+        self.redis_config = {
+            'host': os.getenv('REDIS_HOST', 'localhost'),
+            'port': int(os.getenv('REDIS_PORT', '6379')),
+            'password': os.getenv('REDIS_PASSWORD'),
+            'db': int(os.getenv('REDIS_DB', '0')),
+        }
+        
+        # Leader election configuration
+        self.election_config = {
+            'heartbeat_interval': 5,     # 5 seconds between heartbeats
+            'election_timeout': 15,      # 15 seconds election timeout
+            'leader_timeout': 30,        # 30 seconds to detect leader failure
+            'term_duration': 300,        # 5 minutes per leadership term
+            'health_check_interval': 10  # 10 seconds between health checks
+        }
+        
+        # High availability state
+        self.colony_nodes: Dict[str, CommanderNode] = {}
+        self.defensive_commands_queue: List[DefensiveCommand] = []
+        self.leadership_transitions: List[Dict[str, Any]] = []
+        self.failover_in_progress = False
+        self.emergency_authority = False
         
         # Load configuration
         self.config = UnifiedConfig()
@@ -348,14 +467,20 @@ class ColonyCommander:
         self.failed_patterns_db = {}
         self.failed_patterns_file = Path('data/failed_patterns.json')
         
-        self.logger.info("🧠 Neural Command Center initialized with validation layers")
+        self.logger.info(f"🧠 Neural Command Center initialized with HA (Node: {self.node_id[:8]}, Role: {role.value})")
     
     async def initialize(self, wallet_manager: UnifiedWalletManager, 
                         vault_system: VaultWalletSystem):
-        """Initialize the neural command center"""
+        """Initialize the neural command center with high availability"""
         
         self.wallet_manager = wallet_manager
         self.vault_system = vault_system
+        
+        # Initialize Redis connection for leader election
+        await self._initialize_redis_connection()
+        
+        # Start leader election process
+        await self._start_leader_election()
         
         # Initialize all intelligence components
         await self.sentiment_analyzer.initialize()
@@ -367,13 +492,575 @@ class ColonyCommander:
         await self._load_shadow_memory()
         await self._load_failed_patterns()
         
-        # Start background intelligence loops
+        # Start background processes
         asyncio.create_task(self._continuous_intelligence_loop())
         asyncio.create_task(self._source_performance_tracker())
+        asyncio.create_task(self._leadership_heartbeat_loop())
+        asyncio.create_task(self._health_monitoring_loop())
+        asyncio.create_task(self._colony_discovery_loop())
         
         mode = "Social signals + On-chain" if self.social_signals_enabled else "Pure on-chain only"
-        self.logger.info(f"🧠 Neural Command Center initialized - {mode} mode active")
+        leader_info = "LEADER" if self.leadership_state.is_leader() else f"FOLLOWER ({self.leadership_state.status.value})"
+        self.logger.info(f"🧠 Neural Command Center initialized - {mode} mode active - Status: {leader_info}")
     
+    async def _initialize_redis_connection(self) -> bool:
+        """Initialize Redis connection for leader election"""
+        try:
+            self.redis_client = redis.Redis(**self.redis_config)
+            await self.redis_client.ping()
+            self.logger.info("✅ Redis connection established for leader election")
+            return True
+        except Exception as e:
+            self.logger.error(f"❌ Failed to connect to Redis: {e}")
+            self.logger.error("High availability features disabled")
+            return False
+    
+    async def _start_leader_election(self):
+        """Start the leader election process"""
+        if not self.redis_client:
+            self.logger.warning("⚠️ Redis not available - running in standalone mode")
+            self.leadership_state.status = LeadershipStatus.LEADER
+            self.leadership_state.elected_at = datetime.now()
+            return
+        
+        self.logger.info(f"🗳️ Starting leader election for node {self.node_id[:8]}")
+        
+        # Register this node in the colony
+        await self._register_node()
+        
+        # Start election process
+        asyncio.create_task(self._election_process())
+    
+    async def _register_node(self):
+        """Register this node in the colony registry"""
+        if not self.redis_client:
+            return
+        
+        node_info = {
+            'node_id': self.node_id,
+            'instance_name': self.instance_name,
+            'role': self.leadership_state.role.value,
+            'status': self.leadership_state.status.value,
+            'registered_at': datetime.now().isoformat(),
+            'capabilities': ['sentiment_analysis', 'trading', 'risk_management'],
+            'health_score': 1.0
+        }
+        
+        try:
+            # Register in colony nodes set
+            await self.redis_client.hset(
+                'colony:nodes', 
+                self.node_id, 
+                json.dumps(node_info)
+            )
+            
+            # Set expiration for automatic cleanup
+            await self.redis_client.expire(f'colony:node:{self.node_id}', 60)
+            
+            self.logger.info(f"📋 Node {self.node_id[:8]} registered in colony")
+            
+        except Exception as e:
+            self.logger.error(f"Failed to register node: {e}")
+    
+    async def _election_process(self):
+        """Core leader election algorithm"""
+        while True:
+            try:
+                if not self.redis_client:
+                    await asyncio.sleep(10)
+                    continue
+                
+                current_leader = await self._get_current_leader()
+                
+                if current_leader is None:
+                    # No leader - start election
+                    await self._start_election()
+                elif current_leader == self.node_id:
+                    # We are the leader - maintain leadership
+                    await self._maintain_leadership()
+                else:
+                    # Follow the current leader
+                    await self._follow_leader(current_leader)
+                
+                await asyncio.sleep(5)  # Check every 5 seconds
+                
+            except Exception as e:
+                self.logger.error(f"Election process error: {e}")
+                await asyncio.sleep(10)
+    
+    async def _get_current_leader(self) -> Optional[str]:
+        """Get the current leader from Redis"""
+        try:
+            leader_info = await self.redis_client.hget('colony:leadership', 'current_leader')
+            if leader_info:
+                leader_data = json.loads(leader_info)
+                leader_id = leader_data['node_id']
+                elected_at = datetime.fromisoformat(leader_data['elected_at'])
+                
+                # Check if leadership has expired
+                max_term = timedelta(seconds=self.election_config['term_duration'])
+                if datetime.now() - elected_at > max_term:
+                    await self._invalidate_leadership()
+                    return None
+                
+                return leader_id
+            return None
+        except Exception as e:
+            self.logger.error(f"Error getting current leader: {e}")
+            return None
+    
+    async def _start_election(self):
+        """Start a new leader election"""
+        self.logger.info(f"🗳️ Starting election - Node {self.node_id[:8]} is candidate")
+        
+        self.leadership_state.status = LeadershipStatus.CANDIDATE
+        self.leadership_state.term_number += 1
+        
+        try:
+            # Create election lock to prevent concurrent elections
+            election_lock = f"colony:election:lock:{self.leadership_state.term_number}"
+            lock_acquired = await self.redis_client.set(
+                election_lock, 
+                self.node_id, 
+                nx=True, 
+                ex=30  # 30 second lock
+            )
+            
+            if lock_acquired:
+                self.logger.info(f"🔒 Election lock acquired by {self.node_id[:8]}")
+                
+                # Vote for ourselves
+                await self._cast_vote(self.node_id)
+                
+                # Wait for other votes
+                await asyncio.sleep(5)
+                
+                # Count votes and determine winner
+                winner = await self._count_votes()
+                
+                if winner == self.node_id:
+                    await self._become_leader()
+                else:
+                    await self._become_follower(winner)
+                
+                # Release election lock
+                await self.redis_client.delete(election_lock)
+            else:
+                # Another election in progress - wait and follow result
+                await asyncio.sleep(10)
+        
+        except Exception as e:
+            self.logger.error(f"Election error: {e}")
+    
+    async def _cast_vote(self, candidate_id: str):
+        """Cast a vote for a candidate"""
+        try:
+            vote_key = f"colony:votes:{self.leadership_state.term_number}"
+            await self.redis_client.hset(vote_key, self.node_id, candidate_id)
+            await self.redis_client.expire(vote_key, 60)  # Votes expire in 60 seconds
+            
+            self.logger.info(f"🗳️ Voted for candidate {candidate_id[:8]}")
+            
+        except Exception as e:
+            self.logger.error(f"Voting error: {e}")
+    
+    async def _count_votes(self) -> Optional[str]:
+        """Count votes and determine election winner"""
+        try:
+            vote_key = f"colony:votes:{self.leadership_state.term_number}"
+            votes = await self.redis_client.hgetall(vote_key)
+            
+            if not votes:
+                return None
+            
+            # Count votes for each candidate
+            vote_counts = {}
+            for voter, candidate in votes.items():
+                candidate = candidate.decode() if isinstance(candidate, bytes) else candidate
+                vote_counts[candidate] = vote_counts.get(candidate, 0) + 1
+            
+            # Find winner (candidate with most votes)
+            winner = max(vote_counts.items(), key=lambda x: x[1])
+            
+            self.logger.info(f"🏆 Election results: {winner[0][:8]} wins with {winner[1]} votes")
+            return winner[0]
+            
+        except Exception as e:
+            self.logger.error(f"Vote counting error: {e}")
+            return None
+    
+    async def _become_leader(self):
+        """Become the colony leader"""
+        self.leadership_state.status = LeadershipStatus.LEADER
+        self.leadership_state.elected_at = datetime.now()
+        self.leadership_state.leader_node_id = self.node_id
+        
+        # Record leadership in Redis
+        leader_info = {
+            'node_id': self.node_id,
+            'elected_at': self.leadership_state.elected_at.isoformat(),
+            'term_number': self.leadership_state.term_number,
+            'role': self.leadership_state.role.value
+        }
+        
+        try:
+            await self.redis_client.hset(
+                'colony:leadership', 
+                'current_leader', 
+                json.dumps(leader_info)
+            )
+            
+            self.logger.info(f"👑 Node {self.node_id[:8]} became colony leader (Term {self.leadership_state.term_number})")
+            
+            # Announce leadership change to the colony
+            await self._announce_leadership_change()
+            
+        except Exception as e:
+            self.logger.error(f"Failed to record leadership: {e}")
+    
+    async def _become_follower(self, leader_id: str):
+        """Become a follower of the specified leader"""
+        self.leadership_state.status = LeadershipStatus.FOLLOWER
+        self.leadership_state.leader_node_id = leader_id
+        
+        self.logger.info(f"👥 Node {self.node_id[:8]} following leader {leader_id[:8]}")
+    
+    async def _maintain_leadership(self):
+        """Maintain current leadership with heartbeats"""
+        try:
+            # Send leadership heartbeat
+            heartbeat_key = f"colony:leader:heartbeat"
+            heartbeat_data = {
+                'node_id': self.node_id,
+                'timestamp': datetime.now().isoformat(),
+                'health_score': self.leadership_state.health_score,
+                'active_operations': self._get_active_operations_count()
+            }
+            
+            await self.redis_client.hset(
+                heartbeat_key,
+                'data',
+                json.dumps(heartbeat_data)
+            )
+            await self.redis_client.expire(heartbeat_key, 30)
+            
+            self.leadership_state.last_heartbeat = datetime.now()
+            
+        except Exception as e:
+            self.logger.error(f"Leadership heartbeat failed: {e}")
+    
+    async def _follow_leader(self, leader_id: str):
+        """Follow the current leader and monitor their health"""
+        try:
+            # Check leader health
+            heartbeat_key = f"colony:leader:heartbeat"
+            heartbeat_data = await self.redis_client.hget(heartbeat_key, 'data')
+            
+            if heartbeat_data:
+                leader_heartbeat = json.loads(heartbeat_data)
+                last_heartbeat = datetime.fromisoformat(leader_heartbeat['timestamp'])
+                
+                # Check if leader is alive
+                heartbeat_age = (datetime.now() - last_heartbeat).total_seconds()
+                
+                if heartbeat_age > self.election_config['leader_timeout']:
+                    self.logger.warning(f"⚠️ Leader {leader_id[:8]} heartbeat timeout ({heartbeat_age:.1f}s)")
+                    await self._handle_leader_failure(leader_id)
+                else:
+                    # Leader is healthy - continue following
+                    self.leadership_state.leader_node_id = leader_id
+            else:
+                # No heartbeat data - leader might be down
+                self.logger.warning(f"⚠️ No heartbeat data for leader {leader_id[:8]}")
+                await self._handle_leader_failure(leader_id)
+                
+        except Exception as e:
+            self.logger.error(f"Leader monitoring error: {e}")
+    
+    async def _handle_leader_failure(self, failed_leader_id: str):
+        """Handle leader failure and initiate failover"""
+        self.logger.error(f"💥 Leader failure detected: {failed_leader_id[:8]}")
+        
+        # Check if we should become interim leader
+        if self.leadership_state.role in [ColonyRole.STANDBY_COMMANDER, ColonyRole.PRIMARY_COMMANDER]:
+            await self._become_interim_leader(failed_leader_id)
+        
+        # Clear failed leadership
+        await self._invalidate_leadership()
+        
+        # Start new election
+        await asyncio.sleep(2)  # Brief delay to avoid race conditions
+        await self._start_election()
+    
+    async def _become_interim_leader(self, failed_leader_id: str):
+        """Become interim leader during failover"""
+        self.leadership_state.status = LeadershipStatus.INTERIM_LEADER
+        self.leadership_state.elected_at = datetime.now()
+        self.emergency_authority = True
+        
+        self.logger.warning(f"🚨 Node {self.node_id[:8]} became INTERIM LEADER after {failed_leader_id[:8]} failure")
+        
+        # Record leadership transition
+        transition = {
+            'from_leader': failed_leader_id,
+            'to_interim': self.node_id,
+            'timestamp': datetime.now().isoformat(),
+            'reason': 'leader_failure'
+        }
+        self.leadership_transitions.append(transition)
+        
+        # Issue defensive commands
+        await self._issue_defensive_commands()
+    
+    async def _issue_defensive_commands(self):
+        """Issue defensive commands during emergency leadership"""
+        self.logger.warning("🛡️ Issuing defensive commands during interim leadership")
+        
+        # Issue RETREAT command
+        retreat_command = DefensiveCommand(
+            command_type="RETREAT",
+            issued_by=self.node_id,
+            issued_at=datetime.now(),
+            authority_level="INTERIM",
+            parameters={'reason': 'leader_failure', 'duration_minutes': 10}
+        )
+        
+        self.defensive_commands_queue.append(retreat_command)
+        
+        # Broadcast defensive command to colony
+        if self.redis_client:
+            try:
+                command_data = {
+                    'command': retreat_command.command_type,
+                    'issued_by': retreat_command.issued_by,
+                    'authority': retreat_command.authority_level,
+                    'timestamp': retreat_command.issued_at.isoformat(),
+                    'parameters': retreat_command.parameters
+                }
+                
+                await self.redis_client.lpush(
+                    'colony:defensive_commands',
+                    json.dumps(command_data)
+                )
+                await self.redis_client.expire('colony:defensive_commands', 300)
+                
+                self.logger.warning(f"📢 Defensive command {retreat_command.command_type} broadcast to colony")
+                
+            except Exception as e:
+                self.logger.error(f"Failed to broadcast defensive command: {e}")
+    
+    async def _invalidate_leadership(self):
+        """Invalidate current leadership in Redis"""
+        try:
+            await self.redis_client.delete('colony:leadership')
+            self.logger.info("🗑️ Leadership invalidated")
+        except Exception as e:
+            self.logger.error(f"Failed to invalidate leadership: {e}")
+    
+    async def _announce_leadership_change(self):
+        """Announce leadership change to the colony"""
+        if not self.redis_client:
+            return
+        
+        announcement = {
+            'type': 'leadership_change',
+            'new_leader': self.node_id,
+            'timestamp': datetime.now().isoformat(),
+            'term_number': self.leadership_state.term_number,
+            'role': self.leadership_state.role.value
+        }
+        
+        try:
+            await self.redis_client.lpush(
+                'colony:announcements',
+                json.dumps(announcement)
+            )
+            await self.redis_client.expire('colony:announcements', 300)
+            
+        except Exception as e:
+            self.logger.error(f"Failed to announce leadership change: {e}")
+    
+    async def _leadership_heartbeat_loop(self):
+        """Background loop for leadership heartbeats"""
+        while True:
+            try:
+                if self.leadership_state.is_leader():
+                    await self._maintain_leadership()
+                
+                await asyncio.sleep(self.election_config['heartbeat_interval'])
+                
+            except Exception as e:
+                self.logger.error(f"Heartbeat loop error: {e}")
+                await asyncio.sleep(10)
+    
+    async def _health_monitoring_loop(self):
+        """Background loop for health monitoring"""
+        while True:
+            try:
+                # Update our health score
+                health_score = await self._calculate_health_score()
+                self.leadership_state.health_score = health_score
+                
+                # Monitor colony nodes
+                await self._monitor_colony_health()
+                
+                await asyncio.sleep(self.election_config['health_check_interval'])
+                
+            except Exception as e:
+                self.logger.error(f"Health monitoring error: {e}")
+                await asyncio.sleep(30)
+    
+    async def _calculate_health_score(self) -> float:
+        """Calculate health score for this node"""
+        try:
+            health_factors = []
+            
+            # System resources
+            import psutil
+            cpu_usage = psutil.cpu_percent(interval=1)
+            memory_usage = psutil.virtual_memory().percent
+            
+            health_factors.append(1.0 - (cpu_usage / 100.0))
+            health_factors.append(1.0 - (memory_usage / 100.0))
+            
+            # Redis connectivity
+            if self.redis_client:
+                try:
+                    await self.redis_client.ping()
+                    health_factors.append(1.0)
+                except:
+                    health_factors.append(0.0)
+            else:
+                health_factors.append(0.5)
+            
+            # Component health (if available)
+            if self.wallet_manager:
+                # Add wallet manager health check
+                health_factors.append(0.9)  # Placeholder
+            
+            return sum(health_factors) / len(health_factors)
+            
+        except Exception as e:
+            self.logger.error(f"Health calculation error: {e}")
+            return 0.5
+    
+    async def _monitor_colony_health(self):
+        """Monitor health of all colony nodes"""
+        if not self.redis_client:
+            return
+        
+        try:
+            # Get all registered nodes
+            nodes_data = await self.redis_client.hgetall('colony:nodes')
+            
+            current_time = datetime.now()
+            
+            for node_id, node_data in nodes_data.items():
+                if isinstance(node_id, bytes):
+                    node_id = node_id.decode()
+                if isinstance(node_data, bytes):
+                    node_data = node_data.decode()
+                
+                node_info = json.loads(node_data)
+                last_seen = datetime.fromisoformat(node_info.get('registered_at', current_time.isoformat()))
+                
+                # Check if node is still alive
+                if (current_time - last_seen).total_seconds() > 60:
+                    # Node appears to be offline
+                    if node_id in self.colony_nodes:
+                        self.colony_nodes[node_id].status = LeadershipStatus.OFFLINE
+                        self.logger.warning(f"📴 Node {node_id[:8]} appears offline")
+                else:
+                    # Update node info
+                    self.colony_nodes[node_id] = CommanderNode(
+                        node_id=node_id,
+                        instance_name=node_info.get('instance_name', 'unknown'),
+                        role=ColonyRole(node_info.get('role', 'primary_commander')),
+                        status=LeadershipStatus(node_info.get('status', 'offline')),
+                        last_seen=last_seen,
+                        health_score=node_info.get('health_score', 0.5),
+                        capabilities=node_info.get('capabilities', [])
+                    )
+            
+        except Exception as e:
+            self.logger.error(f"Colony health monitoring error: {e}")
+    
+    async def _colony_discovery_loop(self):
+        """Background loop for colony node discovery"""
+        while True:
+            try:
+                await self._register_node()
+                await self._discover_colony_nodes()
+                await asyncio.sleep(30)  # Update every 30 seconds
+                
+            except Exception as e:
+                self.logger.error(f"Colony discovery error: {e}")
+                await asyncio.sleep(60)
+    
+    async def _discover_colony_nodes(self):
+        """Discover other nodes in the colony"""
+        if not self.redis_client:
+            return
+        
+        try:
+            nodes_data = await self.redis_client.hgetall('colony:nodes')
+            
+            discovered_nodes = 0
+            for node_id, node_data in nodes_data.items():
+                if isinstance(node_id, bytes):
+                    node_id = node_id.decode()
+                
+                if node_id != self.node_id:  # Don't count ourselves
+                    discovered_nodes += 1
+            
+            if discovered_nodes != len(self.colony_nodes):
+                self.logger.info(f"🔍 Colony discovery: {discovered_nodes} other nodes found")
+                
+        except Exception as e:
+            self.logger.error(f"Node discovery error: {e}")
+    
+    def _get_active_operations_count(self) -> int:
+        """Get count of active trading operations"""
+        # This would integrate with actual trading operations
+        return 0  # Placeholder
+    
+    def can_make_trading_decisions(self) -> bool:
+        """Check if this commander can make trading decisions"""
+        if not self.leadership_state.can_make_decisions():
+            return False
+        
+        # Additional checks for trading authority
+        if self.leadership_state.status == LeadershipStatus.INTERIM_LEADER:
+            # Interim leaders have limited authority
+            return False
+        
+        return True
+    
+    def can_issue_defensive_commands(self) -> bool:
+        """Check if this commander can issue defensive commands"""
+        return self.leadership_state.status in [
+            LeadershipStatus.LEADER,
+            LeadershipStatus.INTERIM_LEADER,
+            LeadershipStatus.STANDBY
+        ]
+    
+    def get_leadership_status(self) -> Dict[str, Any]:
+        """Get current leadership status"""
+        return {
+            'node_id': self.node_id,
+            'instance_name': self.instance_name,
+            'status': self.leadership_state.status.value,
+            'role': self.leadership_state.role.value,
+            'is_leader': self.leadership_state.is_leader(),
+            'can_trade': self.can_make_trading_decisions(),
+            'can_defend': self.can_issue_defensive_commands(),
+            'elected_at': self.leadership_state.elected_at.isoformat() if self.leadership_state.elected_at else None,
+            'term_number': self.leadership_state.term_number,
+            'health_score': self.leadership_state.health_score,
+            'colony_nodes_count': len(self.colony_nodes),
+            'failover_in_progress': self.failover_in_progress
+        }
+
     async def analyze_opportunity(self, token_address: str, 
                                  market_data: Dict[str, Any]) -> ConsensusSignal:
         """
