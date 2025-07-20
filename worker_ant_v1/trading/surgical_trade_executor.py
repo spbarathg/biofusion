@@ -3,18 +3,20 @@ SURGICAL TRADE EXECUTOR - REAL DEX INTEGRATION
 =============================================
 
 Executes trades with surgical precision using Jupiter DEX integration.
+Enhanced with Devil's Advocate Synapse for pre-mortem analysis.
 """
 
 import asyncio
 import aiohttp
 import json
 import logging
-from typing import Dict, Optional, Any
+from typing import Dict, Optional, Any, List
 from dataclasses import dataclass
 from datetime import datetime
 import time
 
 from worker_ant_v1.utils.logger import setup_logger
+from worker_ant_v1.trading.devils_advocate_synapse import DevilsAdvocateSynapse, PreMortemAnalysis
 
 @dataclass
 class ExecutionResult:
@@ -26,9 +28,14 @@ class ExecutionResult:
     slippage_percent: float = 0.0
     latency_ms: int = 0
     error: Optional[str] = None
+    
+    # Devil's Advocate analysis results
+    pre_mortem_analysis: Optional[PreMortemAnalysis] = None
+    veto_issued: bool = False
+    veto_reasons: List[str] = None
 
 class SurgicalTradeExecutor:
-    """Surgical trade executor with Jupiter DEX integration"""
+    """Surgical trade executor with Jupiter DEX integration and Devil's Advocate pre-mortem analysis"""
     
     def __init__(self):
         self.logger = setup_logger("SurgicalTradeExecutor")
@@ -37,25 +44,31 @@ class SurgicalTradeExecutor:
         self.jupiter_api = "https://quote-api.jup.ag/v6"
         self.jupiter_swap_api = "https://quote-api.jup.ag/v6/swap"
         
-        # RPC client (will be set during initialization)
+        # Core components
         self.rpc_client = None
         self.wallet_manager = None
+        self.devils_advocate = DevilsAdvocateSynapse()  # Pre-mortem analysis system
         
         # Performance tracking
         self.total_trades = 0
         self.successful_trades = 0
         self.failed_trades = 0
+        self.vetoed_trades = 0
         self.total_volume_sol = 0.0
         self.avg_execution_time_ms = 0.0
         
     async def initialize(self, rpc_client, wallet_manager):
-        """Initialize trade executor"""
+        """Initialize trade executor with Devil's Advocate Synapse"""
         self.rpc_client = rpc_client
         self.wallet_manager = wallet_manager
-        self.logger.info("✅ Surgical trade executor initialized")
+        
+        # Initialize Devil's Advocate Synapse
+        await self.devils_advocate.initialize()
+        
+        self.logger.info("✅ Surgical trade executor initialized with Devil's Advocate protection")
     
     async def prepare_trade(self, trade_params: Dict[str, Any]) -> Dict[str, Any]:
-        """Prepare trade parameters for execution"""
+        """Prepare trade parameters for execution with pre-mortem analysis"""
         try:
             prepared_trade = {
                 'token_address': trade_params.get('token_address', ''),
@@ -75,7 +88,26 @@ class SurgicalTradeExecutor:
             if not prepared_trade['wallet']:
                 raise ValueError("Wallet is required")
             
-            self.logger.info(f"📋 Prepared trade: {prepared_trade['order_type']} {prepared_trade['amount']} SOL")
+            # Conduct Devil's Advocate pre-mortem analysis
+            self.logger.info(f"🕵️ Running pre-mortem analysis for {prepared_trade['order_type']} {prepared_trade['amount']} SOL")
+            pre_mortem_analysis = await self.devils_advocate.conduct_pre_mortem_analysis(trade_params)
+            
+            # Check if trade should be vetoed
+            if pre_mortem_analysis.veto_recommended:
+                prepared_trade.update({
+                    'status': 'vetoed',
+                    'veto_reasons': [reason.value for reason in pre_mortem_analysis.veto_reasons],
+                    'failure_probability': pre_mortem_analysis.overall_failure_probability,
+                    'pre_mortem_analysis': pre_mortem_analysis
+                })
+                self.vetoed_trades += 1
+                return prepared_trade
+            
+            # Trade cleared pre-mortem analysis
+            prepared_trade['pre_mortem_analysis'] = pre_mortem_analysis
+            prepared_trade['devils_advocate_cleared'] = True
+            
+            self.logger.info(f"📋 Trade prepared and cleared: {prepared_trade['order_type']} {prepared_trade['amount']} SOL | Risk: {pre_mortem_analysis.overall_failure_probability:.1%}")
             return prepared_trade
             
         except Exception as e:
@@ -90,15 +122,49 @@ class SurgicalTradeExecutor:
         token_address: str,
         amount_sol: float,
         wallet: str,
-        max_slippage: float = 2.0
+        max_slippage: float = 2.0,
+        trade_params: Dict[str, Any] = None
     ) -> ExecutionResult:
-        """Execute a buy order with surgical precision"""
+        """Execute a buy order with surgical precision and Devil's Advocate protection"""
         
         start_time = time.time()
         result = ExecutionResult(success=False)
         
         try:
             self.logger.info(f"🔵 Executing buy: {amount_sol} SOL -> {token_address[:8]}...")
+            
+            # Prepare trade parameters for Devil's Advocate analysis
+            if not trade_params:
+                trade_params = {
+                    'token_address': token_address,
+                    'amount': amount_sol,
+                    'wallet_id': wallet,
+                    'order_type': 'buy',
+                    'max_slippage': max_slippage
+                }
+            
+            # Conduct pre-mortem analysis if not already done
+            if 'pre_mortem_analysis' not in trade_params:
+                self.logger.info("🕵️ Conducting final pre-mortem analysis...")
+                pre_mortem_analysis = await self.devils_advocate.conduct_pre_mortem_analysis(trade_params)
+                
+                # Check for veto
+                if pre_mortem_analysis.veto_recommended:
+                    result.pre_mortem_analysis = pre_mortem_analysis
+                    result.veto_issued = True
+                    result.veto_reasons = [reason.value for reason in pre_mortem_analysis.veto_reasons]
+                    result.error = f"Trade vetoed by Devil's Advocate: {', '.join(result.veto_reasons)}"
+                    
+                    self.vetoed_trades += 1
+                    self.logger.warning(f"🚫 Trade execution halted by Devil's Advocate veto")
+                    return result
+                
+                trade_params['pre_mortem_analysis'] = pre_mortem_analysis
+            else:
+                pre_mortem_analysis = trade_params['pre_mortem_analysis']
+            
+            # Proceed with trade execution - Devil's Advocate has cleared the trade
+            result.pre_mortem_analysis = pre_mortem_analysis
             
             # Get wallet keypair
             wallet_keypair = await self.wallet_manager.get_wallet_keypair(wallet)
@@ -137,7 +203,7 @@ class SurgicalTradeExecutor:
                 self.successful_trades += 1
                 self.total_volume_sol += amount_sol
                 
-                self.logger.info(f"✅ Buy executed: {amount_sol} SOL -> {result.amount_tokens} tokens")
+                self.logger.info(f"✅ Buy executed with Devil's Advocate approval: {amount_sol} SOL -> {result.amount_tokens} tokens | Risk assessed: {pre_mortem_analysis.overall_failure_probability:.1%}")
             else:
                 result.error = "Swap execution failed"
                 
@@ -336,14 +402,22 @@ class SurgicalTradeExecutor:
             self.avg_execution_time_ms = (
                 alpha * latency_ms + (1 - alpha) * self.avg_execution_time_ms
             )
-            
-    def get_performance_metrics(self) -> Dict[str, Any]:
-        """Get performance metrics"""
+    
+    def get_execution_status(self) -> Dict[str, Any]:
+        """Get comprehensive execution status including Devil's Advocate metrics"""
+        total_attempts = self.total_trades + self.vetoed_trades
+        
         return {
-            "total_trades": self.total_trades,
-            "successful_trades": self.successful_trades,
-            "failed_trades": self.failed_trades,
-            "success_rate": (self.successful_trades / max(1, self.total_trades)) * 100,
-            "total_volume_sol": self.total_volume_sol,
-            "avg_execution_time_ms": self.avg_execution_time_ms
+            'total_trade_attempts': total_attempts,
+            'executed_trades': self.total_trades,
+            'successful_trades': self.successful_trades,
+            'failed_trades': self.failed_trades,
+            'vetoed_trades': self.vetoed_trades,
+            'execution_success_rate': self.successful_trades / max(self.total_trades, 1),
+            'devils_advocate_veto_rate': self.vetoed_trades / max(total_attempts, 1),
+            'total_volume_sol': self.total_volume_sol,
+            'avg_execution_time_ms': self.avg_execution_time_ms,
+            'devils_advocate_status': self.devils_advocate.get_synapse_status(),
+            'protection_active': True,
+            'surgical_precision_mode': True
         } 

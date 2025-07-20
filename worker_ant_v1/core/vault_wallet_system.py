@@ -34,6 +34,38 @@ class VaultType(Enum):
     LEGENDARY = "legendary"
     GODMODE = "godmode"
 
+
+class StrategicEnergyTier(Enum):
+    """Strategic Energy Reserve - Three-Tiered Capital Hierarchy"""
+    KINETIC = "kinetic"     # Tier 1: Hot wallet capital (10-20%) - instantly available
+    POTENTIAL = "potential" # Tier 2: Warm reserve (30-40%) - consensus required
+    CORE = "core"          # Tier 3: Cold vault (40-60%) - time-locked + multi-sig
+
+
+class ColonyConfidenceLevel(Enum):
+    """Colony consensus confidence levels for capital deployment"""
+    LOW = "low"               # < 60% confidence
+    MEDIUM = "medium"         # 60-75% confidence  
+    HIGH = "high"            # 75-85% confidence
+    UNANIMOUS = "unanimous"   # > 85% confidence - A+ setups only
+
+
+@dataclass
+class StrategicEnergyReserve:
+    """Strategic Energy Reserve configuration for anti-fragile capital management"""
+    tier: StrategicEnergyTier
+    allocation_percentage: float
+    min_balance_sol: float
+    max_balance_sol: float
+    deployment_requirements: Dict[str, Any]
+    time_lock_hours: int = 0
+    multi_sig_required: bool = False
+    consensus_threshold: ColonyConfidenceLevel = ColonyConfidenceLevel.LOW
+    emergency_accessible: bool = True
+    auto_compound_enabled: bool = True
+    preservation_priority: int = 1  # 1 = highest priority for preservation
+
+
 @dataclass
 class VaultWallet:
     """Individual vault wallet"""
@@ -48,6 +80,32 @@ class VaultWallet:
     last_activity: datetime = field(default_factory=datetime.now)
     security_level: int = 1
     metadata: Dict[str, Any] = field(default_factory=dict)
+    
+    # Strategic Energy Reserve enhancements
+    energy_tier: Optional[StrategicEnergyTier] = None
+    time_lock_expiry: Optional[datetime] = None
+    deployment_history: List[Dict[str, Any]] = field(default_factory=list)
+    preservation_score: float = 0.0  # Higher score = better for long-term preservation
+    last_consensus_deployment: Optional[datetime] = None
+    
+    def is_available_for_deployment(self, confidence_level: ColonyConfidenceLevel) -> bool:
+        """Check if this vault can be deployed for the given confidence level"""
+        if not self.energy_tier:
+            return False
+            
+        # Check time lock
+        if self.time_lock_expiry and datetime.now() < self.time_lock_expiry:
+            return False
+            
+        # Check confidence requirements based on energy tier
+        if self.energy_tier == StrategicEnergyTier.KINETIC:
+            return True  # Always available for hot wallets
+        elif self.energy_tier == StrategicEnergyTier.POTENTIAL:
+            return confidence_level in [ColonyConfidenceLevel.HIGH, ColonyConfidenceLevel.UNANIMOUS]
+        elif self.energy_tier == StrategicEnergyTier.CORE:
+            return confidence_level == ColonyConfidenceLevel.UNANIMOUS
+        
+        return False
 
 @dataclass
 class VaultAllocation:
@@ -70,6 +128,16 @@ class VaultWalletSystem:
         self.vaults: Dict[str, VaultWallet] = {}
         self.vault_allocations: Dict[VaultType, VaultAllocation] = {}
         
+        # Strategic Energy Reserve system
+        self.strategic_reserves: Dict[StrategicEnergyTier, StrategicEnergyReserve] = {}
+        self.energy_tier_balances: Dict[StrategicEnergyTier, float] = {
+            StrategicEnergyTier.KINETIC: 0.0,
+            StrategicEnergyTier.POTENTIAL: 0.0,
+            StrategicEnergyTier.CORE: 0.0
+        }
+        self.total_strategic_capital = 0.0
+        self.colony_commander = None  # Integration point
+        
         # System state
         self.initialized = False
         self.system_active = True
@@ -85,8 +153,9 @@ class VaultWalletSystem:
             'emergency_access_enabled': True
         }
         
-        # Initialize default allocations
+        # Initialize default allocations and strategic reserves
         self._initialize_default_allocations()
+        self._initialize_strategic_energy_reserves()
     
     def _initialize_default_allocations(self):
         """Initialize default vault allocations"""
@@ -147,6 +216,62 @@ class VaultWalletSystem:
             )
         }
     
+    def _initialize_strategic_energy_reserves(self):
+        """Initialize default strategic energy reserves"""
+        self.strategic_reserves = {
+            StrategicEnergyTier.KINETIC: StrategicEnergyReserve(
+                tier=StrategicEnergyTier.KINETIC,
+                allocation_percentage=0.15, # 15% of total capital
+                min_balance_sol=0.0,
+                max_balance_sol=1000.0, # Example max for KINETIC
+                deployment_requirements={
+                    "confidence_level": ColonyConfidenceLevel.HIGH,
+                    "time_lock_hours": 0,
+                    "multi_sig_required": False
+                },
+                consensus_threshold=ColonyConfidenceLevel.HIGH,
+                emergency_accessible=True,
+                auto_compound_enabled=True,
+                preservation_priority=1
+            ),
+            StrategicEnergyTier.POTENTIAL: StrategicEnergyReserve(
+                tier=StrategicEnergyTier.POTENTIAL,
+                allocation_percentage=0.30, # 30% of total capital
+                min_balance_sol=0.0,
+                max_balance_sol=5000.0, # Example max for POTENTIAL
+                deployment_requirements={
+                    "confidence_level": ColonyConfidenceLevel.MEDIUM,
+                    "time_lock_hours": 24,
+                    "multi_sig_required": True
+                },
+                consensus_threshold=ColonyConfidenceLevel.MEDIUM,
+                emergency_accessible=True,
+                auto_compound_enabled=True,
+                preservation_priority=2
+            ),
+            StrategicEnergyTier.CORE: StrategicEnergyReserve(
+                tier=StrategicEnergyTier.CORE,
+                allocation_percentage=0.55, # 55% of total capital
+                min_balance_sol=0.0,
+                max_balance_sol=10000.0, # Example max for CORE
+                deployment_requirements={
+                    "confidence_level": ColonyConfidenceLevel.LOW,
+                    "time_lock_hours": 72,
+                    "multi_sig_required": True
+                },
+                consensus_threshold=ColonyConfidenceLevel.LOW,
+                emergency_accessible=False,
+                auto_compound_enabled=False,
+                preservation_priority=3
+            )
+        }
+        self.energy_tier_balances = {
+            StrategicEnergyTier.KINETIC: 0.0,
+            StrategicEnergyTier.POTENTIAL: 0.0,
+            StrategicEnergyTier.CORE: 0.0
+        }
+        self.total_strategic_capital = sum(r.allocation_percentage for r in self.strategic_reserves.values())
+    
     async def initialize_vault_system(self) -> bool:
         """Initialize the vault wallet system"""
         try:
@@ -199,6 +324,276 @@ class VaultWalletSystem:
             VaultType.GODMODE: 6
         }
         return security_levels.get(vault_type, 1)
+    
+    # === STRATEGIC ENERGY RESERVE METHODS ===
+    
+    async def allocate_to_strategic_reserves(self, total_capital: float) -> Dict[StrategicEnergyTier, float]:
+        """Allocate capital to strategic energy reserves based on anti-fragile hierarchy"""
+        try:
+            allocations = {}
+            
+            for tier, reserve in self.strategic_reserves.items():
+                allocation_amount = total_capital * reserve.allocation_percentage
+                
+                # Apply tier-specific constraints
+                allocation_amount = max(reserve.min_balance_sol, min(reserve.max_balance_sol, allocation_amount))
+                
+                # Update tier balance
+                self.energy_tier_balances[tier] += allocation_amount
+                allocations[tier] = allocation_amount
+                
+                self.logger.info(f"💎 Allocated {allocation_amount:.4f} SOL to {tier.value} energy reserve")
+            
+            self.total_strategic_capital = sum(allocations.values())
+            
+            return allocations
+            
+        except Exception as e:
+            self.logger.error(f"Error allocating to strategic reserves: {e}")
+            return {}
+    
+    async def request_strategic_deployment(self, 
+                                         amount: float, 
+                                         confidence_level: ColonyConfidenceLevel,
+                                         opportunity_data: Dict[str, Any] = None) -> Dict[str, Any]:
+        """Request deployment of strategic capital for high-conviction opportunities"""
+        try:
+            deployment_result = {
+                'approved': False,
+                'amount_approved': 0.0,
+                'tier_deployed': None,
+                'deployment_id': f"deploy_{int(datetime.now().timestamp())}",
+                'reason': ''
+            }
+            
+            # Determine which tier can be deployed based on confidence level
+            available_tiers = []
+            for tier, reserve in self.strategic_reserves.items():
+                if (self.energy_tier_balances[tier] >= amount and
+                    confidence_level.value in [reserve.consensus_threshold.value, 'unanimous']):
+                    available_tiers.append((tier, reserve))
+            
+            # Sort by preservation priority (lower number = higher priority to preserve)
+            available_tiers.sort(key=lambda x: x[1].preservation_priority)
+            
+            # Try to deploy from the least valuable tier first
+            for tier, reserve in available_tiers:
+                if self.energy_tier_balances[tier] >= amount:
+                    # Check if colony commander consensus is met (if available)
+                    if await self._check_colony_consensus(confidence_level, opportunity_data):
+                        # Deploy capital
+                        await self._execute_strategic_deployment(tier, amount, deployment_result['deployment_id'])
+                        
+                        deployment_result.update({
+                            'approved': True,
+                            'amount_approved': amount,
+                            'tier_deployed': tier,
+                            'reason': f'Deployed from {tier.value} tier with {confidence_level.value} confidence'
+                        })
+                        
+                        self.logger.info(f"✅ Strategic deployment approved: {amount:.4f} SOL from {tier.value} tier")
+                        return deployment_result
+            
+            deployment_result['reason'] = f'Insufficient capital or confidence level too low for deployment'
+            self.logger.warning(f"❌ Strategic deployment rejected: {deployment_result['reason']}")
+            return deployment_result
+            
+        except Exception as e:
+            self.logger.error(f"Error in strategic deployment request: {e}")
+            return {'approved': False, 'reason': str(e)}
+    
+    async def _execute_strategic_deployment(self, tier: StrategicEnergyTier, amount: float, deployment_id: str):
+        """Execute the actual strategic capital deployment"""
+        try:
+            # Deduct from tier balance
+            self.energy_tier_balances[tier] -= amount
+            
+            # Record deployment
+            deployment_record = {
+                'deployment_id': deployment_id,
+                'tier': tier.value,
+                'amount': amount,
+                'timestamp': datetime.now(),
+                'status': 'deployed'
+            }
+            
+            # Add to deployment history for tracking
+            for vault_id, vault in self.vaults.items():
+                if vault.energy_tier == tier:
+                    vault.deployment_history.append(deployment_record)
+                    vault.last_consensus_deployment = datetime.now()
+                    break
+            
+            self.logger.info(f"🚀 Strategic deployment executed: {amount:.4f} SOL from {tier.value}")
+            
+        except Exception as e:
+            self.logger.error(f"Error executing strategic deployment: {e}")
+    
+    async def _check_colony_consensus(self, confidence_level: ColonyConfidenceLevel, opportunity_data: Dict[str, Any] = None) -> bool:
+        """Check if colony consensus is met for the deployment"""
+        try:
+            # If colony commander is available, check with it
+            if self.colony_commander:
+                consensus_result = await self.colony_commander.check_deployment_consensus(confidence_level, opportunity_data)
+                return consensus_result.get('consensus_reached', False)
+            
+            # Fallback: basic confidence level validation
+            confidence_thresholds = {
+                ColonyConfidenceLevel.LOW: 0.6,
+                ColonyConfidenceLevel.MEDIUM: 0.75,
+                ColonyConfidenceLevel.HIGH: 0.85,
+                ColonyConfidenceLevel.UNANIMOUS: 0.95
+            }
+            
+            # For now, return True if we have opportunity data with sufficient confidence
+            if opportunity_data:
+                opportunity_confidence = opportunity_data.get('confidence_score', 0.0)
+                required_threshold = confidence_thresholds[confidence_level]
+                return opportunity_confidence >= required_threshold
+            
+            # Default to false if no data available
+            return False
+            
+        except Exception as e:
+            self.logger.error(f"Error checking colony consensus: {e}")
+            return False
+    
+    async def implement_time_locks(self, tier: StrategicEnergyTier, lock_duration_hours: int = None):
+        """Implement time locks on Core Energy tier for capital preservation"""
+        try:
+            if tier == StrategicEnergyTier.CORE:
+                lock_duration = lock_duration_hours or self.strategic_reserves[tier].deployment_requirements.get('time_lock_hours', 72)
+                lock_expiry = datetime.now() + timedelta(hours=lock_duration)
+                
+                # Apply time lock to all Core Energy vaults
+                for vault_id, vault in self.vaults.items():
+                    if vault.energy_tier == tier:
+                        vault.time_lock_expiry = lock_expiry
+                        self.logger.info(f"🔒 Time lock applied to {vault_id} until {lock_expiry}")
+                
+                return True
+            else:
+                self.logger.warning(f"Time locks only applicable to Core Energy tier, not {tier.value}")
+                return False
+                
+        except Exception as e:
+            self.logger.error(f"Error implementing time locks: {e}")
+            return False
+    
+    def get_strategic_energy_status(self) -> Dict[str, Any]:
+        """Get comprehensive Strategic Energy Reserve status"""
+        try:
+            return {
+                'total_strategic_capital': self.total_strategic_capital,
+                'tier_balances': {
+                    tier.value: balance for tier, balance in self.energy_tier_balances.items()
+                },
+                'tier_allocations': {
+                    tier.value: {
+                        'percentage': reserve.allocation_percentage,
+                        'current_balance': self.energy_tier_balances[tier],
+                        'max_balance': reserve.max_balance_sol,
+                        'deployment_requirements': reserve.deployment_requirements,
+                        'preservation_priority': reserve.preservation_priority
+                    }
+                    for tier, reserve in self.strategic_reserves.items()
+                },
+                'deployment_availability': {
+                    tier.value: self._check_tier_availability(tier) for tier in StrategicEnergyTier
+                },
+                'anti_fragile_mode': self._assess_anti_fragile_readiness()
+            }
+        except Exception as e:
+            self.logger.error(f"Error getting strategic energy status: {e}")
+            return {}
+    
+    def _check_tier_availability(self, tier: StrategicEnergyTier) -> Dict[str, Any]:
+        """Check availability status of a specific energy tier"""
+        try:
+            tier_vaults = [vault for vault in self.vaults.values() if vault.energy_tier == tier]
+            available_vaults = []
+            locked_vaults = []
+            
+            for vault in tier_vaults:
+                if vault.time_lock_expiry and datetime.now() < vault.time_lock_expiry:
+                    locked_vaults.append({
+                        'vault_id': vault.vault_id,
+                        'lock_expiry': vault.time_lock_expiry.isoformat()
+                    })
+                else:
+                    available_vaults.append(vault.vault_id)
+            
+            return {
+                'balance': self.energy_tier_balances[tier],
+                'available_vaults': len(available_vaults),
+                'locked_vaults': len(locked_vaults),
+                'vault_details': {
+                    'available': available_vaults,
+                    'locked': locked_vaults
+                }
+            }
+        except Exception as e:
+            self.logger.error(f"Error checking tier availability: {e}")
+            return {}
+    
+    def _assess_anti_fragile_readiness(self) -> Dict[str, Any]:
+        """Assess the anti-fragile readiness of the Strategic Energy Reserve"""
+        try:
+            total_available = sum(self.energy_tier_balances.values())
+            
+            # Calculate distribution ratios
+            kinetic_ratio = self.energy_tier_balances[StrategicEnergyTier.KINETIC] / max(total_available, 1)
+            potential_ratio = self.energy_tier_balances[StrategicEnergyTier.POTENTIAL] / max(total_available, 1)
+            core_ratio = self.energy_tier_balances[StrategicEnergyTier.CORE] / max(total_available, 1)
+            
+            # Assess anti-fragile score based on ideal distribution
+            ideal_kinetic = 0.15   # 15% in kinetic
+            ideal_potential = 0.30 # 30% in potential  
+            ideal_core = 0.55      # 55% in core
+            
+            kinetic_score = 1.0 - abs(kinetic_ratio - ideal_kinetic)
+            potential_score = 1.0 - abs(potential_ratio - ideal_potential)
+            core_score = 1.0 - abs(core_ratio - ideal_core)
+            
+            anti_fragile_score = (kinetic_score + potential_score + core_score) / 3
+            
+            return {
+                'anti_fragile_score': anti_fragile_score,
+                'distribution_health': {
+                    'kinetic_ratio': kinetic_ratio,
+                    'potential_ratio': potential_ratio,
+                    'core_ratio': core_ratio
+                },
+                'readiness_level': (
+                    'excellent' if anti_fragile_score > 0.9 else
+                    'good' if anti_fragile_score > 0.75 else
+                    'moderate' if anti_fragile_score > 0.6 else
+                    'poor'
+                ),
+                'recommendations': self._generate_rebalancing_recommendations(kinetic_ratio, potential_ratio, core_ratio)
+            }
+        except Exception as e:
+            self.logger.error(f"Error assessing anti-fragile readiness: {e}")
+            return {}
+    
+    def _generate_rebalancing_recommendations(self, kinetic_ratio: float, potential_ratio: float, core_ratio: float) -> List[str]:
+        """Generate recommendations for rebalancing the Strategic Energy Reserve"""
+        recommendations = []
+        
+        if kinetic_ratio > 0.25:  # Too much in kinetic (hot wallets)
+            recommendations.append("Move excess capital from Kinetic to Potential Energy tier")
+        elif kinetic_ratio < 0.10:  # Too little in kinetic
+            recommendations.append("Increase Kinetic Energy allocation for operational flexibility")
+        
+        if potential_ratio < 0.25:  # Too little in potential
+            recommendations.append("Increase Potential Energy reserves for opportunity deployment")
+        elif potential_ratio > 0.40:  # Too much in potential
+            recommendations.append("Move excess Potential Energy to Core Energy for preservation")
+        
+        if core_ratio < 0.45:  # Too little in core preservation
+            recommendations.append("Increase Core Energy allocation for long-term anti-fragile stability")
+        
+        return recommendations
     
     async def allocate_profit(self, profit_amount: float, source_wallet: str) -> Dict[str, float]:
         """Allocate profit to vaults based on configuration"""

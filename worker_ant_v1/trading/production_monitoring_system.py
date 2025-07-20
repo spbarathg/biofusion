@@ -1221,3 +1221,385 @@ class EnhancedMetricsCollector:
                 exc_info=True
             )
             return {} 
+
+
+class ColonyState(Enum):
+    """Colony operational states for circuit breaker system"""
+    NORMAL = "normal"
+    CAUTION = "caution"
+    FEAR = "fear"
+    RETREAT = "retreat"
+    HIBERNATE = "hibernate"
+    EMERGENCY = "emergency"
+
+
+@dataclass
+class SolanaVolatilityIndex:
+    """Solana Volatility Index (SVI) - The Colony's Market Adrenal Gland"""
+    sol_price_change_rate: float = 0.0  # Rate of SOL price change
+    token_birth_death_ratio: float = 1.0  # New tokens / Failed tokens ratio  
+    dex_volume_velocity: float = 0.0  # Rate of change in DEX volume
+    fear_greed_score: float = 0.5  # 0 = extreme fear, 1 = extreme greed
+    market_manipulation_score: float = 0.0  # Detected manipulation level
+    composite_volatility: float = 0.0  # Combined volatility score
+    alert_level: ColonyState = ColonyState.NORMAL
+    timestamp: datetime = field(default_factory=datetime.utcnow)
+    
+    def calculate_composite_score(self) -> float:
+        """Calculate the composite SVI score that triggers circuit breakers"""
+        # Weight the different factors
+        price_weight = 0.35
+        birth_death_weight = 0.25
+        volume_weight = 0.20
+        fear_greed_weight = 0.15
+        manipulation_weight = 0.05
+        
+        # Normalize fear/greed (0.5 is neutral, deviation from 0.5 increases volatility)
+        normalized_fear_greed = abs(self.fear_greed_score - 0.5) * 2
+        
+        self.composite_volatility = (
+            abs(self.sol_price_change_rate) * price_weight +
+            abs(self.token_birth_death_ratio - 1.0) * birth_death_weight +
+            self.dex_volume_velocity * volume_weight +
+            normalized_fear_greed * fear_greed_weight +
+            self.market_manipulation_score * manipulation_weight
+        )
+        
+        return self.composite_volatility
+
+
+@dataclass 
+class CircuitBreakerEvent:
+    """Circuit breaker activation event"""
+    event_id: str
+    trigger_level: ColonyState
+    svi_score: float
+    triggered_at: datetime
+    reason: str
+    affected_wallets: List[str]
+    override_duration_minutes: int = 0
+    auto_resume: bool = True
+
+
+class MarketAdrenalGland:
+    """The Colony's Market Adrenal Gland - Real-time SVI and Circuit Breaker System"""
+    
+    def __init__(self):
+        self.logger = setup_logger("MarketAdrenalGland")
+        
+        # Market data tracking
+        self.current_svi = SolanaVolatilityIndex()
+        self.svi_history: deque = deque(maxlen=1000)
+        self.price_history: deque = deque(maxlen=100)
+        self.volume_history: deque = deque(maxlen=100)
+        self.token_births: deque = deque(maxlen=50)
+        self.token_deaths: deque = deque(maxlen=50)
+        
+        # Circuit breaker state
+        self.colony_state = ColonyState.NORMAL
+        self.circuit_breaker_active = False
+        self.circuit_breaker_events: List[CircuitBreakerEvent] = []
+        self.last_circuit_activation = None
+        
+        # Thresholds for circuit breaker activation
+        self.circuit_thresholds = {
+            ColonyState.CAUTION: 0.3,    # 30% volatility triggers caution
+            ColonyState.FEAR: 0.5,       # 50% volatility triggers fear mode
+            ColonyState.RETREAT: 0.7,    # 70% volatility triggers retreat
+            ColonyState.HIBERNATE: 0.85, # 85% volatility triggers hibernation
+            ColonyState.EMERGENCY: 0.95  # 95% volatility triggers emergency shutdown
+        }
+        
+        # External data sources (to be injected)
+        self.price_feed = None
+        self.volume_feed = None
+        self.token_tracker = None
+        
+    async def initialize(self, price_feed=None, volume_feed=None, token_tracker=None):
+        """Initialize the Market Adrenal Gland"""
+        self.logger.info("🧠 Initializing Market Adrenal Gland...")
+        
+        self.price_feed = price_feed
+        self.volume_feed = volume_feed  
+        self.token_tracker = token_tracker
+        
+        # Start monitoring loops
+        asyncio.create_task(self._svi_calculation_loop())
+        asyncio.create_task(self._circuit_breaker_monitoring_loop())
+        asyncio.create_task(self._market_data_collection_loop())
+        
+        self.logger.info("✅ Market Adrenal Gland active - Colony circuit breakers armed")
+    
+    async def _svi_calculation_loop(self):
+        """Continuously calculate the Solana Volatility Index"""
+        while True:
+            try:
+                await self._calculate_svi()
+                await asyncio.sleep(5)  # Update every 5 seconds
+            except Exception as e:
+                self.logger.error(f"Error in SVI calculation: {e}")
+                await asyncio.sleep(5)
+    
+    async def _calculate_svi(self):
+        """Calculate the current Solana Volatility Index"""
+        try:
+            # Calculate SOL price change rate
+            if len(self.price_history) >= 2:
+                recent_prices = list(self.price_history)[-10:]  # Last 10 price points
+                if len(recent_prices) >= 2:
+                    price_change = (recent_prices[-1] - recent_prices[0]) / recent_prices[0]
+                    self.current_svi.sol_price_change_rate = abs(price_change)
+            
+            # Calculate token birth/death ratio
+            if len(self.token_births) > 0 and len(self.token_deaths) > 0:
+                recent_births = sum(1 for t in self.token_births if t > datetime.utcnow() - timedelta(hours=1))
+                recent_deaths = sum(1 for t in self.token_deaths if t > datetime.utcnow() - timedelta(hours=1))
+                if recent_deaths > 0:
+                    self.current_svi.token_birth_death_ratio = recent_births / recent_deaths
+                else:
+                    self.current_svi.token_birth_death_ratio = recent_births  # No deaths = high ratio
+            
+            # Calculate DEX volume velocity
+            if len(self.volume_history) >= 2:
+                recent_volumes = list(self.volume_history)[-5:]  # Last 5 volume points
+                if len(recent_volumes) >= 2:
+                    volume_change = (recent_volumes[-1] - recent_volumes[0]) / max(recent_volumes[0], 1)
+                    self.current_svi.dex_volume_velocity = abs(volume_change)
+            
+            # Calculate fear/greed based on token death rate and volume
+            death_rate = len([t for t in self.token_deaths if t > datetime.utcnow() - timedelta(hours=1)])
+            if death_rate > 10:  # High death rate = fear
+                self.current_svi.fear_greed_score = max(0.0, 0.5 - (death_rate - 10) * 0.05)
+            elif len(self.token_births) > 20:  # High birth rate = greed
+                birth_rate = len([t for t in self.token_births if t > datetime.utcnow() - timedelta(hours=1)])
+                self.current_svi.fear_greed_score = min(1.0, 0.5 + (birth_rate - 20) * 0.02)
+            
+            # Calculate composite SVI score
+            self.current_svi.calculate_composite_score()
+            self.current_svi.timestamp = datetime.utcnow()
+            
+            # Store in history
+            self.svi_history.append(self.current_svi)
+            
+            self.logger.debug(f"📊 SVI Update: {self.current_svi.composite_volatility:.3f} | "
+                             f"Price Δ: {self.current_svi.sol_price_change_rate:.3f} | "
+                             f"Birth/Death: {self.current_svi.token_birth_death_ratio:.2f}")
+            
+        except Exception as e:
+            self.logger.error(f"Error calculating SVI: {e}")
+    
+    async def _circuit_breaker_monitoring_loop(self):
+        """Monitor SVI and trigger circuit breakers when thresholds are exceeded"""
+        while True:
+            try:
+                await self._check_circuit_breaker_conditions()
+                await asyncio.sleep(2)  # Check every 2 seconds
+            except Exception as e:
+                self.logger.error(f"Error in circuit breaker monitoring: {e}")
+                await asyncio.sleep(2)
+    
+    async def _check_circuit_breaker_conditions(self):
+        """Check if circuit breaker conditions are met and trigger if necessary"""
+        current_score = self.current_svi.composite_volatility
+        
+        # Determine appropriate colony state based on SVI score
+        new_state = ColonyState.NORMAL
+        for state, threshold in reversed(list(self.circuit_thresholds.items())):
+            if current_score >= threshold:
+                new_state = state
+                break
+        
+        # Check if state change is needed
+        if new_state != self.colony_state:
+            await self._trigger_circuit_breaker(new_state, current_score)
+        
+        # Auto-resume check (if in non-emergency state and volatility drops)
+        elif (self.colony_state != ColonyState.NORMAL and 
+              current_score < self.circuit_thresholds[ColonyState.CAUTION] * 0.8):  # 20% buffer
+            await self._resume_normal_operations()
+    
+    async def _trigger_circuit_breaker(self, trigger_level: ColonyState, svi_score: float):
+        """Trigger colony-wide circuit breaker"""
+        event_id = f"cb_{int(datetime.utcnow().timestamp())}_{trigger_level.value}"
+        
+        # Create circuit breaker event
+        event = CircuitBreakerEvent(
+            event_id=event_id,
+            trigger_level=trigger_level,
+            svi_score=svi_score,
+            triggered_at=datetime.utcnow(),
+            reason=f"SVI threshold exceeded: {svi_score:.3f} >= {self.circuit_thresholds[trigger_level]:.3f}",
+            affected_wallets=[]  # Will be populated by colony commander
+        )
+        
+        self.circuit_breaker_events.append(event)
+        self.colony_state = trigger_level
+        self.circuit_breaker_active = trigger_level != ColonyState.NORMAL
+        self.last_circuit_activation = datetime.utcnow()
+        
+        # Log appropriate message based on severity
+        if trigger_level == ColonyState.EMERGENCY:
+            self.logger.critical(f"🚨 EMERGENCY CIRCUIT BREAKER ACTIVATED | SVI: {svi_score:.3f}")
+        elif trigger_level == ColonyState.HIBERNATE:
+            self.logger.error(f"😴 COLONY HIBERNATION ACTIVATED | SVI: {svi_score:.3f}")
+        elif trigger_level == ColonyState.RETREAT:
+            self.logger.warning(f"🔄 COLONY RETREAT MODE | SVI: {svi_score:.3f}")
+        elif trigger_level == ColonyState.FEAR:
+            self.logger.warning(f"⚠️ COLONY FEAR MODE | SVI: {svi_score:.3f}")
+        elif trigger_level == ColonyState.CAUTION:
+            self.logger.info(f"🟡 COLONY CAUTION MODE | SVI: {svi_score:.3f}")
+        
+        # Notify the colony commander (will be integrated)
+        await self._notify_colony_commander(event)
+    
+    async def _resume_normal_operations(self):
+        """Resume normal colony operations"""
+        if self.colony_state != ColonyState.NORMAL:
+            self.logger.info(f"✅ Resuming normal operations - SVI stabilized: {self.current_svi.composite_volatility:.3f}")
+            self.colony_state = ColonyState.NORMAL
+            self.circuit_breaker_active = False
+            
+            # Notify colony commander of resumption
+            await self._notify_colony_commander_resume()
+    
+    async def _market_data_collection_loop(self):
+        """Collect market data for SVI calculation"""
+        while True:
+            try:
+                await self._collect_market_data()
+                await asyncio.sleep(10)  # Collect data every 10 seconds
+            except Exception as e:
+                self.logger.error(f"Error collecting market data: {e}")
+                await asyncio.sleep(10)
+    
+    async def _collect_market_data(self):
+        """Collect real-time market data"""
+        try:
+            # Collect SOL price (placeholder - integrate with real price feed)
+            if self.price_feed:
+                current_price = await self.price_feed.get_sol_price()
+                self.price_history.append(current_price)
+            
+            # Collect DEX volume (placeholder - integrate with real volume feed)
+            if self.volume_feed:
+                current_volume = await self.volume_feed.get_dex_volume()
+                self.volume_history.append(current_volume)
+            
+            # Track token births and deaths (placeholder - integrate with token tracker)
+            if self.token_tracker:
+                new_tokens = await self.token_tracker.get_new_tokens_last_period()
+                failed_tokens = await self.token_tracker.get_failed_tokens_last_period()
+                
+                for token in new_tokens:
+                    self.token_births.append(datetime.utcnow())
+                for token in failed_tokens:
+                    self.token_deaths.append(datetime.utcnow())
+            
+        except Exception as e:
+            self.logger.error(f"Error in market data collection: {e}")
+    
+    async def _notify_colony_commander(self, event: CircuitBreakerEvent):
+        """Notify the colony commander of circuit breaker activation"""
+        # This will be integrated with the actual colony commander
+        pass
+    
+    async def _notify_colony_commander_resume(self):
+        """Notify the colony commander of normal operations resumption"""
+        # This will be integrated with the actual colony commander
+        pass
+    
+    def get_current_svi(self) -> SolanaVolatilityIndex:
+        """Get the current Solana Volatility Index"""
+        return self.current_svi
+    
+    def get_colony_state(self) -> ColonyState:
+        """Get the current colony operational state"""
+        return self.colony_state
+    
+    def is_circuit_breaker_active(self) -> bool:
+        """Check if any circuit breaker is currently active"""
+        return self.circuit_breaker_active
+    
+    def force_circuit_breaker(self, level: ColonyState, reason: str = "Manual override"):
+        """Manually force circuit breaker activation"""
+        asyncio.create_task(self._trigger_circuit_breaker(level, self.current_svi.composite_volatility))
+    
+    def get_svi_status(self) -> Dict[str, Any]:
+        """Get comprehensive SVI and circuit breaker status"""
+        return {
+            'current_svi': {
+                'composite_score': self.current_svi.composite_volatility,
+                'sol_price_change_rate': self.current_svi.sol_price_change_rate,
+                'token_birth_death_ratio': self.current_svi.token_birth_death_ratio,
+                'dex_volume_velocity': self.current_svi.dex_volume_velocity,
+                'fear_greed_score': self.current_svi.fear_greed_score,
+                'timestamp': self.current_svi.timestamp.isoformat()
+            },
+            'colony_state': self.colony_state.value,
+            'circuit_breaker_active': self.circuit_breaker_active,
+            'last_activation': self.last_circuit_activation.isoformat() if self.last_circuit_activation else None,
+            'recent_events': len([e for e in self.circuit_breaker_events if e.triggered_at > datetime.utcnow() - timedelta(hours=24)]),
+            'thresholds': {state.value: threshold for state, threshold in self.circuit_thresholds.items()}
+        }
+
+
+class EnhancedProductionMonitoringSystem:
+    """Enhanced Production Monitoring System with Market Adrenal Gland"""
+    
+    def __init__(self):
+        self.logger = setup_logger("EnhancedProductionMonitoringSystem")
+        
+        # Core components
+        self.metrics_collector = EnhancedMetricsCollector()
+        self.market_adrenal_gland = MarketAdrenalGland()
+        
+        # System state
+        self.initialized = False
+        self.monitoring_active = False
+        
+        # Integration points
+        self.colony_commander = None
+        self.wallet_manager = None
+        self.trading_engine = None
+    
+    async def initialize(self, colony_commander=None, wallet_manager=None, trading_engine=None):
+        """Initialize the enhanced monitoring system"""
+        self.logger.info("🚀 Initializing Enhanced Production Monitoring System...")
+        
+        # Set integration points
+        self.colony_commander = colony_commander
+        self.wallet_manager = wallet_manager
+        self.trading_engine = trading_engine
+        
+        # Initialize components
+        await self.metrics_collector.start()
+        await self.market_adrenal_gland.initialize()
+        
+        self.initialized = True
+        self.monitoring_active = True
+        
+        self.logger.info("✅ Enhanced Production Monitoring System online")
+    
+    async def get_comprehensive_status(self) -> Dict[str, Any]:
+        """Get comprehensive system status including SVI"""
+        system_snapshot = self.metrics_collector.get_system_snapshot()
+        svi_status = self.market_adrenal_gland.get_svi_status()
+        
+        return {
+            'timestamp': datetime.utcnow().isoformat(),
+            'system_health': {
+                'cpu_usage': system_snapshot.cpu_usage_percent,
+                'memory_usage': system_snapshot.memory_usage_percent,
+                'disk_usage': system_snapshot.disk_usage_percent,
+                'component_health': system_snapshot.component_health
+            },
+            'trading_metrics': system_snapshot.trading_metrics,
+            'market_adrenal_gland': svi_status,
+            'alerts_active': len([a for a in getattr(self.metrics_collector, 'active_alerts', [])]),
+            'monitoring_active': self.monitoring_active,
+            'anti_fragile_mode': svi_status['colony_state'] in ['retreat', 'hibernate', 'emergency']
+        }
+    
+    def get_market_adrenal_gland(self) -> MarketAdrenalGland:
+        """Get the Market Adrenal Gland instance"""
+        return self.market_adrenal_gland 

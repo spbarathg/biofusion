@@ -1,12 +1,14 @@
 """
-STEALTH OPERATIONS SYSTEM - DETECTION AVOIDANCE
-==============================================
+STEALTH OPERATIONS SYSTEM - DETECTION AVOIDANCE WITH DYNAMIC CAMOUFLAGE
+=====================================================================
 
 Implements stealth operations for the 10-wallet swarm to remain undetectable:
 - Rotates wallet behavior patterns
 - Varies gas settings and execution paths  
 - Simulates fake entries when conditions feel botted
 - Avoids predictable patterns that could expose the swarm
+- ENHANCED: Dynamic camouflage that responds to threat levels
+- ENHANCED: Threat-responsive stealth escalation and adaptive countermeasures
 
 "You rotate wallet behavior, gas settings, and execution paths to remain undetectable."
 """
@@ -32,6 +34,48 @@ class StealthLevel(Enum):
     SHADOW = "shadow"        # Medium stealth
     NORMAL = "normal"        # Standard operations
     AGGRESSIVE = "aggressive" # Minimal stealth
+
+
+class ThreatResponseMode(Enum):
+    """Dynamic threat response modes"""
+    PASSIVE = "passive"           # Standard stealth operations
+    REACTIVE = "reactive"         # React to detected threats
+    PREDICTIVE = "predictive"     # Anticipate and counter threats
+    ADAPTIVE = "adaptive"         # Learn and evolve countermeasures
+    GHOST_PROTOCOL = "ghost_protocol"  # Maximum evasion mode
+
+
+class CamouflageStrategy(Enum):
+    """Dynamic camouflage strategies"""
+    PATTERN_DISRUPTION = "pattern_disruption"
+    BEHAVIOR_MIMICRY = "behavior_mimicry"
+    TEMPORAL_CONFUSION = "temporal_confusion"
+    VOLUME_MASKING = "volume_masking"
+    GAS_MISDIRECTION = "gas_misdirection"
+    FAKE_SIGNAL_INJECTION = "fake_signal_injection"
+    COORDINATED_DECEPTION = "coordinated_deception"
+
+
+@dataclass
+class ThreatResponse:
+    """Response to a detected threat"""
+    threat_id: str
+    threat_type: str
+    response_mode: ThreatResponseMode
+    camouflage_strategies: List[CamouflageStrategy]
+    stealth_escalation: StealthLevel
+    
+    # Response parameters
+    gas_randomization_increase: float
+    timing_variance_increase: float
+    fake_transaction_rate_increase: float
+    behavior_rotation_frequency: float
+    
+    # Effectiveness tracking
+    implemented_at: datetime
+    effectiveness_score: float = 0.0
+    duration_minutes: int = 30
+    auto_expire: bool = True
 
 class BehaviorPattern(Enum):
     """Wallet behavior patterns"""
@@ -91,15 +135,24 @@ class StealthOperation:
     cover_story: str = ""
 
 class StealthOperationsSystem:
-    """Advanced stealth operations for undetectable trading"""
+    """Advanced stealth operations for undetectable trading with Dynamic Camouflage"""
     
     def __init__(self):
         self.logger = setup_logger("StealthOperations")
         
-        
+        # Stealth profiles
         self.stealth_profiles: Dict[str, StealthProfile] = {}
         
+        # Dynamic Camouflage enhancements
+        self.threat_responses: Dict[str, ThreatResponse] = {}
+        self.active_camouflage_strategies: List[CamouflageStrategy] = []
+        self.threat_response_mode = ThreatResponseMode.REACTIVE
+        self.camouflage_effectiveness: Dict[CamouflageStrategy, float] = {}
         
+        # Battle Pattern Intelligence integration
+        self.battle_pattern_intelligence = None  # Will be injected
+        
+        # Detection tracking
         self.detection_indicators = {
             'unusual_gas_patterns': 0.0,
             'predictable_timing': 0.0,
@@ -108,91 +161,59 @@ class StealthOperationsSystem:
             'repetitive_behaviors': 0.0
         }
         
-        
+        # Operation history
         self.operation_history: List[StealthOperation] = []
         
-        
+        # Mimicry targets
         self.mimicry_targets: List[str] = []
         
-        
+        # Pattern signatures
         self.pattern_signatures = set()
         
-        
+        # Enhanced configuration
         self.config = {
             'max_detection_risk': DetectionRisk.MEDIUM,
             'behavior_rotation_interval': 8,  # hours
             'gas_randomization_strength': 0.3,
             'timing_randomization_strength': 0.5,
             'fake_transaction_rate': 0.02,  # 2% of operations
-            'mimicry_activation_threshold': 0.7
+            'mimicry_activation_threshold': 0.7,
+            
+            # Dynamic Camouflage settings
+            'threat_response_sensitivity': 0.6,
+            'max_camouflage_strategies': 3,
+            'adaptive_learning_rate': 0.1,
+            'ghost_protocol_threshold': 0.8
         }
         
-        
+        # System state
         self.system_stealth_level = StealthLevel.SHADOW
         self.global_detection_risk = DetectionRisk.LOW
         
-    async def initialize_stealth_system(self, wallet_ids: List[str]):
-        """Initialize stealth profiles for all wallets"""
+    async def initialize_stealth_system(self, wallet_ids: List[str], battle_pattern_intelligence=None):
+        """Initialize stealth system with Dynamic Camouflage capabilities"""
         
-        self.logger.info("👤 Initializing Stealth Operations System...")
+        self.logger.info("👤 Initializing Enhanced Stealth Operations System...")
         
+        # Inject Battle Pattern Intelligence for threat detection
+        self.battle_pattern_intelligence = battle_pattern_intelligence
         
+        # Create stealth profiles for wallets
         for wallet_id in wallet_ids:
             profile = await self._create_stealth_profile(wallet_id)
             self.stealth_profiles[wallet_id] = profile
         
-        
+        # Start enhanced monitoring loops
         asyncio.create_task(self._stealth_monitoring_loop())
         asyncio.create_task(self._behavioral_rotation_loop())
         asyncio.create_task(self._detection_risk_assessment_loop())
+        asyncio.create_task(self._dynamic_camouflage_loop())
+        asyncio.create_task(self._threat_response_loop())
         
-        
+        # Initialize mimicry targets
         await self._identify_mimicry_targets()
         
-        self.logger.info(f"✅ Stealth system initialized for {len(wallet_ids)} wallets")
-    
-    async def _create_stealth_profile(self, wallet_id: str) -> StealthProfile:
-        """Create randomized stealth profile for wallet"""
-        
-        
-        behavior_patterns = list(BehaviorPattern)
-        initial_behavior = random.choice(behavior_patterns)
-        
-        
-        stealth_levels = [StealthLevel.GHOST, StealthLevel.NINJA, StealthLevel.SHADOW, 
-                         StealthLevel.NORMAL, StealthLevel.AGGRESSIVE]
-        weights = [0.1, 0.3, 0.4, 0.15, 0.05]  # Bias toward stealth
-        initial_stealth = np.random.choice(stealth_levels, p=weights)
-        
-        profile = StealthProfile(
-            wallet_id=wallet_id,
-            current_behavior=initial_behavior,
-            stealth_level=initial_stealth,
-            
-            
-            gas_multiplier_range=(
-                random.uniform(0.8, 1.2), 
-                random.uniform(1.3, 2.0)
-            ),
-            slippage_range=(
-                random.uniform(0.3, 1.0),
-                random.uniform(1.5, 3.0)
-            ),
-            position_size_variance=random.uniform(0.2, 0.5),
-            timing_variance_seconds=(
-                random.randint(3, 15),
-                random.randint(20, 60)
-            ),
-            
-            
-            pattern_change_interval_hours=random.uniform(6, 12),
-            fake_transaction_probability=random.uniform(0.01, 0.08),
-            pause_on_detection_risk=random.choice([True, True, False])  # 2/3 conservative
-        )
-        
-        self.logger.info(f"👤 Created stealth profile for {wallet_id}: {initial_behavior.value} / {initial_stealth.value}")
-        
-        return profile
+        self.logger.info(f"✅ Enhanced stealth system initialized for {len(wallet_ids)} wallets with Dynamic Camouflage")
     
     async def prepare_stealth_transaction(self, wallet_id: str, 
                                         base_transaction: Dict[str, Any]) -> Dict[str, Any]:
@@ -248,7 +269,6 @@ class StealthOperationsSystem:
         
         
         if profile.stealth_level in [StealthLevel.GHOST, StealthLevel.NINJA]:
-        if profile.stealth_level in [StealthLevel.GHOST, StealthLevel.NINJA]:
             priority_variance = random.uniform(0.5, 2.0)
             transaction['priority_fee_multiplier'] = priority_variance
         
@@ -264,9 +284,7 @@ class StealthOperationsSystem:
         
         
         if profile.current_behavior == BehaviorPattern.SNIPER:
-        if profile.current_behavior == BehaviorPattern.SNIPER:
             delay_seconds = min(delay_seconds, 10)
-        elif profile.current_behavior == BehaviorPattern.ACCUMULATOR:
         elif profile.current_behavior == BehaviorPattern.ACCUMULATOR:
             delay_seconds = max(delay_seconds, 15)
         
@@ -274,7 +292,6 @@ class StealthOperationsSystem:
         
         
         if profile.stealth_level == StealthLevel.GHOST:
-            if random.random() < 0.3:  # 30% chance
             if random.random() < 0.3:  # 30% chance
                 pattern_break_delay = random.randint(60, 300)  # 1-5 minutes
                 transaction['execution_delay_seconds'] += pattern_break_delay
@@ -314,26 +331,21 @@ class StealthOperationsSystem:
         behavior = profile.current_behavior
         
         if behavior == BehaviorPattern.SNIPER:
-        if behavior == BehaviorPattern.SNIPER:
             transaction['max_slippage'] = random.uniform(1.0, 3.0)
             transaction['urgency'] = random.uniform(0.8, 1.0)
             
-        elif behavior == BehaviorPattern.ACCUMULATOR:
         elif behavior == BehaviorPattern.ACCUMULATOR:
             transaction['max_slippage'] = random.uniform(0.3, 1.0)
             transaction['urgency'] = random.uniform(0.2, 0.5)
             
         elif behavior == BehaviorPattern.SCALPER:
-        elif behavior == BehaviorPattern.SCALPER:
             transaction['max_slippage'] = random.uniform(0.5, 2.0)
             transaction['urgency'] = random.uniform(0.6, 0.8)
             
         elif behavior == BehaviorPattern.HODLER:
-        elif behavior == BehaviorPattern.HODLER:
             transaction['max_slippage'] = random.uniform(0.2, 0.8)
             transaction['urgency'] = random.uniform(0.1, 0.3)
             
-        elif behavior == BehaviorPattern.MIMICKER:
         elif behavior == BehaviorPattern.MIMICKER:
             if profile.mimicry_target:
                 transaction = await self._copy_target_parameters(transaction, profile.mimicry_target)
@@ -390,7 +402,6 @@ class StealthOperationsSystem:
         
         target_patterns = await self._get_target_patterns(profile.mimicry_target)
         
-        if target_patterns:
         if target_patterns:
             if 'gas_multiplier' in target_patterns:
                 transaction['gas_multiplier'] = target_patterns['gas_multiplier']
@@ -541,7 +552,6 @@ class StealthOperationsSystem:
                 current_time = datetime.now()
                 
                 for wallet_id, profile in self.stealth_profiles.items():
-                for wallet_id, profile in self.stealth_profiles.items():
                     time_since_change = (current_time - profile.last_pattern_change).total_seconds() / 3600
                     
                     if time_since_change >= profile.pattern_change_interval_hours:
@@ -592,39 +602,31 @@ class StealthOperationsSystem:
             'pattern_signatures': len(self.pattern_signatures)
         }
     
-    
     async def _detect_predictable_patterns(self) -> bool:
-        """Detect if we have predictable transaction patterns"""
         """Detect if we have predictable transaction patterns"""
         return False
     
     async def _detect_coordinated_movements(self) -> bool:
         """Detect coordinated movements between wallets"""
-        """Detect coordinated movements between wallets"""
         return False
     
     async def _detect_unusual_gas_patterns(self) -> bool:
-        """Detect unusual gas usage patterns"""
         """Detect unusual gas usage patterns"""
         return False
     
     async def _detect_timing_patterns(self) -> bool:
         """Detect predictable timing patterns"""
-        """Detect predictable timing patterns"""
         return False
     
     async def _detect_market_bot_activity(self) -> float:
-        """Detect current market bot activity level"""
         """Detect current market bot activity level"""
         return random.uniform(0.3, 0.7)
     
     async def _identify_mimicry_targets(self):
         """Identify successful wallets to mimic"""
-        """Identify successful wallets to mimic"""
         pass
     
     async def _get_target_patterns(self, target_wallet: str) -> Dict[str, Any]:
-        """Get patterns from mimicry target"""
         """Get patterns from mimicry target"""
         return {}
     
@@ -659,6 +661,345 @@ class StealthOperationsSystem:
     async def _copy_target_parameters(self, transaction: Dict[str, Any], target: str) -> Dict[str, Any]:
         """Copy parameters from mimicry target"""
         return transaction
+
+    async def respond_to_threat(self, threat_signature: Any, threat_assessment: Any) -> ThreatResponse:
+        """Implement dynamic camouflage in response to detected threats"""
+        try:
+            threat_id = threat_signature.threat_id
+            threat_type = threat_signature.threat_type.value
+            
+            # Determine response mode based on threat level
+            response_mode = self._determine_response_mode(threat_signature.threat_level)
+            
+            # Select appropriate camouflage strategies
+            camouflage_strategies = await self._select_camouflage_strategies(threat_signature, threat_assessment)
+            
+            # Determine stealth escalation level
+            stealth_escalation = self._determine_stealth_escalation(threat_signature.threat_level, len(camouflage_strategies))
+            
+            # Calculate response parameters
+            response_params = self._calculate_response_parameters(threat_signature, camouflage_strategies)
+            
+            # Create threat response
+            threat_response = ThreatResponse(
+                threat_id=threat_id,
+                threat_type=threat_type,
+                response_mode=response_mode,
+                camouflage_strategies=camouflage_strategies,
+                stealth_escalation=stealth_escalation,
+                gas_randomization_increase=response_params['gas_increase'],
+                timing_variance_increase=response_params['timing_increase'],
+                fake_transaction_rate_increase=response_params['fake_rate_increase'],
+                behavior_rotation_frequency=response_params['rotation_frequency'],
+                implemented_at=datetime.now(),
+                duration_minutes=response_params['duration_minutes']
+            )
+            
+            # Implement the response
+            await self._implement_threat_response(threat_response)
+            
+            # Store the response
+            self.threat_responses[threat_id] = threat_response
+            
+            self.logger.warning(f"🎭 Dynamic Camouflage activated | Threat: {threat_type} | "
+                              f"Response: {response_mode.value} | Strategies: {len(camouflage_strategies)} | "
+                              f"Stealth: {stealth_escalation.value}")
+            
+            return threat_response
+            
+        except Exception as e:
+            self.logger.error(f"Error responding to threat: {e}")
+            # Return safe default response
+            return await self._emergency_ghost_protocol()
+    
+    async def _dynamic_camouflage_loop(self):
+        """Continuously monitor threats and adjust camouflage"""
+        while True:
+            try:
+                if self.battle_pattern_intelligence:
+                    # Get latest threat assessment
+                    threat_assessment = await self.battle_pattern_intelligence.assess_threat_environment()
+                    
+                    # Adjust camouflage based on threat level
+                    await self._adjust_camouflage_for_threat_level(threat_assessment)
+                    
+                    # Evaluate effectiveness of current strategies
+                    await self._evaluate_camouflage_effectiveness()
+                
+                await asyncio.sleep(60)  # Check every minute
+                
+            except Exception as e:
+                self.logger.error(f"Error in dynamic camouflage loop: {e}")
+                await asyncio.sleep(60)
+    
+    async def _threat_response_loop(self):
+        """Monitor and manage active threat responses"""
+        while True:
+            try:
+                current_time = datetime.now()
+                expired_responses = []
+                
+                # Check for expired responses
+                for threat_id, response in self.threat_responses.items():
+                    if response.auto_expire:
+                        duration = (current_time - response.implemented_at).total_seconds() / 60
+                        if duration > response.duration_minutes:
+                            expired_responses.append(threat_id)
+                
+                # Remove expired responses
+                for threat_id in expired_responses:
+                    await self._deactivate_threat_response(threat_id)
+                
+                await asyncio.sleep(30)  # Check every 30 seconds
+                
+            except Exception as e:
+                self.logger.error(f"Error in threat response loop: {e}")
+                await asyncio.sleep(30)
+    
+    async def _select_camouflage_strategies(self, threat_signature: Any, threat_assessment: Any) -> List[CamouflageStrategy]:
+        """Select appropriate camouflage strategies for the threat"""
+        strategies = []
+        
+        threat_type = threat_signature.threat_type.value
+        threat_level = threat_signature.threat_level.value
+        
+        # Strategy selection based on threat type
+        if 'sandwich' in threat_type.lower():
+            strategies.extend([
+                CamouflageStrategy.TEMPORAL_CONFUSION,
+                CamouflageStrategy.VOLUME_MASKING,
+                CamouflageStrategy.GAS_MISDIRECTION
+            ])
+        
+        if 'mev' in threat_type.lower():
+            strategies.extend([
+                CamouflageStrategy.PATTERN_DISRUPTION,
+                CamouflageStrategy.GAS_MISDIRECTION,
+                CamouflageStrategy.FAKE_SIGNAL_INJECTION
+            ])
+        
+        if 'spoof' in threat_type.lower():
+            strategies.extend([
+                CamouflageStrategy.BEHAVIOR_MIMICRY,
+                CamouflageStrategy.COORDINATED_DECEPTION
+            ])
+        
+        if 'stop_loss_hunter' in threat_type.lower():
+            strategies.extend([
+                CamouflageStrategy.PATTERN_DISRUPTION,
+                CamouflageStrategy.TEMPORAL_CONFUSION
+            ])
+        
+        # Add additional strategies based on threat level
+        if threat_level in ['high', 'critical']:
+            strategies.append(CamouflageStrategy.COORDINATED_DECEPTION)
+        
+        # Limit to maximum strategies and remove duplicates
+        strategies = list(set(strategies))[:self.config['max_camouflage_strategies']]
+        
+        return strategies
+    
+    async def _implement_threat_response(self, threat_response: ThreatResponse):
+        """Implement the threat response across all wallets"""
+        try:
+            # Update system stealth level
+            if threat_response.stealth_escalation != self.system_stealth_level:
+                await self._escalate_system_stealth(threat_response.stealth_escalation)
+            
+            # Implement camouflage strategies
+            for strategy in threat_response.camouflage_strategies:
+                await self._implement_camouflage_strategy(strategy, threat_response)
+            
+            # Update configuration parameters
+            self.config['gas_randomization_strength'] += threat_response.gas_randomization_increase
+            self.config['timing_randomization_strength'] += threat_response.timing_variance_increase
+            self.config['fake_transaction_rate'] += threat_response.fake_transaction_rate_increase
+            
+            # Activate strategy tracking
+            self.active_camouflage_strategies.extend(threat_response.camouflage_strategies)
+            
+            self.logger.info(f"🎭 Implemented threat response: {len(threat_response.camouflage_strategies)} strategies active")
+            
+        except Exception as e:
+            self.logger.error(f"Error implementing threat response: {e}")
+    
+    async def _implement_camouflage_strategy(self, strategy: CamouflageStrategy, threat_response: ThreatResponse):
+        """Implement a specific camouflage strategy"""
+        try:
+            if strategy == CamouflageStrategy.PATTERN_DISRUPTION:
+                await self._disrupt_patterns()
+            elif strategy == CamouflageStrategy.BEHAVIOR_MIMICRY:
+                await self._activate_behavior_mimicry()
+            elif strategy == CamouflageStrategy.TEMPORAL_CONFUSION:
+                await self._implement_temporal_confusion()
+            elif strategy == CamouflageStrategy.VOLUME_MASKING:
+                await self._implement_volume_masking()
+            elif strategy == CamouflageStrategy.GAS_MISDIRECTION:
+                await self._implement_gas_misdirection()
+            elif strategy == CamouflageStrategy.FAKE_SIGNAL_INJECTION:
+                await self._inject_fake_signals()
+            elif strategy == CamouflageStrategy.COORDINATED_DECEPTION:
+                await self._coordinate_deception()
+            
+            self.logger.debug(f"🎯 Implemented camouflage strategy: {strategy.value}")
+            
+        except Exception as e:
+            self.logger.error(f"Error implementing strategy {strategy.value}: {e}")
+    
+    async def _disrupt_patterns(self):
+        """Disrupt existing behavioral patterns"""
+        for wallet_id, profile in self.stealth_profiles.items():
+            # Force behavior rotation
+            await self.rotate_wallet_behavior(wallet_id)
+            
+            # Randomize all timing parameters
+            profile.timing_variance_seconds = (
+                random.randint(10, 120),
+                random.randint(180, 600)
+            )
+            
+            # Increase pattern break probability
+            profile.fake_transaction_probability = min(0.3, profile.fake_transaction_probability * 2)
+    
+    async def _activate_behavior_mimicry(self):
+        """Activate advanced behavior mimicry"""
+        if self.mimicry_targets:
+            for wallet_id, profile in self.stealth_profiles.items():
+                if random.random() < 0.6:  # 60% of wallets mimic
+                    profile.current_behavior = BehaviorPattern.MIMICKER
+                    profile.mimicry_target = random.choice(self.mimicry_targets)
+    
+    async def _implement_temporal_confusion(self):
+        """Implement temporal confusion tactics"""
+        # Add significant random delays
+        for profile in self.stealth_profiles.values():
+            profile.timing_variance_seconds = (
+                profile.timing_variance_seconds[0] * 2,
+                profile.timing_variance_seconds[1] * 3
+            )
+    
+    async def _implement_volume_masking(self):
+        """Implement volume masking techniques"""
+        for profile in self.stealth_profiles.values():
+            profile.position_size_variance = min(0.8, profile.position_size_variance * 1.5)
+    
+    async def _implement_gas_misdirection(self):
+        """Implement gas price misdirection"""
+        # Dramatically increase gas randomization
+        self.config['gas_randomization_strength'] = min(0.9, self.config['gas_randomization_strength'] * 2)
+    
+    async def _inject_fake_signals(self):
+        """Inject fake signals to confuse competing bots"""
+        for profile in self.stealth_profiles.values():
+            profile.fake_transaction_probability = min(0.4, profile.fake_transaction_probability * 3)
+    
+    async def _coordinate_deception(self):
+        """Coordinate deception across the swarm"""
+        # Implement coordinated fake movements
+        selected_wallets = random.sample(list(self.stealth_profiles.keys()), 
+                                       min(3, len(self.stealth_profiles)))
+        
+        for wallet_id in selected_wallets:
+            profile = self.stealth_profiles[wallet_id]
+            profile.fake_transaction_probability = 0.5  # High fake rate for coordination
+    
+    def _determine_response_mode(self, threat_level) -> ThreatResponseMode:
+        """Determine appropriate response mode based on threat level"""
+        if threat_level.value == 'critical':
+            return ThreatResponseMode.GHOST_PROTOCOL
+        elif threat_level.value == 'high':
+            return ThreatResponseMode.ADAPTIVE
+        elif threat_level.value == 'moderate':
+            return ThreatResponseMode.PREDICTIVE
+        else:
+            return ThreatResponseMode.REACTIVE
+    
+    def _determine_stealth_escalation(self, threat_level, strategy_count: int) -> StealthLevel:
+        """Determine stealth escalation level"""
+        if threat_level.value == 'critical' or strategy_count >= 3:
+            return StealthLevel.GHOST
+        elif threat_level.value == 'high':
+            return StealthLevel.NINJA
+        elif threat_level.value == 'moderate':
+            return StealthLevel.SHADOW
+        else:
+            return StealthLevel.NORMAL
+    
+    def _calculate_response_parameters(self, threat_signature: Any, strategies: List[CamouflageStrategy]) -> Dict[str, Any]:
+        """Calculate response parameters based on threat and strategies"""
+        base_multiplier = len(strategies) * 0.2
+        
+        return {
+            'gas_increase': base_multiplier * 0.3,
+            'timing_increase': base_multiplier * 0.4,
+            'fake_rate_increase': base_multiplier * 0.1,
+            'rotation_frequency': max(1.0, 8.0 - base_multiplier * 2),  # Hours
+            'duration_minutes': 30 + len(strategies) * 10
+        }
+    
+    async def _emergency_ghost_protocol(self) -> ThreatResponse:
+        """Emergency ghost protocol for critical situations"""
+        return ThreatResponse(
+            threat_id="emergency_ghost",
+            threat_type="unknown_critical",
+            response_mode=ThreatResponseMode.GHOST_PROTOCOL,
+            camouflage_strategies=[
+                CamouflageStrategy.PATTERN_DISRUPTION,
+                CamouflageStrategy.COORDINATED_DECEPTION,
+                CamouflageStrategy.FAKE_SIGNAL_INJECTION
+            ],
+            stealth_escalation=StealthLevel.GHOST,
+            gas_randomization_increase=0.5,
+            timing_variance_increase=0.7,
+            fake_transaction_rate_increase=0.2,
+            behavior_rotation_frequency=1.0,
+            implemented_at=datetime.now(),
+            duration_minutes=60
+        )
+    
+    def get_dynamic_camouflage_status(self) -> Dict[str, Any]:
+        """Get comprehensive dynamic camouflage status"""
+        return {
+            'threat_response_mode': self.threat_response_mode.value,
+            'active_threat_responses': len(self.threat_responses),
+            'active_camouflage_strategies': [s.value for s in self.active_camouflage_strategies],
+            'system_stealth_level': self.system_stealth_level.value,
+            'camouflage_effectiveness': dict(self.camouflage_effectiveness),
+            'enhanced_config': {
+                'gas_randomization_strength': self.config['gas_randomization_strength'],
+                'timing_randomization_strength': self.config['timing_randomization_strength'],
+                'fake_transaction_rate': self.config['fake_transaction_rate']
+            },
+            'dynamic_camouflage_active': True,
+            'adaptive_countermeasures': 'ENABLED'
+        }
+    
+    # Placeholder implementations for methods referenced above
+    async def _adjust_camouflage_for_threat_level(self, threat_assessment: Any):
+        """Adjust camouflage based on threat assessment"""
+        pass
+    
+    async def _evaluate_camouflage_effectiveness(self):
+        """Evaluate effectiveness of current camouflage strategies"""
+        pass
+    
+    async def _deactivate_threat_response(self, threat_id: str):
+        """Deactivate an expired threat response"""
+        if threat_id in self.threat_responses:
+            response = self.threat_responses[threat_id]
+            # Remove strategies from active list
+            for strategy in response.camouflage_strategies:
+                if strategy in self.active_camouflage_strategies:
+                    self.active_camouflage_strategies.remove(strategy)
+            del self.threat_responses[threat_id]
+            self.logger.info(f"🎭 Deactivated threat response: {threat_id}")
+    
+    async def _escalate_system_stealth(self, new_level: StealthLevel):
+        """Escalate system-wide stealth level"""
+        self.system_stealth_level = new_level
+        for profile in self.stealth_profiles.values():
+            profile.stealth_level = new_level
+        self.logger.warning(f"🥷 System stealth escalated to: {new_level.value}")
 
 
 _stealth_operations = None
