@@ -51,7 +51,7 @@ class MLModelTrainer:
         
         try:
             # Load training data
-            training_data = self._load_training_data(data_path)
+            training_data = await self._load_training_data(data_path)
             
             # Initialize Oracle Ant
             oracle_ant = OracleAntPredictor()
@@ -110,8 +110,12 @@ class MLModelTrainer:
                 
                 # Episode loop
                 while True:
-                    # Generate synthetic market data for training
-                    market_data = self._generate_synthetic_market_data()
+                    # Get real market data for training
+                    # Use a sample token for training (BONK as example)
+                    sample_token = "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263"
+                    # Use a random historical timestamp for training
+                    training_timestamp = datetime.now() - timedelta(hours=episode_length)
+                    market_data = await self._get_real_market_data(sample_token, training_timestamp)
                     
                     # Get action from agent
                     action, value = await hunter_ant.act(market_data)
@@ -155,7 +159,7 @@ class MLModelTrainer:
         
         try:
             # Load graph data
-            graph_data = self._load_graph_data(graph_data_path)
+            graph_data = await self._load_graph_data(graph_data_path)
             
             # Initialize Network Ant
             network_ant = NetworkAntPredictor()
@@ -194,7 +198,7 @@ class MLModelTrainer:
             self.logger.error(f"❌ Network Ant training failed: {e}")
             raise
     
-    def _load_training_data(self, data_path: str) -> List[Dict[str, Any]]:
+    async def _load_training_data(self, data_path: str) -> List[Dict[str, Any]]:
         """Load training data for Oracle Ant"""
         
         try:
@@ -206,10 +210,10 @@ class MLModelTrainer:
             
         except Exception as e:
             self.logger.error(f"Failed to load training data: {e}")
-            # Return synthetic data for testing
-            return self._generate_synthetic_oracle_data()
+            # Return real historical data from database
+            return await self._get_oracle_training_data_from_db()
     
-    def _load_graph_data(self, graph_data_path: str) -> Dict[str, Any]:
+    async def _load_graph_data(self, graph_data_path: str) -> Dict[str, Any]:
         """Load graph data for Network Ant"""
         
         try:
@@ -221,8 +225,8 @@ class MLModelTrainer:
             
         except Exception as e:
             self.logger.error(f"Failed to load graph data: {e}")
-            # Return synthetic graph data for testing
-            return self._generate_synthetic_graph_data()
+            # Return real graph data from database
+            return await self._get_graph_data_from_db()
     
     def _prepare_oracle_training_data(self, data: List[Dict[str, Any]], 
                                     batch_size: int) -> List[List[Dict[str, Any]]]:
@@ -269,11 +273,70 @@ class MLModelTrainer:
         # For now, return a dummy loss
         return 0.1
     
-    def _generate_synthetic_market_data(self) -> Dict[str, Any]:
-        """Generate synthetic market data for Hunter Ant training"""
-        
+    async def _get_real_market_data(self, token_address: str, timestamp: datetime) -> Dict[str, Any]:
+        """Get real market data from historical database"""
+        try:
+            from worker_ant_v1.core.database import get_database_manager
+            db_manager = await get_database_manager()
+            
+            # Query historical data around the timestamp
+            start_time = timestamp - timedelta(hours=1)
+            end_time = timestamp + timedelta(hours=1)
+            
+            # Get price data from performance_metrics table
+            async with db_manager.pool.acquire() as conn:
+                # Get latest price data
+                price_row = await conn.fetchrow("""
+                    SELECT value, labels FROM performance_metrics 
+                    WHERE metric_name = 'token_price_usd' 
+                    AND labels->>'token_address' = $1 
+                    AND timestamp BETWEEN $2 AND $3 
+                    ORDER BY timestamp DESC LIMIT 1
+                """, token_address, start_time, end_time)
+                
+                if not price_row:
+                    return self._get_fallback_market_data()
+                
+                price = float(price_row['value'])
+                labels = json.loads(price_row['labels']) if price_row['labels'] else {}
+                
+                # Extract additional data from labels
+                volume_24h = float(labels.get('volume_24h', 0))
+                market_cap = float(labels.get('market_cap', 0)) if labels.get('market_cap') else None
+                price_change_24h = float(labels.get('price_change_24h', 0)) if labels.get('price_change_24h') else 0
+                
+                # Calculate technical indicators from historical prices
+                tech_indicators = await self._calculate_technical_indicators(
+                    token_address, timestamp, conn
+                )
+                
+                return {
+                    'current_price': price,
+                    'current_volume': volume_24h,
+                    'price_change_1h': price_change_24h * 0.5,  # Approximate
+                    'price_change_24h': price_change_24h,
+                    'liquidity': volume_24h * 10,  # Rough estimate
+                    'holder_count': market_cap / price if market_cap and price > 0 else 1000,
+                    'sentiment_score': min(max(price_change_24h / 10, -1.0), 1.0),  # Derived from price change
+                    'rsi': tech_indicators.get('rsi', 50),
+                    'macd': tech_indicators.get('macd', 0),
+                    'bollinger_position': tech_indicators.get('bollinger_position', 0.5),
+                    'moving_average_ratio': tech_indicators.get('ma_ratio', 1.0),
+                    'price_volatility': tech_indicators.get('volatility', 0.1),
+                    'volume_ma_ratio': tech_indicators.get('volume_ma_ratio', 1.0),
+                    'liquidity_ratio': 1.0,  # Default
+                    'market_cap': market_cap or price * 1000000
+                }
+                
+        except Exception as e:
+            self.logger.error(f"Failed to get real market data: {e}")
+            return self._get_fallback_market_data()
+    
+    def _get_fallback_market_data(self) -> Dict[str, Any]:
+        """Fallback market data when real data is unavailable"""
         import random
-        import numpy as np
+        
+        self.logger.warning("Using fallback market data - consider running data ingestion")
         
         return {
             'current_price': random.uniform(0.001, 1.0),
@@ -292,6 +355,91 @@ class MLModelTrainer:
             'liquidity_ratio': random.uniform(0.5, 2.0),
             'market_cap': random.uniform(100000, 10000000)
         }
+    
+    async def _calculate_technical_indicators(self, token_address: str, 
+                                            timestamp: datetime, 
+                                            conn) -> Dict[str, float]:
+        """Calculate technical indicators from historical price data"""
+        try:
+            # Get 50 hours of historical data for technical analysis
+            start_time = timestamp - timedelta(hours=50)
+            
+            rows = await conn.fetch("""
+                SELECT timestamp, value FROM performance_metrics 
+                WHERE metric_name = 'token_price_usd' 
+                AND labels->>'token_address' = $1 
+                AND timestamp BETWEEN $2 AND $3 
+                ORDER BY timestamp DESC
+            """, token_address, start_time, timestamp)
+            
+            if len(rows) < 10:
+                return {'rsi': 50, 'macd': 0, 'bollinger_position': 0.5, 'ma_ratio': 1.0, 'volatility': 0.1, 'volume_ma_ratio': 1.0}
+            
+            prices = [float(row['value']) for row in rows]
+            
+            # Calculate RSI
+            rsi = self._calculate_rsi(prices)
+            
+            # Calculate moving average ratio
+            if len(prices) >= 20:
+                ma_20 = sum(prices[:20]) / 20
+                ma_ratio = prices[0] / ma_20 if ma_20 > 0 else 1.0
+            else:
+                ma_ratio = 1.0
+            
+            # Calculate volatility (standard deviation of returns)
+            if len(prices) >= 2:
+                returns = [(prices[i] - prices[i+1]) / prices[i+1] for i in range(len(prices)-1) if prices[i+1] > 0]
+                if returns:
+                    volatility = (sum([(r - sum(returns)/len(returns))**2 for r in returns]) / len(returns)) ** 0.5
+                else:
+                    volatility = 0.1
+            else:
+                volatility = 0.1
+            
+            return {
+                'rsi': rsi,
+                'macd': 0,  # Simplified
+                'bollinger_position': min(max((prices[0] - ma_20) / (volatility * ma_20), 0), 1) if ma_20 > 0 else 0.5,
+                'ma_ratio': ma_ratio,
+                'volatility': volatility,
+                'volume_ma_ratio': 1.0  # Would need volume data
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Failed to calculate technical indicators: {e}")
+            return {'rsi': 50, 'macd': 0, 'bollinger_position': 0.5, 'ma_ratio': 1.0, 'volatility': 0.1, 'volume_ma_ratio': 1.0}
+    
+    def _calculate_rsi(self, prices: List[float], period: int = 14) -> float:
+        """Calculate RSI indicator"""
+        if len(prices) < period + 1:
+            return 50  # Neutral RSI
+        
+        gains = []
+        losses = []
+        
+        for i in range(1, min(len(prices), period + 1)):
+            change = prices[i-1] - prices[i]
+            if change > 0:
+                gains.append(change)
+                losses.append(0)
+            else:
+                gains.append(0)
+                losses.append(-change)
+        
+        if not gains or not losses:
+            return 50
+        
+        avg_gain = sum(gains) / len(gains)
+        avg_loss = sum(losses) / len(losses)
+        
+        if avg_loss == 0:
+            return 100
+        
+        rs = avg_gain / avg_loss
+        rsi = 100 - (100 / (1 + rs))
+        
+        return max(0, min(100, rsi))
     
     def _simulate_market_step(self, action: int, market_data: Dict[str, Any]) -> float:
         """Simulate market step for Hunter Ant training"""
@@ -320,15 +468,93 @@ class MLModelTrainer:
         noise = random.uniform(-0.02, 0.02)
         return base_reward + noise
     
-    def _generate_synthetic_oracle_data(self) -> List[Dict[str, Any]]:
-        """Generate synthetic training data for Oracle Ant"""
-        
+    async def _get_oracle_training_data_from_db(self) -> List[Dict[str, Any]]:
+        """Get real Oracle training data from historical database"""
+        try:
+            from worker_ant_v1.core.database import get_database_manager
+            db_manager = await get_database_manager()
+            
+            # Get 30 days of historical price data for training
+            end_time = datetime.now()
+            start_time = end_time - timedelta(days=30)
+            
+            training_data = []
+            
+            # Sample tokens for training
+            training_tokens = [
+                "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263",  # BONK
+                "7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr",  # POPCAT
+                "WENWENvqqNya429ubCdR81ZmD69brwQaaBYY6p3LCpk",   # WEN
+            ]
+            
+            async with db_manager.pool.acquire() as conn:
+                for token_address in training_tokens:
+                    rows = await conn.fetch("""
+                        SELECT timestamp, value, labels FROM performance_metrics 
+                        WHERE metric_name = 'token_price_usd' 
+                        AND labels->>'token_address' = $1 
+                        AND timestamp BETWEEN $2 AND $3 
+                        ORDER BY timestamp ASC
+                    """, token_address, start_time, end_time)
+                    
+                    if len(rows) < 50:
+                        continue
+                    
+                    # Group into sequences of 50 time steps
+                    for i in range(0, len(rows) - 50, 10):  # Overlapping windows
+                        sequence = rows[i:i+50]
+                        
+                        price_history = []
+                        volume_history = []
+                        sentiment_history = []
+                        
+                        for row in sequence:
+                            price = float(row['value'])
+                            labels = json.loads(row['labels']) if row['labels'] else {}
+                            volume = float(labels.get('volume_24h', 0))
+                            price_change = float(labels.get('price_change_24h', 0))
+                            
+                            price_history.append({
+                                'price': price,
+                                'timestamp': row['timestamp'].timestamp()
+                            })
+                            volume_history.append({
+                                'volume': volume,
+                                'timestamp': row['timestamp'].timestamp()
+                            })
+                            sentiment_history.append({
+                                'score': min(max(price_change / 10, -1.0), 1.0),  # Derived sentiment
+                                'timestamp': row['timestamp'].timestamp()
+                            })
+                        
+                        training_data.append({
+                            'token_address': token_address,
+                            'price_history': price_history,
+                            'volume_history': volume_history,
+                            'sentiment_history': sentiment_history,
+                            'liquidity_history': [{'liquidity': vol['volume'] * 10} for vol in volume_history],
+                            'holder_history': [{'count': int(price_history[j]['price'] * 1000)} for j in range(len(price_history))]
+                        })
+            
+            if len(training_data) < 10:
+                self.logger.warning("Insufficient real data, generating minimal fallback dataset")
+                return self._generate_minimal_oracle_data()
+            
+            self.logger.info(f"Loaded {len(training_data)} real Oracle training sequences from database")
+            return training_data
+            
+        except Exception as e:
+            self.logger.error(f"Failed to get Oracle training data from database: {e}")
+            return self._generate_minimal_oracle_data()
+    
+    def _generate_minimal_oracle_data(self) -> List[Dict[str, Any]]:
+        """Generate minimal training data when database is empty"""
         import random
-        import numpy as np
+        
+        self.logger.warning("Using minimal fallback Oracle data - run data ingestion for better results")
         
         data = []
-        for i in range(1000):
-            # Generate 50 time steps of data
+        for i in range(100):  # Minimal dataset
             price_history = []
             volume_history = []
             sentiment_history = []
@@ -337,60 +563,167 @@ class MLModelTrainer:
             base_volume = random.uniform(1000, 100000)
             
             for t in range(50):
-                # Add some trend and noise
-                price = base_price * (1 + 0.1 * np.sin(t * 0.1) + random.uniform(-0.05, 0.05))
-                volume = base_volume * (1 + random.uniform(-0.3, 0.3))
-                sentiment = random.uniform(-1.0, 1.0)
+                price = base_price * (1 + random.uniform(-0.02, 0.02))  # Small variations
+                volume = base_volume * (1 + random.uniform(-0.1, 0.1))
                 
                 price_history.append({'price': price, 'timestamp': t})
                 volume_history.append({'volume': volume, 'timestamp': t})
-                sentiment_history.append({'score': sentiment, 'timestamp': t})
+                sentiment_history.append({'score': 0, 'timestamp': t})  # Neutral sentiment
             
             data.append({
-                'token_address': f'token_{i}',
+                'token_address': f'fallback_token_{i}',
                 'price_history': price_history,
                 'volume_history': volume_history,
                 'sentiment_history': sentiment_history,
-                'liquidity_history': [{'liquidity': random.uniform(10000, 500000)} for _ in range(50)],
-                'holder_history': [{'count': random.randint(50, 5000)} for _ in range(50)]
+                'liquidity_history': [{'liquidity': 50000} for _ in range(50)],
+                'holder_history': [{'count': 1000} for _ in range(50)]
             })
         
         return data
     
-    def _generate_synthetic_graph_data(self) -> Dict[str, Any]:
-        """Generate synthetic graph data for Network Ant"""
-        
+    async def _get_graph_data_from_db(self) -> Dict[str, Any]:
+        """Get real graph data from historical database"""
+        try:
+            from worker_ant_v1.core.database import get_database_manager
+            db_manager = await get_database_manager()
+            
+            # Get trading data for graph construction
+            end_time = datetime.now()
+            start_time = end_time - timedelta(days=7)  # Last week
+            
+            wallets = []
+            edges = []
+            
+            async with db_manager.pool.acquire() as conn:
+                # Get trade data grouped by wallet
+                rows = await conn.fetch("""
+                    SELECT wallet_id, token_address, trade_type, amount_sol, amount_tokens, 
+                           success, profit_loss_sol, timestamp
+                    FROM trades 
+                    WHERE timestamp BETWEEN $1 AND $2 
+                    ORDER BY wallet_id, timestamp
+                """, start_time, end_time)
+                
+                if len(rows) < 10:
+                    return self._generate_minimal_graph_data()
+                
+                # Analyze wallet performance
+                wallet_stats = {}
+                for row in rows:
+                    wallet_id = row['wallet_id']
+                    if wallet_id not in wallet_stats:
+                        wallet_stats[wallet_id] = {
+                            'trades': [],
+                            'total_volume': 0,
+                            'total_profit': 0,
+                            'successful_trades': 0,
+                            'total_trades': 0
+                        }
+                    
+                    stats = wallet_stats[wallet_id]
+                    stats['trades'].append(row)
+                    stats['total_volume'] += float(row['amount_sol'] or 0)
+                    stats['total_profit'] += float(row['profit_loss_sol'] or 0)
+                    stats['total_trades'] += 1
+                    if row['success']:
+                        stats['successful_trades'] += 1
+                
+                # Create wallet nodes
+                for wallet_id, stats in wallet_stats.items():
+                    success_rate = stats['successful_trades'] / stats['total_trades'] if stats['total_trades'] > 0 else 0
+                    avg_profit = stats['total_profit'] / stats['total_trades'] if stats['total_trades'] > 0 else 0
+                    
+                    # Classify wallet behavior
+                    behavior_type = "organic_trader"
+                    if success_rate > 0.8 and avg_profit > 0.5:
+                        behavior_type = "smart_money"
+                    elif success_rate > 0.7 and stats['total_volume'] > 100:
+                        behavior_type = "whale"
+                    elif success_rate > 0.6 and stats['total_trades'] > 50:
+                        behavior_type = "sniper"
+                    
+                    wallet_node = {
+                        'address': wallet_id,
+                        'success_rate': success_rate,
+                        'profit_factor': max(stats['total_profit'], 0.1),
+                        'avg_position_size': stats['total_volume'] / stats['total_trades'] if stats['total_trades'] > 0 else 1.0,
+                        'trade_frequency': stats['total_trades'],
+                        'risk_score': min(abs(avg_profit) / 10, 1.0),
+                        'win_rate': success_rate,
+                        'avg_profit_per_trade': avg_profit,
+                        'max_drawdown': 0.1,  # Would need more complex calculation
+                        'total_trades': stats['total_trades'],
+                        'total_volume': stats['total_volume'],
+                        'behavior_type': behavior_type
+                    }
+                    wallets.append(wallet_node)
+                
+                # Create transaction edges
+                edge_count = 0
+                for row in rows[:200]:  # Limit edges for performance
+                    edge = {
+                        'from': row['wallet_id'],
+                        'to': row['token_address'],  # Represent wallet -> token relationships
+                        'token_address': row['token_address'],
+                        'amount': float(row['amount_sol'] or 0),
+                        'gas_fee': 0.001,  # Estimate
+                        'timestamp': row['timestamp'].timestamp(),
+                        'trade_type': row['trade_type'],
+                        'success': row['success']
+                    }
+                    edges.append(edge)
+                    edge_count += 1
+            
+            if len(wallets) < 5:
+                return self._generate_minimal_graph_data()
+            
+            self.logger.info(f"Loaded graph data: {len(wallets)} wallets, {len(edges)} edges")
+            return {
+                'nodes': wallets,
+                'edges': edges
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Failed to get graph data from database: {e}")
+            return self._generate_minimal_graph_data()
+    
+    def _generate_minimal_graph_data(self) -> Dict[str, Any]:
+        """Generate minimal graph data when database is empty"""
         import random
         
-        # Generate synthetic wallets
+        self.logger.warning("Using minimal fallback graph data - run data ingestion for better results")
+        
+        # Generate minimal synthetic wallets
         wallets = []
-        for i in range(100):
+        for i in range(20):  # Smaller dataset
             wallet_data = {
-                'address': f'wallet_{i}',
-                'success_rate': random.uniform(0.3, 0.9),
-                'profit_factor': random.uniform(0.5, 3.0),
-                'avg_position_size': random.uniform(0.1, 2.0),
-                'trade_frequency': random.uniform(1, 100),
-                'risk_score': random.uniform(0.1, 0.9),
-                'win_rate': random.uniform(0.3, 0.8),
-                'avg_profit_per_trade': random.uniform(-0.1, 0.3),
-                'max_drawdown': random.uniform(0.1, 0.5),
-                'total_trades': random.randint(10, 1000),
-                'total_volume': random.uniform(1000, 1000000),
-                'behavior_type': random.choice(['smart_money', 'sniper', 'whale', 'organic_trader'])
+                'address': f'fallback_wallet_{i}',
+                'success_rate': 0.5,
+                'profit_factor': 1.0,
+                'avg_position_size': 1.0,
+                'trade_frequency': 10,
+                'risk_score': 0.5,
+                'win_rate': 0.5,
+                'avg_profit_per_trade': 0.0,
+                'max_drawdown': 0.1,
+                'total_trades': 10,
+                'total_volume': 100,
+                'behavior_type': 'organic_trader'
             }
             wallets.append(wallet_data)
         
-        # Generate synthetic transactions
+        # Generate minimal transactions
         edges = []
-        for i in range(200):
+        for i in range(50):  # Fewer edges
             edge = {
-                'from': f'wallet_{random.randint(0, 99)}',
-                'to': f'wallet_{random.randint(0, 99)}',
-                'token_address': f'token_{random.randint(0, 50)}',
-                'amount': random.uniform(0.1, 10.0),
-                'gas_fee': random.uniform(0.001, 0.1),
-                'timestamp': random.randint(0, 1000)
+                'from': f'fallback_wallet_{i % 20}',
+                'to': f'token_{i % 10}',
+                'token_address': f'token_{i % 10}',
+                'amount': 1.0,
+                'gas_fee': 0.001,
+                'timestamp': i,
+                'trade_type': 'BUY',
+                'success': True
             }
             edges.append(edge)
         

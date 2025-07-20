@@ -18,12 +18,16 @@ import asyncio
 import os
 import signal
 import sys
+import uuid
+import socket
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, List, Optional, Any
 from dataclasses import dataclass, field
 from enum import Enum
 import logging
+import redis.asyncio as redis
+import json
 
 # Add the project root to the path
 sys.path.append(str(Path(__file__).parent.parent))
@@ -37,11 +41,20 @@ from worker_ant_v1.utils.logger import get_logger
 class ColonyState(Enum):
     """Colony operational states"""
     INITIALIZING = "initializing"
+    STANDBY = "standby"
     ACTIVE = "active"
     REBALANCING = "rebalancing"
     BLITZSCALING = "blitzscaling"
     EMERGENCY = "emergency"
     SHUTDOWN = "shutdown"
+
+
+class LeadershipState(Enum):
+    """HA leadership states"""
+    CANDIDATE = "candidate"
+    FOLLOWER = "follower" 
+    LEADER = "leader"
+    FAILED = "failed"
 
 
 @dataclass
@@ -73,10 +86,24 @@ class ColonyMetrics:
 
 
 class ColonyCommander:
-    """Top-level holon managing the entire trading colony"""
+    """Top-level holon managing the entire trading colony with HA support"""
     
-    def __init__(self):
+    def __init__(self, enable_ha: bool = True):
         self.logger = get_logger("ColonyCommander")
+        
+        # HA Configuration
+        self.enable_ha = enable_ha
+        self.instance_id = str(uuid.uuid4())[:8]
+        self.hostname = socket.gethostname()
+        self.leadership_state = LeadershipState.CANDIDATE
+        self.redis_client: Optional[redis.Redis] = None
+        
+        # HA Constants
+        self.LEADER_LOCK_KEY = "antbot:colony:leader"
+        self.HEARTBEAT_KEY = "antbot:colony:heartbeat"
+        self.LEADER_TTL = 30  # Leader lock TTL in seconds
+        self.HEARTBEAT_INTERVAL = 10  # Heartbeat interval in seconds
+        self.ELECTION_TIMEOUT = 15  # Election timeout in seconds
         
         # Colony state
         self.state = ColonyState.INITIALIZING
@@ -106,12 +133,21 @@ class ColonyCommander:
         self.running = False
         self.start_time = None
         
-        self.logger.info("🏛️ Colony Commander initialized")
+        # HA background tasks
+        self._ha_tasks: List[asyncio.Task] = []
+        
+        self.logger.info(f"🏛️ Colony Commander initialized (HA: {enable_ha}, ID: {self.instance_id})")
     
     async def initialize_colony(self) -> bool:
-        """Initialize the entire trading colony"""
+        """Initialize the entire trading colony with HA support"""
         try:
             self.logger.info("🏛️ Initializing Trading Colony...")
+            
+            # Initialize HA system if enabled
+            if self.enable_ha:
+                if not await self._initialize_ha():
+                    self.logger.error("❌ HA initialization failed")
+                    return False
             
             # Initialize master vault
             self.master_vault = await get_vault_system()
@@ -119,22 +155,21 @@ class ColonyCommander:
             # Load swarm configurations
             await self._load_swarm_configurations()
             
-            # Initialize swarms
-            await self._initialize_swarms()
-            
             # Set up signal handlers
             signal.signal(signal.SIGINT, self._signal_handler)
             signal.signal(signal.SIGTERM, self._signal_handler)
             
-            # Start background tasks
-            asyncio.create_task(self._colony_monitoring_loop())
-            asyncio.create_task(self._performance_analysis_loop())
-            asyncio.create_task(self._operational_mode_loop())
-            
-            self.state = ColonyState.ACTIVE
             self.initialized = True
             self.running = True
             self.start_time = datetime.now()
+            
+            if self.enable_ha:
+                # Start HA processes
+                await self._start_ha_processes()
+            else:
+                # Single instance mode - become leader immediately
+                self.leadership_state = LeadershipState.LEADER
+                await self._become_active_leader()
             
             self.logger.info("✅ Trading Colony initialized successfully")
             return True
@@ -142,6 +177,237 @@ class ColonyCommander:
         except Exception as e:
             self.logger.error(f"❌ Colony initialization failed: {e}")
             return False
+    
+    async def _initialize_ha(self) -> bool:
+        """Initialize High Availability Redis connection"""
+        try:
+            # Connect to Redis
+            redis_host = os.getenv('REDIS_HOST', 'localhost')
+            redis_port = int(os.getenv('REDIS_PORT', '6379'))
+            redis_password = os.getenv('REDIS_PASSWORD')
+            
+            self.redis_client = redis.Redis(
+                host=redis_host,
+                port=redis_port,
+                password=redis_password,
+                decode_responses=True,
+                socket_connect_timeout=5,
+                socket_timeout=5,
+                retry_on_timeout=True
+            )
+            
+            # Test connection
+            await self.redis_client.ping()
+            self.logger.info(f"✅ Connected to Redis at {redis_host}:{redis_port}")
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"❌ Failed to connect to Redis: {e}")
+            return False
+    
+    async def _start_ha_processes(self):
+        """Start HA background processes"""
+        if not self.redis_client:
+            return
+        
+        # Start leader election task
+        election_task = asyncio.create_task(self._leader_election_loop())
+        self._ha_tasks.append(election_task)
+        
+        self.logger.info("🔄 HA processes started")
+    
+    async def _leader_election_loop(self):
+        """Main leader election loop"""
+        while self.running:
+            try:
+                if self.leadership_state == LeadershipState.CANDIDATE:
+                    await self._attempt_leader_election()
+                elif self.leadership_state == LeadershipState.LEADER:
+                    await self._maintain_leadership()
+                elif self.leadership_state == LeadershipState.FOLLOWER:
+                    await self._follow_leader()
+                
+                await asyncio.sleep(5)  # Check every 5 seconds
+                
+            except Exception as e:
+                self.logger.error(f"❌ Leader election error: {e}")
+                self.leadership_state = LeadershipState.FAILED
+                await asyncio.sleep(10)  # Back off on error
+    
+    async def _attempt_leader_election(self):
+        """Attempt to become the leader"""
+        try:
+            # Try to acquire the leader lock
+            leader_info = {
+                'instance_id': self.instance_id,
+                'hostname': self.hostname,
+                'elected_at': datetime.now().isoformat(),
+                'heartbeat': datetime.now().isoformat()
+            }
+            
+            # Use SET with NX (only set if key doesn't exist) and EX (expiration)
+            acquired = await self.redis_client.set(
+                self.LEADER_LOCK_KEY, 
+                json.dumps(leader_info),
+                nx=True,  # Only set if key doesn't exist
+                ex=self.LEADER_TTL  # Expiration time
+            )
+            
+            if acquired:
+                self.leadership_state = LeadershipState.LEADER
+                self.logger.info(f"🏆 Became colony leader (ID: {self.instance_id})")
+                await self._become_active_leader()
+            else:
+                # Check if current leader is alive
+                await self._check_current_leader()
+                
+        except Exception as e:
+            self.logger.error(f"❌ Leader election failed: {e}")
+            self.leadership_state = LeadershipState.FAILED
+    
+    async def _maintain_leadership(self):
+        """Maintain leadership by updating heartbeat"""
+        try:
+            # Update heartbeat
+            leader_info = {
+                'instance_id': self.instance_id,
+                'hostname': self.hostname,
+                'elected_at': self.start_time.isoformat() if self.start_time else datetime.now().isoformat(),
+                'heartbeat': datetime.now().isoformat()
+            }
+            
+            # Extend the lock
+            updated = await self.redis_client.set(
+                self.LEADER_LOCK_KEY,
+                json.dumps(leader_info),
+                ex=self.LEADER_TTL
+            )
+            
+            if not updated:
+                self.logger.warning("⚠️ Lost leadership - failed to update lock")
+                self.leadership_state = LeadershipState.CANDIDATE
+                await self._become_standby()
+            
+        except Exception as e:
+            self.logger.error(f"❌ Failed to maintain leadership: {e}")
+            self.leadership_state = LeadershipState.CANDIDATE
+            await self._become_standby()
+    
+    async def _follow_leader(self):
+        """Follow the current leader"""
+        try:
+            # Check if leader is still active
+            await self._check_current_leader()
+            
+            # Ensure we're in standby mode
+            if self.state != ColonyState.STANDBY:
+                await self._become_standby()
+                
+        except Exception as e:
+            self.logger.error(f"❌ Error following leader: {e}")
+            self.leadership_state = LeadershipState.CANDIDATE
+    
+    async def _check_current_leader(self):
+        """Check if current leader is alive"""
+        try:
+            leader_data = await self.redis_client.get(self.LEADER_LOCK_KEY)
+            
+            if not leader_data:
+                # No leader - become candidate
+                self.leadership_state = LeadershipState.CANDIDATE
+                return
+            
+            leader_info = json.loads(leader_data)
+            leader_heartbeat = datetime.fromisoformat(leader_info['heartbeat'])
+            current_time = datetime.now()
+            
+            # Check if heartbeat is stale
+            if (current_time - leader_heartbeat).total_seconds() > self.LEADER_TTL * 2:
+                self.logger.warning("⚠️ Leader heartbeat stale - starting new election")
+                # Try to delete stale lock
+                await self.redis_client.delete(self.LEADER_LOCK_KEY)
+                self.leadership_state = LeadershipState.CANDIDATE
+            else:
+                # Leader is alive
+                if leader_info['instance_id'] != self.instance_id:
+                    self.leadership_state = LeadershipState.FOLLOWER
+                    
+        except Exception as e:
+            self.logger.error(f"❌ Failed to check leader: {e}")
+            self.leadership_state = LeadershipState.CANDIDATE
+    
+    async def _become_active_leader(self):
+        """Transition to active leader state"""
+        try:
+            self.logger.info("🚀 Transitioning to active leader")
+            
+            # Initialize swarms
+            await self._initialize_swarms()
+            
+            # Start colony management tasks
+            management_tasks = [
+                asyncio.create_task(self._colony_monitoring_loop()),
+                asyncio.create_task(self._performance_analysis_loop()),
+                asyncio.create_task(self._operational_mode_loop())
+            ]
+            
+            self._ha_tasks.extend(management_tasks)
+            self.state = ColonyState.ACTIVE
+            
+            self.logger.info("✅ Colony Commander is now active leader")
+            
+        except Exception as e:
+            self.logger.error(f"❌ Failed to become active leader: {e}")
+            self.leadership_state = LeadershipState.FAILED
+    
+    async def _become_standby(self):
+        """Transition to standby state"""
+        try:
+            if self.state == ColonyState.STANDBY:
+                return
+            
+            self.logger.info("⏸️ Transitioning to standby mode")
+            
+            # Shutdown swarms
+            for swarm in self.swarms.values():
+                try:
+                    if hasattr(swarm, 'pause'):
+                        await swarm.pause()
+                    elif hasattr(swarm, 'shutdown'):
+                        await swarm.shutdown()
+                except Exception as e:
+                    self.logger.error(f"Error shutting down swarm: {e}")
+            
+            # Cancel management tasks (keep HA tasks)
+            for task in self._ha_tasks[1:]:  # Skip the election task
+                if not task.done():
+                    task.cancel()
+            
+            self.swarms.clear()
+            self.state = ColonyState.STANDBY
+            
+            self.logger.info("✅ Colony Commander is now in standby")
+            
+        except Exception as e:
+            self.logger.error(f"❌ Failed to become standby: {e}")
+    
+    def is_leader(self) -> bool:
+        """Check if this instance is the current leader"""
+        return self.leadership_state == LeadershipState.LEADER and self.state == ColonyState.ACTIVE
+    
+    def get_ha_status(self) -> Dict[str, Any]:
+        """Get HA status information"""
+        return {
+            'instance_id': self.instance_id,
+            'hostname': self.hostname,
+            'leadership_state': self.leadership_state.value,
+            'colony_state': self.state.value,
+            'is_leader': self.is_leader(),
+            'ha_enabled': self.enable_ha,
+            'running': self.running,
+            'active_swarms': len(self.swarms),
+            'start_time': self.start_time.isoformat() if self.start_time else None
+        }
     
     async def _load_swarm_configurations(self):
         """Load configurations for all trading swarms"""
@@ -515,12 +781,36 @@ class ColonyCommander:
         }
     
     async def shutdown(self):
-        """Shutdown the entire colony"""
+        """Shutdown the entire colony with HA cleanup"""
         try:
             self.logger.info("🛑 Shutting down Trading Colony...")
             
             self.running = False
             self.state = ColonyState.SHUTDOWN
+            
+            # HA cleanup
+            if self.enable_ha and self.redis_client:
+                try:
+                    # Release leader lock if we hold it
+                    if self.leadership_state == LeadershipState.LEADER:
+                        leader_data = await self.redis_client.get(self.LEADER_LOCK_KEY)
+                        if leader_data:
+                            leader_info = json.loads(leader_data)
+                            if leader_info.get('instance_id') == self.instance_id:
+                                await self.redis_client.delete(self.LEADER_LOCK_KEY)
+                                self.logger.info("🔓 Released leader lock")
+                    
+                    # Cancel HA tasks
+                    for task in self._ha_tasks:
+                        if not task.done():
+                            task.cancel()
+                    
+                    # Close Redis connection
+                    await self.redis_client.close()
+                    self.logger.info("✅ HA cleanup complete")
+                    
+                except Exception as e:
+                    self.logger.error(f"❌ HA cleanup error: {e}")
             
             # Shutdown all swarms
             for swarm_id, swarm in self.swarms.items():
@@ -554,8 +844,8 @@ class ColonyCommander:
 
 
 async def main():
-    """Main entry point for the colony commander"""
-    parser = argparse.ArgumentParser(description="Trading Colony Commander")
+    """Main entry point for the colony commander with HA support"""
+    parser = argparse.ArgumentParser(description="Trading Colony Commander with HA")
     
     parser.add_argument(
         "--mode",
@@ -564,16 +854,36 @@ async def main():
         help="Colony operation mode (default: simulation)"
     )
     
+    parser.add_argument(
+        "--ha",
+        action="store_true",
+        help="Enable High Availability mode with Redis leader election"
+    )
+    
+    parser.add_argument(
+        "--single",
+        action="store_true", 
+        help="Force single instance mode (disable HA)"
+    )
+    
     args = parser.parse_args()
+    
+    # Determine HA mode
+    enable_ha = args.ha and not args.single
+    if args.mode in ["production"] and not args.single:
+        enable_ha = True  # Enable HA by default in production
     
     # Display startup information
     print("\n🏛️ TRADING COLONY COMMANDER")
     print("=" * 50)
     print(f"Mode: {args.mode.upper()}")
+    print(f"HA Mode: {'ENABLED' if enable_ha else 'DISABLED'}")
+    if enable_ha:
+        print("Redis: Leader election enabled")
     print("=" * 50)
     
     # Create and run colony
-    colony = ColonyCommander()
+    colony = ColonyCommander(enable_ha=enable_ha)
     
     try:
         if await colony.initialize_colony():

@@ -1,4 +1,43 @@
 services:
+  # Colony Commander with HA support (can be scaled)
+  colony-commander:
+    build: 
+      context: .
+      args:
+        TRADING_MODE: ${TRADING_MODE:-production}
+        BUILD_ENV: ${ENVIRONMENT:-production}
+    image: antbot-colony:latest
+    environment:
+      - PYTHONUNBUFFERED=1
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - TRADING_MODE=${TRADING_MODE:-production}
+      - ENVIRONMENT=${ENVIRONMENT:-production}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+    command: ["python", "entry_points/colony_commander.py", "--mode", "production", "--ha"]
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+      - ./wallets:/app/wallets
+    restart: unless-stopped
+    depends_on:
+      - redis
+      - timescaledb
+    deploy:
+      replicas: 3  # Multiple instances for HA
+      resources:
+        limits:
+          memory: 1G
+          cpus: '0.5'
+    healthcheck:
+      test: ["CMD", "python", "-c", "import sys; sys.path.append('.'); from entry_points.colony_commander import ColonyCommander; print('healthy')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # Legacy single trading bot (for backward compatibility)
   trading-bot:
     build: 
       context: .
@@ -15,8 +54,6 @@ services:
     ports:
       - "${BOT_PORT:-8080}:8080"
     volumes:
-      - ./.env.production:/app/.env.production:ro
-      - ./config/env.template:/app/config/env.template:ro
       - ./data:/app/data
       - ./logs:/app/logs
       - ./wallets:/app/wallets
@@ -24,12 +61,29 @@ services:
     depends_on:
       - redis
       - prometheus
+    profiles:
+      - legacy  # Only start with --profile legacy
     healthcheck:
       test: ["CMD", "python", "-c", "from worker_ant_v1.core.unified_config import get_config_manager; get_config_manager()"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 60s
+
+  # TimescaleDB for production data storage
+  timescaledb:
+    image: timescale/timescaledb:latest-pg15
+    container_name: antbot-timescaledb
+    environment:
+      - POSTGRES_DB=${TIMESCALEDB_DATABASE:-antbot_trading}
+      - POSTGRES_USER=${TIMESCALEDB_USERNAME:-antbot}
+      - POSTGRES_PASSWORD=${TIMESCALEDB_PASSWORD:-antbot_secure_pass}
+    ports:
+      - "${TIMESCALEDB_PORT:-5432}:5432"
+    volumes:
+      - timescaledb_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    command: ["postgres", "-c", "shared_preload_libraries=timescaledb"]
 
   prometheus:
     image: prom/prometheus:latest
@@ -93,6 +147,7 @@ volumes:
   prometheus_data:
   grafana_data:
   redis_data:
+  timescaledb_data:
 
 networks:
   default:

@@ -121,6 +121,27 @@ class BotLauncher:
         """
         print("🏭 Starting production trading system...")
 
+        # CRITICAL: Run pre-flight validation before any system initialization
+        print("🔍 Running pre-flight system validation...")
+        try:
+            from worker_ant_v1.core.system_validator import get_system_validator
+            validator = await get_system_validator()
+            validation_result = await validator.run_full_validation()
+            
+            if not validation_result.passed:
+                print("❌ PRE-FLIGHT VALIDATION FAILED")
+                print("   System cannot launch with critical issues")
+                print("   Review the validation output above and fix all issues")
+                print("   Then run the validation again before attempting launch")
+                return 1
+            
+            print("✅ Pre-flight validation passed - proceeding with launch")
+            
+        except Exception as e:
+            print(f"❌ Pre-flight validation error: {e}")
+            print("   Cannot launch without successful validation")
+            return 1
+
         system = self._create_trading_system()
 
         try:
