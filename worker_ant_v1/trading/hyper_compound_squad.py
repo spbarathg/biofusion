@@ -27,8 +27,8 @@ from worker_ant_v1.core.swarm_decision_engine import SwarmDecisionEngine
 from worker_ant_v1.core.unified_trading_engine import UnifiedTradingEngine  
 from worker_ant_v1.core.wallet_manager import UnifiedWalletManager, get_wallet_manager
 from worker_ant_v1.core.vault_wallet_system import VaultWalletSystem
-from worker_ant_v1.intelligence.neural_command_center import NeuralCommandCenter
-from worker_ant_v1.intelligence.stealth_operations import StealthOperationsSystem
+from worker_ant_v1.trading.colony_commander import ColonyCommander
+from worker_ant_v1.trading.stealth_operations import StealthOperationsSystem
 from worker_ant_v1.intelligence.enhanced_rug_detector import EnhancedRugDetector
 from worker_ant_v1.safety.kill_switch import EnhancedKillSwitch
 from worker_ant_v1.monitoring.production_monitoring_system import EnhancedProductionMonitoringSystem
@@ -55,7 +55,7 @@ class HyperCompoundSwarm:
         self.trading_engine: Optional[UnifiedTradingEngine] = None
         self.wallet_manager: Optional[UnifiedWalletManager] = None
         self.vault_system: Optional[VaultWalletSystem] = None
-        self.neural_center: Optional[NeuralCommandCenter] = None
+        self.neural_center: Optional[ColonyCommander] = None
         self.stealth_ops: Optional[StealthOperationsSystem] = None
         self.rug_detector: Optional[EnhancedRugDetector] = None
         self.kill_switch: Optional[EnhancedKillSwitch] = None

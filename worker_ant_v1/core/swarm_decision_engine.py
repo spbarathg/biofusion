@@ -21,8 +21,8 @@ from datetime import datetime, timedelta
 from enum import Enum
 import logging
 
-from worker_ant_v1.intelligence.neural_command_center import NeuralCommandCenter
-from worker_ant_v1.intelligence.stealth_operations import StealthOperationsSystem
+from worker_ant_v1.trading.colony_commander import ColonyCommander
+from worker_ant_v1.trading.stealth_operations import StealthOperationsSystem
 from worker_ant_v1.core.wallet_manager import UnifiedWalletManager
 from worker_ant_v1.core.vault_wallet_system import VaultWalletSystem
 from worker_ant_v1.core.unified_trading_engine import UnifiedTradingEngine
@@ -80,7 +80,7 @@ class SwarmDecisionEngine:
         self.message_bus: Optional[MessageBus] = None
         
         # Core components
-        self.neural_command_center: Optional[NeuralCommandCenter] = None
+        self.neural_command_center: Optional[ColonyCommander] = None
         self.stealth_operations: Optional[StealthOperationsSystem] = None
         self.wallet_manager: Optional[UnifiedWalletManager] = None
         self.vault_system: Optional[VaultWalletSystem] = None
@@ -128,7 +128,7 @@ class SwarmDecisionEngine:
             self.message_bus = await get_message_bus()
             
             # Initialize core components
-            self.neural_command_center = NeuralCommandCenter()
+            self.neural_command_center = ColonyCommander()
             self.stealth_operations = StealthOperationsSystem()
             
             # Get wallet and vault systems

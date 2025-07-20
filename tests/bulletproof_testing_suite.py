@@ -585,7 +585,7 @@ class BulletproofTestingSuite:
         critical_components = [
             'UnifiedTradingEngine',
             'WalletManager',
-            'NeuralCommandCenter',
+            'ColonyCommander',
             'EnhancedRugDetector',
             'SurgicalTradeExecutor'
         ]

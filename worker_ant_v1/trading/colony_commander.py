@@ -291,11 +291,11 @@ class SanityChecker:
         
         return False
 
-class NeuralCommandCenter:
+class ColonyCommander:
     """The neural command center of the 10-wallet swarm"""
     
     def __init__(self):
-        self.logger = setup_logger("NeuralCommandCenter")
+        self.logger = setup_logger("ColonyCommander")
         
         # Load configuration
         self.config = UnifiedConfig()
@@ -1281,11 +1281,11 @@ class NeuralCommandCenter:
             self.logger.warning(f"Failed to save shadow memory: {e}")
 
             
-_neural_command_center = None
+_colony_commander = None
 
-async def get_neural_command_center() -> NeuralCommandCenter:
-    """Get global neural command center instance"""
-    global _neural_command_center
-    if _neural_command_center is None:
-        _neural_command_center = NeuralCommandCenter()
-    return _neural_command_center 
+async def get_colony_commander() -> ColonyCommander:
+    """Get global colony commander instance"""
+    global _colony_commander
+    if _colony_commander is None:
+        _colony_commander = ColonyCommander()
+    return _colony_commander 
