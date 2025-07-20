@@ -527,42 +527,38 @@ class VaultWalletSystem:
     
     async def _record_vault_transaction(self, vault_id: str, transaction_type: str, 
                                       amount: float, wallet: str, reason: str = ""):
-        """Record vault transaction in database"""
+        """Record vault transaction in TimescaleDB"""
         try:
-            import sqlite3
+            from worker_ant_v1.core.database import get_database_manager, SystemEvent
+            import uuid
             from datetime import datetime
             
-            # Create transactions table if it doesn't exist
-            db_path = 'wallets/vault_transactions.db'
-            os.makedirs(os.path.dirname(db_path), exist_ok=True)
+            # Get TimescaleDB manager
+            db_manager = await get_database_manager()
             
-            with sqlite3.connect(db_path) as conn:
-                cursor = conn.cursor()
-                
-                # Create table if not exists
-                cursor.execute("""
-                    CREATE TABLE IF NOT EXISTS vault_transactions (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        vault_id TEXT NOT NULL,
-                        transaction_type TEXT NOT NULL,
-                        amount REAL NOT NULL,
-                        wallet TEXT NOT NULL,
-                        reason TEXT,
-                        timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-                        status TEXT DEFAULT 'completed'
-                    )
-                """)
-                
-                # Insert transaction record
-                cursor.execute("""
-                    INSERT INTO vault_transactions 
-                    (vault_id, transaction_type, amount, wallet, reason)
-                    VALUES (?, ?, ?, ?, ?)
-                """, (vault_id, transaction_type, amount, wallet, reason))
-                
-                conn.commit()
-                
-                self.logger.info(f"📝 Recorded {transaction_type} transaction: {amount} SOL for {vault_id}")
+            # Create system event for vault transaction
+            event = SystemEvent(
+                timestamp=datetime.utcnow(),
+                event_id=str(uuid.uuid4()),
+                event_type="vault_transaction",
+                component="vault_system",
+                severity="INFO",
+                message=f"Vault transaction: {transaction_type} {amount} SOL for {vault_id}",
+                event_data={
+                    "vault_id": vault_id,
+                    "transaction_type": transaction_type,
+                    "amount": amount,
+                    "wallet": wallet,
+                    "reason": reason,
+                    "status": "completed"
+                },
+                wallet_id=wallet
+            )
+            
+            # Insert event into TimescaleDB
+            await db_manager.insert_system_event(event)
+            
+            self.logger.info(f"📝 Recorded {transaction_type} transaction: {amount} SOL for {vault_id}")
             
         except Exception as e:
             self.logger.error(f"Error recording vault transaction: {e}")

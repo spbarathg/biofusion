@@ -2,12 +2,12 @@
 PRODUCTION-READY SECURE LOGGING SYSTEM
 =====================================
 
-Thread-safe, async-compatible logging system with encrypted storage,
+Thread-safe, async-compatible logging system with TimescaleDB storage,
 sensitive data masking, and comprehensive monitoring capabilities.
+Enhanced for high-frequency trading data with time-series optimization.
 """
 
 import asyncio
-import aiosqlite
 import hashlib
 import json
 import logging
@@ -24,6 +24,15 @@ from dataclasses import dataclass, field, asdict
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
+import uuid
+
+# TimescaleDB integration
+from worker_ant_v1.core.database import (
+    get_database_manager, 
+    TradeRecord as DBTradeRecord,
+    SystemEvent as DBSystemEvent,
+    PerformanceMetric as DBPerformanceMetric
+)
 
 # Security imports
 try:
@@ -69,6 +78,9 @@ class TradeRecord:
 
     # Session tracking
     session_id: str = field(default_factory=lambda: secrets.token_hex(8))
+    
+    # Wallet identification
+    wallet_id: str = ""
 
     def mask_sensitive_data(self):
         """Mask sensitive data for safe logging."""
@@ -78,6 +90,40 @@ class TradeRecord:
             ).hexdigest()[:16]
             delattr(self, "tx_signature")
 
+    def to_db_record(self) -> DBTradeRecord:
+        """Convert to TimescaleDB trade record"""
+        # Parse timestamp string to datetime
+        if isinstance(self.timestamp, str):
+            timestamp_dt = datetime.fromisoformat(self.timestamp.replace('Z', '+00:00'))
+        else:
+            timestamp_dt = self.timestamp
+            
+        return DBTradeRecord(
+            timestamp=timestamp_dt,
+            trade_id=str(uuid.uuid4()),
+            session_id=self.session_id,
+            wallet_id=self.wallet_id or "unknown",
+            token_address=self.token_address,
+            token_symbol=self.token_symbol,
+            trade_type=self.trade_type,
+            success=self.success,
+            amount_sol=self.amount_sol,
+            amount_tokens=self.amount_tokens,
+            price=self.price,
+            slippage_percent=self.slippage_percent,
+            latency_ms=self.latency_ms,
+            gas_cost_sol=self.gas_cost_sol,
+            rpc_cost_sol=self.rpc_cost_sol,
+            api_cost_sol=self.api_cost_sol,
+            profit_loss_sol=self.profit_loss_sol,
+            profit_loss_percent=self.profit_loss_percent,
+            hold_time_seconds=self.hold_time_seconds,
+            tx_signature_hash=self.tx_signature_hash,
+            retry_count=self.retry_count,
+            exit_reason=self.exit_reason,
+            error_message=self.error_message
+        )
+
 
 @dataclass
 class HourlyReport:
@@ -86,226 +132,158 @@ class HourlyReport:
     hour_start: str
     total_trades: int
     successful_trades: int
-    buy_trades: int
-    sell_trades: int
-
-    # Performance metrics
-    win_rate: float
-    total_profit_sol: float
+    failed_trades: int
     total_volume_sol: float
-    average_hold_time: float
-    average_profit_percent: float
-
-    # Cost analysis
-    total_gas_costs: float
-    total_rpc_costs: float
-    total_api_costs: float
-    cost_per_trade: float
-    profit_after_costs: float
-
-    # Risk metrics
-    max_drawdown_percent: float
-    largest_loss_sol: float
+    total_profit_sol: float
+    total_loss_sol: float
+    net_profit_sol: float
+    win_rate_percent: float
     largest_win_sol: float
-    sharpe_ratio: float
-
-    # System metrics
+    largest_loss_sol: float
     average_latency_ms: float
     error_rate: float
     uptime_percent: float
+    sharpe_ratio: float = 0.0
+
+    def to_system_event(self, session_id: str) -> DBSystemEvent:
+        """Convert to TimescaleDB system event"""
+        return DBSystemEvent(
+            timestamp=datetime.fromisoformat(self.hour_start),
+            event_id=str(uuid.uuid4()),
+            event_type="hourly_report",
+            component="trading_system",
+            severity="INFO",
+            message=f"Hourly report: {self.total_trades} trades, {self.win_rate_percent:.1f}% win rate",
+            event_data=asdict(self),
+            session_id=session_id
+        )
 
 
 class SecureDataProcessor:
-    """Handles secure data processing and encryption."""
+    """Handles sensitive data encryption and sanitization."""
 
-    def __init__(self, encryption_key: Optional[bytes] = None):
+    def __init__(self, encryption_key: Optional[str] = None):
         """Initialize the secure data processor.
 
         Args:
             encryption_key: Optional encryption key for sensitive data
         """
         self.encryption_enabled = ENCRYPTION_AVAILABLE and encryption_key is not None
+
         if self.encryption_enabled:
-            self.cipher = Fernet(encryption_key)
+            if isinstance(encryption_key, str):
+                encryption_key = encryption_key.encode()
+
+            self.fernet = Fernet(encryption_key)
         else:
-            self.cipher = None
+            self.fernet = None
 
-    def encrypt_sensitive_data(self, data: str) -> str:
-        """Encrypt sensitive data if encryption is available.
-
-        Args:
-            data: Data to encrypt
-
-        Returns:
-            Encrypted data or original data if encryption not available
-        """
-        if self.encryption_enabled and self.cipher:
-            return self.cipher.encrypt(data.encode()).decode()
-        return data
-
-    def decrypt_sensitive_data(self, encrypted_data: str) -> str:
-        """Decrypt sensitive data if encryption is available.
-
-        Args:
-            encrypted_data: Data to decrypt
-
-        Returns:
-            Decrypted data or original data if encryption not available
-        """
-        if self.encryption_enabled and self.cipher:
-            return self.cipher.decrypt(encrypted_data.encode()).decode()
-        return encrypted_data
-
-    def mask_private_key(self, key: str) -> str:
-        """Mask private keys for safe logging.
-
-        Args:
-            key: Private key to mask
-
-        Returns:
-            Masked private key
-        """
-        if not key or len(key) < 8:
-            return "****"
-        return f"{key[:4]}{'*' * (len(key) - 8)}{key[-4:]}"
+        # Sensitive field patterns to mask
+        self.sensitive_patterns = [
+            "private_key",
+            "secret",
+            "password",
+            "token",
+            "signature",
+            "seed",
+            "mnemonic",
+            "key",
+        ]
 
     def sanitize_log_data(self, data: Dict[str, Any]) -> Dict[str, Any]:
-        """Sanitize log data to remove/mask sensitive information.
+        """Sanitize log data by masking sensitive fields.
 
         Args:
-            data: Data to sanitize
+            data: Dictionary containing log data
 
         Returns:
-            Sanitized data
+            Sanitized dictionary with masked sensitive data
         """
-        sensitive_keys = ["private_key", "secret", "password", "api_key", "signature"]
         sanitized = {}
 
         for key, value in data.items():
-            if any(sensitive in key.lower() for sensitive in sensitive_keys):
-                if isinstance(value, str):
-                    sanitized[key] = self.mask_private_key(value)
+            key_lower = key.lower()
+
+            # Check if this is a sensitive field
+            is_sensitive = any(pattern in key_lower for pattern in self.sensitive_patterns)
+
+            if is_sensitive:
+                if isinstance(value, str) and len(value) > 8:
+                    # Show first 4 and last 4 characters
+                    sanitized[key] = f"{value[:4]}***{value[-4:]}"
                 else:
                     sanitized[key] = "***MASKED***"
+            elif isinstance(value, dict):
+                # Recursively sanitize nested dictionaries
+                sanitized[key] = self.sanitize_log_data(value)
             else:
                 sanitized[key] = value
 
         return sanitized
 
+    def encrypt_sensitive_data(self, data: str) -> str:
+        """Encrypt sensitive data if encryption is enabled.
+
+        Args:
+            data: String data to encrypt
+
+        Returns:
+            Encrypted data or original data if encryption disabled
+        """
+        if not self.encryption_enabled:
+            return data
+
+        try:
+            encrypted = self.fernet.encrypt(data.encode())
+            return encrypted.decode()
+        except Exception:
+            # If encryption fails, return masked data
+            return "***ENCRYPTION_FAILED***"
+
+    def decrypt_sensitive_data(self, encrypted_data: str) -> str:
+        """Decrypt sensitive data if encryption is enabled.
+
+        Args:
+            encrypted_data: Encrypted string data
+
+        Returns:
+            Decrypted data or original data if encryption disabled
+        """
+        if not self.encryption_enabled:
+            return encrypted_data
+
+        try:
+            decrypted = self.fernet.decrypt(encrypted_data.encode())
+            return decrypted.decode()
+        except Exception:
+            return "***DECRYPTION_FAILED***"
+
 
 class AsyncDatabaseManager:
-    """Thread-safe async database manager."""
+    """Thread-safe async database manager using TimescaleDB."""
 
-    def __init__(self, db_path: str):
+    def __init__(self, db_path: str = None):
         """Initialize the database manager.
 
         Args:
-            db_path: Path to the database file
+            db_path: Path to the database file (legacy compatibility, ignored for TimescaleDB)
         """
-        self.db_path = Path(db_path)
-        self.db_path.parent.mkdir(parents=True, exist_ok=True)
-        self._connection_pool = []
-        self._pool_lock = asyncio.Lock()
+        self.db_manager = None
         self.initialized = False
+        self.logger = logging.getLogger("AsyncDatabaseManager")
 
     async def initialize(self):
-        """Initialize database schema."""
+        """Initialize TimescaleDB database manager."""
         if self.initialized:
             return
 
-        async with aiosqlite.connect(self.db_path) as db:
-            await db.execute(
-                """
-                CREATE TABLE IF NOT EXISTS trades (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    timestamp TEXT NOT NULL,
-                    session_id TEXT NOT NULL,
-                    token_address TEXT NOT NULL,
-                    token_symbol TEXT,
-                    trade_type TEXT NOT NULL,
-                    success BOOLEAN NOT NULL,
-                    amount_sol REAL,
-                    amount_tokens REAL,
-                    price REAL,
-                    slippage_percent REAL,
-                    latency_ms INTEGER,
-                    gas_cost_sol REAL DEFAULT 0,
-                    rpc_cost_sol REAL DEFAULT 0,
-                    api_cost_sol REAL DEFAULT 0,
-                    profit_loss_sol REAL,
-                    profit_loss_percent REAL,
-                    hold_time_seconds INTEGER,
-                    tx_signature_hash TEXT,
-                    retry_count INTEGER DEFAULT 0,
-                    exit_reason TEXT,
-                    error_message TEXT,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-            """
-            )
-
-            await db.execute(
-                """
-                CREATE TABLE IF NOT EXISTS hourly_reports (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    hour_start TEXT NOT NULL,
-                    report_data TEXT NOT NULL,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-            """
-            )
-
-            await db.execute(
-                """
-                CREATE TABLE IF NOT EXISTS system_events (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    event_type TEXT NOT NULL,
-                    event_data TEXT NOT NULL,
-                    severity TEXT DEFAULT 'INFO',
-                    timestamp TEXT NOT NULL,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-            """
-            )
-
-            # Create indexes for performance
-            await db.execute(
-                "CREATE INDEX IF NOT EXISTS idx_trades_timestamp ON trades(timestamp)"
-            )
-            await db.execute(
-                "CREATE INDEX IF NOT EXISTS idx_trades_session ON trades(session_id)"
-            )
-            await db.execute(
-                "CREATE INDEX IF NOT EXISTS idx_trades_token ON trades(token_address)"
-            )
-            await db.execute(
-                "CREATE INDEX IF NOT EXISTS idx_trades_type ON trades(trade_type)"
-            )
-            await db.execute(
-                "CREATE INDEX IF NOT EXISTS idx_system_events_type ON system_events(event_type)"
-            )
-
-            await db.commit()
-
-        self.initialized = True
-
-    @asynccontextmanager
-    async def get_connection(self):
-        """Get database connection from pool."""
-        async with self._pool_lock:
-            if self._connection_pool:
-                conn = self._connection_pool.pop()
-            else:
-                conn = await aiosqlite.connect(self.db_path)
-
         try:
-            yield conn
-        finally:
-            async with self._pool_lock:
-                if len(self._connection_pool) < 5:  # Max pool size
-                    self._connection_pool.append(conn)
-                else:
-                    await conn.close()
+            self.db_manager = await get_database_manager()
+            self.initialized = True
+            self.logger.info("✅ AsyncDatabaseManager initialized with TimescaleDB")
+        except Exception as e:
+            self.logger.error(f"❌ Failed to initialize AsyncDatabaseManager: {e}")
+            raise
 
     async def insert_trade_record(self, trade: TradeRecord):
         """Insert trade record with error handling.
@@ -314,46 +292,16 @@ class AsyncDatabaseManager:
             trade: Trade record to insert
         """
         try:
-            async with self.get_connection() as db:
-                await db.execute(
-                    """
-                    INSERT INTO trades (
-                        timestamp, session_id, token_address, token_symbol,
-                        trade_type, success, amount_sol, amount_tokens,
-                        price, slippage_percent, latency_ms, gas_cost_sol,
-                        rpc_cost_sol, api_cost_sol, profit_loss_sol,
-                        profit_loss_percent, hold_time_seconds, tx_signature_hash,
-                        retry_count, exit_reason, error_message
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    (
-                        trade.timestamp,
-                        trade.session_id,
-                        trade.token_address,
-                        trade.token_symbol,
-                        trade.trade_type,
-                        trade.success,
-                        trade.amount_sol,
-                        trade.amount_tokens,
-                        trade.price,
-                        trade.slippage_percent,
-                        trade.latency_ms,
-                        trade.gas_cost_sol,
-                        trade.rpc_cost_sol,
-                        trade.api_cost_sol,
-                        trade.profit_loss_sol,
-                        trade.profit_loss_percent,
-                        trade.hold_time_seconds,
-                        trade.tx_signature_hash,
-                        trade.retry_count,
-                        trade.exit_reason,
-                        trade.error_message,
-                    ),
-                )
-                await db.commit()
+            if not self.initialized:
+                await self.initialize()
+                
+            # Convert to TimescaleDB format and insert
+            db_record = trade.to_db_record()
+            await self.db_manager.insert_trade(db_record)
+            
         except Exception as e:
             # Log error but don't fail the application
-            print(f"Database error: {e}")
+            self.logger.error(f"Database error inserting trade: {e}")
 
     async def insert_hourly_report(self, report: HourlyReport):
         """Insert hourly report.
@@ -362,14 +310,16 @@ class AsyncDatabaseManager:
             report: Hourly report to insert
         """
         try:
-            async with self.get_connection() as db:
-                await db.execute(
-                    "INSERT INTO hourly_reports (hour_start, report_data) VALUES (?, ?)",
-                    (report.hour_start, json.dumps(asdict(report))),
-                )
-                await db.commit()
+            if not self.initialized:
+                await self.initialize()
+                
+            # Convert to system event and insert
+            session_id = secrets.token_hex(8)  # Generate session ID for report
+            event = report.to_system_event(session_id)
+            await self.db_manager.insert_system_event(event)
+            
         except Exception as e:
-            print(f"Database error: {e}")
+            self.logger.error(f"Database error inserting hourly report: {e}")
 
     async def log_system_event(
         self, event_type: str, event_data: Dict[str, Any], severity: str = "INFO"
@@ -382,14 +332,62 @@ class AsyncDatabaseManager:
             severity: Event severity
         """
         try:
-            async with self.get_connection() as db:
-                await db.execute(
-                    "INSERT INTO system_events (event_type, event_data, severity, timestamp) VALUES (?, ?, ?, ?)",
-                    (event_type, json.dumps(event_data), severity, datetime.utcnow().isoformat()),
-                )
-                await db.commit()
+            if not self.initialized:
+                await self.initialize()
+                
+            # Create system event
+            event = DBSystemEvent(
+                timestamp=datetime.utcnow(),
+                event_id=str(uuid.uuid4()),
+                event_type=event_type,
+                component="trading_system",
+                severity=severity,
+                message=f"System event: {event_type}",
+                event_data=event_data
+            )
+            
+            await self.db_manager.insert_system_event(event)
+            
         except Exception as e:
-            print(f"Database error: {e}")
+            self.logger.error(f"Database error logging system event: {e}")
+
+    async def get_trades_for_period(self, start_time: datetime, end_time: datetime) -> List[Dict[str, Any]]:
+        """Get trades for a specific time period (for hourly reports).
+        
+        Args:
+            start_time: Start of period
+            end_time: End of period
+            
+        Returns:
+            List of trade records
+        """
+        try:
+            if not self.initialized:
+                await self.initialize()
+                
+            return await self.db_manager.query_trades(start_time, end_time)
+            
+        except Exception as e:
+            self.logger.error(f"Database error querying trades: {e}")
+            return []
+
+    # Legacy compatibility methods (maintain same interface)
+    @asynccontextmanager
+    async def get_connection(self):
+        """Legacy compatibility - get database connection context."""
+        # For TimescaleDB, we'll use the connection pool internally
+        yield self
+
+    async def execute(self, query: str, *params):
+        """Legacy compatibility - execute query."""
+        # This method is for backward compatibility only
+        # New code should use the specific insert methods above
+        pass
+
+    async def commit(self):
+        """Legacy compatibility - commit transaction."""
+        # TimescaleDB auto-commits with our batch system
+        pass
 
 
 class ProductionLogger:
@@ -409,7 +407,7 @@ class ProductionLogger:
 
         # Initialize components
         self.db_manager = AsyncDatabaseManager(
-            config.get("db_path", "logs/trading.db")
+            config.get("db_path", "logs/trading.db")  # Legacy path, ignored
         )
         self.security_processor = SecureDataProcessor(
             config.get("encryption_key")
@@ -581,36 +579,30 @@ class ProductionLogger:
             await self._flush_batch(batch)
 
     async def _hourly_reporter(self):
-        """Generate hourly reports."""
+        """Generate hourly performance reports."""
         while self._running:
             try:
-                # Wait until next hour
+                # Wait until next hour boundary
                 now = datetime.utcnow()
-                next_hour = now.replace(minute=0, second=0, microsecond=0) + timedelta(
-                    hours=1
+                next_hour = (now + timedelta(hours=1)).replace(
+                    minute=0, second=0, microsecond=0
                 )
                 sleep_seconds = (next_hour - now).total_seconds()
 
                 await asyncio.sleep(sleep_seconds)
 
                 # Generate report for previous hour
-                report_hour = next_hour - timedelta(hours=1)
+                report_hour = now.replace(minute=0, second=0, microsecond=0)
                 report = await self._generate_hourly_report(report_hour)
 
                 if report:
                     await self.db_manager.insert_hourly_report(report)
-                    self.logger.info(
-                        "Hourly report generated",
-                        hour=report.hour_start,
-                        trades=report.total_trades,
-                        profit=report.total_profit_sol,
-                    )
 
             except asyncio.CancelledError:
                 break
             except Exception as e:
                 self.logger.error("Error in hourly reporter", error=str(e))
-                await asyncio.sleep(300)  # 5 minute delay on error
+                await asyncio.sleep(3600)
 
     async def _generate_hourly_report(
         self, hour_start: datetime
@@ -618,99 +610,72 @@ class ProductionLogger:
         """Generate hourly performance report.
 
         Args:
-            hour_start: Start of the hour
+            hour_start: Start of the hour to report on
 
         Returns:
-            Hourly report or None if no data
+            HourlyReport or None if generation fails
         """
         try:
             hour_end = hour_start + timedelta(hours=1)
-            hour_start_str = hour_start.isoformat()
-            hour_end_str = hour_end.isoformat()
+            
+            # Get trades for the hour from TimescaleDB
+            trades = await self.db_manager.get_trades_for_period(hour_start, hour_end)
 
-            async with self.db_manager.get_connection() as db:
-                # Get trades for the hour
-                async with db.execute(
-                    """
-                    SELECT * FROM trades 
-                    WHERE timestamp BETWEEN ? AND ?
-                    """,
-                    (hour_start_str, hour_end_str),
-                ) as cursor:
-                    trades = await cursor.fetchall()
-
-                if not trades:
-                    return None
-
-                # Calculate metrics
-                total_trades = len(trades)
-                successful_trades = sum(1 for t in trades if t[5])  # success column
-                buy_trades = sum(1 for t in trades if t[4] == "BUY")  # trade_type column
-                sell_trades = sum(1 for t in trades if t[4] == "SELL")
-
-                # Calculate financial metrics
-                profit_trades = [
-                    t for t in trades if t[15] is not None and t[15] > 0
-                ]  # profit_loss_sol
-                total_profit = sum(t[15] for t in trades if t[15] is not None)
-                total_volume = sum(t[6] for t in trades if t[6] is not None)  # amount_sol
-
-                # Calculate other metrics
-                win_rate = (
-                    (len(profit_trades) / total_trades * 100) if total_trades > 0 else 0
-                )
-                avg_hold_time = (
-                    sum(t[16] for t in trades if t[16] is not None) / len(trades)
-                    if trades
-                    else 0
-                )
-                avg_latency = (
-                    sum(t[10] for t in trades if t[10] is not None) / len(trades)
-                    if trades
-                    else 0
-                )
-
-                # Cost analysis
-                total_gas = sum(t[11] for t in trades if t[11] is not None)
-                total_rpc = sum(t[12] for t in trades if t[12] is not None)
-                total_api = sum(t[13] for t in trades if t[13] is not None)
-
+            if not trades:
                 return HourlyReport(
-                    hour_start=hour_start_str,
-                    total_trades=total_trades,
-                    successful_trades=successful_trades,
-                    buy_trades=buy_trades,
-                    sell_trades=sell_trades,
-                    win_rate=win_rate,
-                    total_profit_sol=total_profit,
-                    total_volume_sol=total_volume,
-                    average_hold_time=avg_hold_time,
-                    average_profit_percent=0.0,  # Calculate if needed
-                    total_gas_costs=total_gas,
-                    total_rpc_costs=total_rpc,
-                    total_api_costs=total_api,
-                    cost_per_trade=(
-                        (total_gas + total_rpc + total_api) / total_trades
-                        if total_trades > 0
-                        else 0
-                    ),
-                    profit_after_costs=total_profit - (total_gas + total_rpc + total_api),
-                    max_drawdown_percent=0.0,  # Calculate if needed
-                    largest_loss_sol=min(
-                        (t[15] for t in trades if t[15] is not None), default=0
-                    ),
-                    largest_win_sol=max(
-                        (t[15] for t in trades if t[15] is not None), default=0
-                    ),
-                    sharpe_ratio=0.0,  # Calculate if needed
-                    average_latency_ms=avg_latency,
-                    error_rate=(
-                        (total_trades - successful_trades) / total_trades * 100
-                        if total_trades > 0
-                        else 0
-                    ),
-                    uptime_percent=100.0,  # Calculate based on system events
+                    hour_start=hour_start.isoformat(),
+                    total_trades=0,
+                    successful_trades=0,
+                    failed_trades=0,
+                    total_volume_sol=0.0,
+                    total_profit_sol=0.0,
+                    total_loss_sol=0.0,
+                    net_profit_sol=0.0,
+                    win_rate_percent=0.0,
+                    largest_win_sol=0.0,
+                    largest_loss_sol=0.0,
+                    average_latency_ms=0.0,
+                    error_rate=0.0,
+                    uptime_percent=100.0,
                 )
+
+            # Calculate metrics
+            total_trades = len(trades)
+            successful_trades = sum(1 for t in trades if t.get('success', False))
+            failed_trades = total_trades - successful_trades
+            
+            total_volume_sol = sum(t.get('amount_sol', 0) for t in trades)
+            profits = [t.get('profit_loss_sol', 0) for t in trades if t.get('profit_loss_sol', 0) > 0]
+            losses = [abs(t.get('profit_loss_sol', 0)) for t in trades if t.get('profit_loss_sol', 0) < 0]
+            
+            total_profit_sol = sum(profits)
+            total_loss_sol = sum(losses)
+            net_profit_sol = total_profit_sol - total_loss_sol
+            
+            win_rate_percent = (successful_trades / total_trades * 100) if total_trades > 0 else 0
+            largest_win_sol = max(profits) if profits else 0
+            largest_loss_sol = max(losses) if losses else 0
+            
+            latencies = [t.get('latency_ms', 0) for t in trades if t.get('latency_ms') is not None]
+            avg_latency = sum(latencies) / len(latencies) if latencies else 0
+
+            return HourlyReport(
+                hour_start=hour_start.isoformat(),
+                total_trades=total_trades,
+                successful_trades=successful_trades,
+                failed_trades=failed_trades,
+                total_volume_sol=total_volume_sol,
+                total_profit_sol=total_profit_sol,
+                total_loss_sol=total_loss_sol,
+                net_profit_sol=net_profit_sol,
+                win_rate_percent=win_rate_percent,
+                largest_win_sol=largest_win_sol,
+                largest_loss_sol=largest_loss_sol,
+                sharpe_ratio=0.0,  # Calculate if needed
+                average_latency_ms=avg_latency,
+                error_rate=(failed_trades / total_trades * 100) if total_trades > 0 else 0,
+                uptime_percent=100.0,  # Calculate based on system events
+            )
 
         except Exception as e:
             self.logger.error("Failed to generate hourly report", error=str(e))
@@ -748,106 +713,53 @@ class ProductionLogger:
                 self.logger.error("Error in system monitor", error=str(e))
                 await asyncio.sleep(60)
 
-    def get_session_summary(self) -> Dict[str, Any]:
-        """Get current session summary.
 
-        Returns:
-            Session summary dictionary
-        """
-        uptime = (datetime.utcnow() - self.session_start).total_seconds()
-
-        return {
-            "session_id": self.session_id,
-            "uptime_seconds": uptime,
-            "trade_count": self.trade_count,
-            "error_count": self.error_count,
-            "error_rate": (self.error_count / max(self.trade_count, 1)) * 100,
-            "queue_size": self.trade_queue.qsize(),
-            "start_time": self.session_start.isoformat(),
-        }
+# Global logger instance
+_production_logger: Optional[ProductionLogger] = None
 
 
-# === GLOBAL LOGGER INSTANCE ===
-
-# Create global logger instance (will be initialized by the application)
-trading_logger: Optional[ProductionLogger] = None
-
-
-async def initialize_logger(config: Dict[str, Any]) -> ProductionLogger:
-    """Initialize the global trading logger.
+def get_production_logger(config: Optional[Dict[str, Any]] = None) -> ProductionLogger:
+    """Get or create global production logger instance.
 
     Args:
-        config: Logger configuration
+        config: Optional logger configuration
 
     Returns:
-        Initialized production logger
+        ProductionLogger instance
     """
-    global trading_logger
-    trading_logger = ProductionLogger(config)
-    await trading_logger.start()
-    return trading_logger
+    global _production_logger
+
+    if _production_logger is None:
+        if config is None:
+            config = {
+                "db_path": "logs/trading.db",
+                "batch_size": 10,
+                "batch_timeout": 5.0,
+            }
+
+        _production_logger = ProductionLogger(config)
+
+    return _production_logger
 
 
-async def shutdown_logger():
-    """Shutdown the global trading logger."""
-    global trading_logger
-    if trading_logger:
-        await trading_logger.stop()
-        trading_logger = None
-
-
-# === SIMPLE LOGGER FOR BASIC USE ===
-
-def setup_logger(name: str, level: str = "INFO") -> logging.Logger:
-    """Simple synchronous logger setup for basic use.
+def setup_logger(name: str) -> logging.Logger:
+    """Setup a logger with the given name.
 
     Args:
         name: Logger name
-        level: Logging level
 
     Returns:
-        Configured logger
+        Configured logger instance
     """
     logger = logging.getLogger(name)
-    logger.setLevel(getattr(logging, level.upper()))
-
+    
     if not logger.handlers:
-        # Console handler
-        console_handler = logging.StreamHandler()
-        console_handler.setLevel(logging.INFO)
-
-        # Formatter
+        handler = logging.StreamHandler()
         formatter = logging.Formatter(
-            "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+            '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
         )
-        console_handler.setFormatter(formatter)
-        logger.addHandler(console_handler)
-
-    return logger
-
-
-def get_logger(name: str = None) -> logging.Logger:
-    """Get a logger instance. If no name is provided, returns the root logger.
-
-    Args:
-        name: Optional name for the logger
-
-    Returns:
-        Logger instance
-    """
-    if name is None:
-        return logging.getLogger()
-    return setup_logger(name)
-
-
-# Export main classes and functions
-__all__ = [
-    "TradeRecord",
-    "HourlyReport",
-    "ProductionLogger",
-    "initialize_logger",
-    "shutdown_logger",
-    "trading_logger",
-    "setup_logger",
-    "get_logger",
-] 
+        handler.setFormatter(formatter)
+        logger.addHandler(handler)
+        logger.setLevel(logging.INFO)
+    
+    return logger 
