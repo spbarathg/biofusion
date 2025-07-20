@@ -38,7 +38,7 @@ from worker_ant_v1.core.unified_config import (
     get_security_config,
     get_trading_config
 )
-from worker_ant_v1.utils.jupiter_dex_integration import JupiterAggregator
+from worker_ant_v1.trading.jupiter_dex_integration import JupiterDEXIntegration
 from worker_ant_v1.utils.logger import setup_logger
 
 sell_logger = setup_logger(__name__)
@@ -136,7 +136,7 @@ class ProductionSeller:
         self.trailing_stop_enabled = True
         
         # Initialize Jupiter
-        self.jupiter = JupiterAggregator()
+        self.jupiter = JupiterDEXIntegration()
         
         # Load config
         self._load_config()

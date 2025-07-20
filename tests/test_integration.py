@@ -12,7 +12,7 @@ import os
 from pathlib import Path
 
 # Add the project root to the path
-sys.path.append(str(Path(__file__).parent))
+sys.path.append(str(Path(__file__).parent.parent))
 
 async def test_basic_imports():
     """Test that all core modules can be imported"""
@@ -231,7 +231,7 @@ async def test_testing_suite():
     print("🔍 Testing testing suite...")
     
     try:
-        from worker_ant_v1.trading.bulletproof_testing_suite import BulletproofTestingSuite
+        from bulletproof_testing_suite import BulletproofTestingSuite
         
         suite = BulletproofTestingSuite()
         

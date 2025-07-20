@@ -9,21 +9,20 @@ Trading execution components including:
 - Position management
 """
 
-from worker_ant_v1.trading.market_scanner import ProductionScanner, TradingOpportunity, ScanResult
-from worker_ant_v1.trading.order_buyer import ProductionBuyer, BuySignal, BuyResult
-from worker_ant_v1.trading.order_seller import ProductionSeller, SellSignal, Position
-from worker_ant_v1.trading.surgical_trade_executor import SurgicalTradeExecutor as TradeExecutor, ExecutionResult
+from worker_ant_v1.trading.market_scanner import RealMarketScanner, ScanResult
+from worker_ant_v1.utils.market_data_fetcher import MarketOpportunity
+from worker_ant_v1.trading.order_buyer import ProductionBuyer, BuyResult
+from worker_ant_v1.trading.order_seller import ProductionSeller, SellPosition
+from worker_ant_v1.trading.surgical_trade_executor import SurgicalTradeExecutor, ExecutionResult
 
 __all__ = [
-    'ProductionScanner',
-    'TradingOpportunity',
+    'RealMarketScanner',
+    'MarketOpportunity',
     'ScanResult', 
     'ProductionBuyer',
-    'BuySignal',
     'BuyResult',
     'ProductionSeller',
-    'SellSignal',
-    'Position',
-    'TradeExecutor',
+    'SellPosition',
+    'SurgicalTradeExecutor',
     'ExecutionResult'
 ]

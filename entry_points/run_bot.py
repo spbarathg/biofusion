@@ -17,9 +17,9 @@ import os
 import sys
 from pathlib import Path
 
-sys.path.append(str(Path(__file__).parent))
+sys.path.append(str(Path(__file__).parent.parent))
 
-from worker_ant_v1.trading.bulletproof_testing_suite import BulletproofTestingSuite
+from tests.bulletproof_testing_suite import BulletproofTestingSuite
 from worker_ant_v1.core.system_validator import validate_production_config_sync
 from worker_ant_v1.trading.main import HyperIntelligentTradingSwarm
 

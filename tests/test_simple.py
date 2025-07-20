@@ -11,7 +11,7 @@ import os
 from pathlib import Path
 
 # Add the project root to the path
-sys.path.append(str(Path(__file__).parent))
+sys.path.append(str(Path(__file__).parent.parent))
 
 def test_basic_imports():
     """Test that all core modules can be imported"""

@@ -298,10 +298,10 @@ class SurgicalTradeExecutor:
         """Send transaction to Solana network"""
         try:
             try:
-    from solana.transaction import Transaction
-    from solana.rpc.commitment import Confirmed
-except ImportError:
-    from ..utils.solana_compat import Transaction, Confirmed
+                from solana.transaction import Transaction
+                from solana.rpc.commitment import Confirmed
+            except ImportError:
+                from ..utils.solana_compat import Transaction, Confirmed
             
             # Deserialize transaction
             transaction = Transaction.deserialize(bytes(tx_data))

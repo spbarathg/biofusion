@@ -9,7 +9,7 @@ pattern recognition, and multi-factor analysis.
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
-from typing import Dict, List
+from typing import Dict, List, Any
 
 from worker_ant_v1.core.unified_config import get_security_config
 from worker_ant_v1.utils.logger import setup_logger

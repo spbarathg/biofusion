@@ -16,7 +16,7 @@ def configure_missing_api_keys():
     print("Press Enter to skip optional keys, or 'quit' to exit.\n")
     
     
-    env_file = ".env.production"
+    env_file = str(Path(__file__).parent.parent / ".env.production")
     env_lines = []
     
     if os.path.exists(env_file):
@@ -179,13 +179,12 @@ def main():
         print("Creating from template...")
         
         
-        if os.path.exists('config/env.template'):
+        if os.path.exists(str(Path(__file__).parent.parent / 'config/env.template')):
             import shutil
-            shutil.copy('config/env.template', '.env.production')
+            shutil.copy(str(Path(__file__).parent.parent / 'config/env.template'), env_file)
             print("✅ Created .env.production from template")
         else:
-        else:
-            with open('.env.production', 'w') as f:
+            with open(env_file, 'w') as f:
                 f.write("# CRYPTO SWARM CONFIGURATION\n")
                 f.write("TRADING_MODE=simulation\n")
                 f.write("SECURITY_LEVEL=high\n")

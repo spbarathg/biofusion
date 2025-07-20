@@ -29,7 +29,7 @@ from worker_ant_v1.core.wallet_manager import UnifiedWalletManager, get_wallet_m
 from worker_ant_v1.core.vault_wallet_system import VaultWalletSystem
 from worker_ant_v1.intelligence.neural_command_center import NeuralCommandCenter
 from worker_ant_v1.intelligence.stealth_operations import StealthOperationsSystem
-from worker_ant_v1.safety.enhanced_rug_detector import EnhancedRugDetector
+from worker_ant_v1.intelligence.enhanced_rug_detector import EnhancedRugDetector
 from worker_ant_v1.safety.kill_switch import EnhancedKillSwitch
 from worker_ant_v1.monitoring.production_monitoring_system import EnhancedProductionMonitoringSystem
 
@@ -221,14 +221,11 @@ class HyperCompoundSwarm:
             opportunities = await self.swarm_engine.get_current_opportunities()
             
             for opportunity in opportunities:
-            for opportunity in opportunities:
                 status = await self.compound_engine.get_compound_status()
-                
                 
                 base_position = opportunity.get('suggested_position_size', 0.1)
                 phase_multiplier = self._get_phase_position_multiplier(status['phase'])
                 adjusted_position = base_position * phase_multiplier
-                
                 
                 if adjusted_position > 0.01:  # Minimum position threshold
                     await self._execute_opportunity(opportunity, adjusted_position)
@@ -274,7 +271,6 @@ class HyperCompoundSwarm:
     async def _process_compound_queue(self):
         """Process any pending compound operations"""
         try:
-            if self.compound_engine and hasattr(self.compound_engine, 'compound_queue'):
             if self.compound_engine and hasattr(self.compound_engine, 'compound_queue'):
                 # The compound engine handles its own queue processing
                 queue_size = self.compound_engine.compound_queue.qsize()
@@ -427,7 +423,6 @@ class HyperCompoundSwarm:
                     break
                 
                 
-                if self.rug_detector:
                 if self.rug_detector:
                     pass
                 

@@ -442,9 +442,7 @@ class MLPredictor:
                 confidence = 0.6
                 
             elif model['type'] == 'ensemble':
-            elif model['type'] == 'ensemble':
                 predictions = []
-                for _ in range(model['n_trees']):
                 for _ in range(model['n_trees']):
                     tree_pred = np.mean(feature_vector) * np.random.normal(1.0, 0.1)
                     predictions.append(tree_pred)
@@ -453,11 +451,9 @@ class MLPredictor:
                 confidence = 1.0 - (np.std(predictions) / np.mean(predictions)) if np.mean(predictions) != 0 else 0.5
                 
             elif model['type'] == 'boosting':
-            elif model['type'] == 'boosting':
                 prediction = np.mean(feature_vector) * (1 + np.random.normal(0, 0.05))
                 confidence = 0.7
                 
-            elif model['type'] == 'neural':
             elif model['type'] == 'neural':
                 x = feature_vector
                 for i, (weights, bias) in enumerate(zip(model['weights'], model['biases'])):

@@ -19,7 +19,7 @@ class CodebaseCleanup:
     """Comprehensive codebase cleanup and optimization"""
     
     def __init__(self):
-        self.project_root = Path('.')
+        self.project_root = Path(__file__).parent.parent
         self.cleanup_stats = {
             'files_scanned': 0,
             'dead_files_removed': 0,

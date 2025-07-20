@@ -26,7 +26,7 @@ from worker_ant_v1.intelligence.stealth_operations import StealthOperationsSyste
 from worker_ant_v1.core.wallet_manager import UnifiedWalletManager
 from worker_ant_v1.core.vault_wallet_system import VaultWalletSystem
 from worker_ant_v1.core.unified_trading_engine import UnifiedTradingEngine
-from worker_ant_v1.safety.enhanced_rug_detector import EnhancedRugDetector
+from worker_ant_v1.intelligence.enhanced_rug_detector import EnhancedRugDetector
 from worker_ant_v1.safety.kill_switch import EnhancedKillSwitch
 from worker_ant_v1.trading.squad_manager import SquadManager
 from worker_ant_v1.utils.logger import setup_logger

@@ -24,11 +24,16 @@ import threading
 import signal
 import os
 import psutil
+import sys
+from pathlib import Path
+
+# Add the project root to the path
+sys.path.append(str(Path(__file__).parent.parent))
 
 from worker_ant_v1.core.wallet_manager import UnifiedWalletManager as WalletManager
 from worker_ant_v1.core.unified_trading_engine import UnifiedTradingEngine
 from worker_ant_v1.intelligence.token_intelligence_system import TokenIntelligenceSystem
-from worker_ant_v1.safety.enhanced_rug_detector import EnhancedRugDetector
+from worker_ant_v1.intelligence.enhanced_rug_detector import EnhancedRugDetector
 from worker_ant_v1.trading.surgical_trade_executor import SurgicalTradeExecutor
 from worker_ant_v1.utils.logger import setup_logger
 

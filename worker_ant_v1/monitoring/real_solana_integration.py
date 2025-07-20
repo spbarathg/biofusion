@@ -164,7 +164,7 @@ class ProductionSolanaClient:
         ]
         
         
-        custom_rpc = self.network_config.rpc_url
+        custom_rpc = self.network_config.get('rpc_url')
         if custom_rpc and custom_rpc not in [ep.url for ep in primary_endpoints]:
             primary_endpoints.insert(0, RPCEndpoint(
                 url=custom_rpc,
@@ -319,7 +319,6 @@ class ProductionSolanaClient:
                 )
                 
                 if result.value:
-                if result.value:
                     signature = str(result.value)
                     tx_result = await self._monitor_transaction_confirmation(
                         signature, start_time
@@ -339,7 +338,6 @@ class ProductionSolanaClient:
                 last_error = e
                 self.logger.warning(f"Transaction attempt {attempt + 1} failed: {e}")
                 
-                if attempt < max_retries:
                 if attempt < max_retries:
                     delay = self.retry_delay_base * (2 ** attempt)
                     await asyncio.sleep(delay)
@@ -442,11 +440,9 @@ class ProductionSolanaClient:
                 response = await client.get_token_account_balance(token_account)
                 
                 if response.value:
-                if response.value:
                     amount = response.value.amount
                     decimals = response.value.decimals
                     return float(amount) / (10 ** decimals)
-                
                 return 0.0
                 
             except Exception as e:
@@ -466,9 +462,7 @@ class ProductionSolanaClient:
                 response = await client.get_balance(PublicKey(wallet_address))
                 
                 if response.value is not None:
-                if response.value is not None:
                     return response.value / 1_000_000_000
-                
                 return 0.0
                 
             except Exception as e:

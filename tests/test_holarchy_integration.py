@@ -13,7 +13,7 @@ import sys
 from pathlib import Path
 
 # Add the project root to the path
-sys.path.append(str(Path(__file__).parent))
+sys.path.append(str(Path(__file__).parent.parent))
 
 from entry_points.colony_commander import ColonyCommander
 from worker_ant_v1.trading.squad_manager import SquadManager, SquadType

@@ -498,7 +498,7 @@ class UnifiedSystemValidator:
             
             # Test safety systems
             try:
-                from worker_ant_v1.safety.enhanced_rug_detector import EnhancedRugDetector
+                from worker_ant_v1.intelligence.enhanced_rug_detector import EnhancedRugDetector
                 rug_detector = EnhancedRugDetector()
                 self.result.add_info("✅ Safety systems loaded successfully")
             except Exception as e:

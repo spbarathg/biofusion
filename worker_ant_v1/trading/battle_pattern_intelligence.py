@@ -29,7 +29,7 @@ except ImportError:
     ML_AVAILABLE = False
 
 from worker_ant_v1.utils.logger import setup_logger
-from worker_ant_v1.utils.real_solana_integration import ProductionSolanaClient as SolanaClient
+from worker_ant_v1.monitoring.real_solana_integration import ProductionSolanaClient as SolanaClient
 from worker_ant_v1.core.wallet_manager import UnifiedWalletManager as WalletManager
 
 logger = setup_logger(__name__)
