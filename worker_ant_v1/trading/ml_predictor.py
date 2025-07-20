@@ -1,9 +1,12 @@
 """
-ML PREDICTOR - MACHINE LEARNING PRICE PREDICTION
-===============================================
+ML PREDICTOR - STATE-OF-THE-ART PREDICTION ENGINE INTEGRATION
+============================================================
 
-Machine Learning system for price prediction using various ML models
-and feature engineering from on-chain data.
+Updated ML predictor that integrates the new state-of-the-art prediction engine
+with Oracle Ant (Transformer), Hunter Ant (RL), and Network Ant (GNN).
+
+This replaces the old simple ML models with advanced architectures designed
+for adversarial crypto markets.
 """
 
 import asyncio
@@ -16,10 +19,11 @@ import pickle
 import os
 
 from worker_ant_v1.utils.logger import setup_logger
+from worker_ant_v1.trading.ml_architectures.prediction_engine import PredictionEngine, UnifiedPrediction
 
 @dataclass
 class MLFeatures:
-    """Feature set for ML prediction"""
+    """Feature set for ML prediction (legacy compatibility)"""
     price_features: List[float]
     volume_features: List[float]
     technical_features: List[float]
@@ -29,7 +33,7 @@ class MLFeatures:
 
 @dataclass
 class MLPrediction:
-    """ML prediction result"""
+    """ML prediction result (legacy compatibility)"""
     token_address: str
     predicted_price: float
     prediction_confidence: float
@@ -40,19 +44,20 @@ class MLPrediction:
     timestamp: datetime
 
 class MLPredictor:
-    """Machine Learning prediction system"""
+    """Machine Learning prediction system with state-of-the-art architectures"""
     
-    def __init__(self):
+    def __init__(self, model_paths: Optional[Dict[str, str]] = None):
         self.logger = setup_logger("MLPredictor")
         
+        # Initialize the new prediction engine
+        self.prediction_engine = PredictionEngine(model_paths)
         
+        # Legacy compatibility
         self.models = {
-            'linear_regression': None,
-            'random_forest': None,
-            'gradient_boost': None,
-            'neural_network': None
+            'oracle_ant': 'transformer',
+            'hunter_ant': 'reinforcement_learning', 
+            'network_ant': 'graph_neural_network'
         }
-        
         
         self.feature_config = {
             'price_lookback': 50,
@@ -62,60 +67,25 @@ class MLPredictor:
             'market_context_features': 10
         }
         
-        
         self.prediction_horizons = [5, 15, 30, 60, 240]
         
-        
+        # Legacy feature history (for compatibility)
         self.feature_history: Dict[str, List[MLFeatures]] = {}
         
-        
+        # Legacy model performance (for compatibility)
         self.model_performance: Dict[str, Dict[str, float]] = {
             model: {'accuracy': 0.5, 'precision': 0.5, 'recall': 0.5, 'f1': 0.5}
             for model in self.models.keys()
         }
         
-        
-        self._initialize_models()
-        
-        self.logger.info("✅ ML predictor initialized")
+        self.logger.info("✅ ML predictor initialized with state-of-the-art architectures")
     
     def _initialize_models(self):
-        """Initialize simple prediction models"""
+        """Initialize models (legacy compatibility)"""
         
         try:
-            # For now, use simplified statistical models
-            
-            self.models['linear_regression'] = {
-                'type': 'linear',
-                'weights': np.random.normal(0, 0.1, 50),  # 50 features
-                'bias': 0.0,
-                'learning_rate': 0.001
-            }
-            
-            self.models['random_forest'] = {
-                'type': 'ensemble',
-                'n_trees': 10,
-                'tree_depth': 5,
-                'feature_subset': 0.7
-            }
-            
-            self.models['gradient_boost'] = {
-                'type': 'boosting',
-                'n_estimators': 20,
-                'learning_rate': 0.1,
-                'max_depth': 3
-            }
-            
-            self.models['neural_network'] = {
-                'type': 'neural',
-                'layers': [50, 25, 10, 1],
-                'weights': [np.random.normal(0, 0.1, (50, 25)),
-                           np.random.normal(0, 0.1, (25, 10)),
-                           np.random.normal(0, 0.1, (10, 1))],
-                'biases': [np.zeros(25), np.zeros(10), np.zeros(1)]
-            }
-            
-            self.logger.info("Models initialized successfully")
+            # Models are now handled by the prediction engine
+            self.logger.info("Models handled by state-of-the-art prediction engine")
             
         except Exception as e:
             self.logger.error(f"Model initialization failed: {e}")
@@ -123,21 +93,18 @@ class MLPredictor:
     async def predict_price(self, token_address: str, 
                           market_data: Dict[str, Any],
                           prediction_horizon: int = 15) -> MLPrediction:
-        """Generate price prediction for a token"""
+        """Generate price prediction using state-of-the-art ML architectures"""
         
         try:
-            features = await self._extract_features(token_address, market_data)
-            
-            
-            best_model = self._select_best_model(token_address)
-            
-            
-            predicted_price, confidence = await self._generate_prediction(
-                features, best_model, prediction_horizon
+            # Use the new prediction engine
+            unified_prediction = await self.prediction_engine.predict(
+                token_address, market_data, prediction_horizon=prediction_horizon
             )
             
-            
+            # Convert to legacy format for compatibility
             current_price = market_data.get('current_price', 0)
+            predicted_price = unified_prediction.oracle_price_prediction
+            
             if predicted_price > current_price * 1.02:
                 direction = "UP"
             elif predicted_price < current_price * 0.98:
@@ -145,26 +112,25 @@ class MLPredictor:
             else:
                 direction = "FLAT"
             
-            
-            feature_importance = self._calculate_feature_importance(features, best_model)
+            # Convert attention weights to feature importance
+            feature_importance = unified_prediction.oracle_attention_weights
             
             prediction = MLPrediction(
                 token_address=token_address,
                 predicted_price=predicted_price,
-                prediction_confidence=confidence,
+                prediction_confidence=unified_prediction.overall_confidence,
                 price_direction=direction,
                 prediction_horizon=prediction_horizon,
                 feature_importance=feature_importance,
-                model_used=best_model,
+                model_used="state_of_the_art_ensemble",
                 timestamp=datetime.now()
             )
             
-            
+            # Store legacy features for compatibility
+            features = await self._extract_features(token_address, market_data)
             if token_address not in self.feature_history:
                 self.feature_history[token_address] = []
-            
             self.feature_history[token_address].append(features)
-            
             
             if len(self.feature_history[token_address]) > 1000:
                 self.feature_history[token_address] = self.feature_history[token_address][-1000:]
@@ -173,7 +139,6 @@ class MLPredictor:
             
         except Exception as e:
             self.logger.error(f"Price prediction failed for {token_address}: {e}")
-            
             
             return MLPrediction(
                 token_address=token_address,
@@ -579,4 +544,67 @@ class MLPredictor:
             
         except Exception as e:
             self.logger.error(f"Ensemble prediction failed: {e}")
-            return await self.predict_price(token_address, market_data, prediction_horizon) 
+            return await self.predict_price(token_address, market_data, prediction_horizon)
+    
+    async def get_unified_prediction(self, token_address: str, 
+                                   market_data: Dict[str, Any],
+                                   wallet_id: Optional[str] = None,
+                                   prediction_horizon: int = 15) -> UnifiedPrediction:
+        """Get unified prediction from all three ML architectures"""
+        
+        try:
+            return await self.prediction_engine.predict(
+                token_address, market_data, wallet_id, prediction_horizon
+            )
+        except Exception as e:
+            self.logger.error(f"Unified prediction failed: {e}")
+            raise
+    
+    async def initialize_hunter_ants(self, wallet_ids: List[str]):
+        """Initialize Hunter Ant agents for each wallet"""
+        
+        try:
+            await self.prediction_engine.initialize_hunter_ants(wallet_ids)
+        except Exception as e:
+            self.logger.error(f"Failed to initialize Hunter Ants: {e}")
+    
+    async def integrate_with_battle_pattern(self, battle_pattern_intelligence):
+        """Integrate with BattlePatternIntelligence"""
+        
+        try:
+            await self.prediction_engine.integrate_with_battle_pattern(battle_pattern_intelligence)
+        except Exception as e:
+            self.logger.error(f"Failed to integrate with BattlePatternIntelligence: {e}")
+    
+    async def integrate_with_nightly_evolution(self, nightly_evolution_system):
+        """Integrate with NightlyEvolutionSystem"""
+        
+        try:
+            await self.prediction_engine.integrate_with_nightly_evolution(nightly_evolution_system)
+        except Exception as e:
+            self.logger.error(f"Failed to integrate with NightlyEvolutionSystem: {e}")
+    
+    def get_performance_summary(self) -> Dict[str, Any]:
+        """Get performance summary"""
+        
+        try:
+            return self.prediction_engine.get_performance_summary()
+        except Exception as e:
+            self.logger.error(f"Failed to get performance summary: {e}")
+            return {}
+    
+    async def save_all_models(self, base_path: str = "models"):
+        """Save all model checkpoints"""
+        
+        try:
+            await self.prediction_engine.save_all_models(base_path)
+        except Exception as e:
+            self.logger.error(f"Failed to save models: {e}")
+    
+    async def load_all_models(self, base_path: str = "models"):
+        """Load all model checkpoints"""
+        
+        try:
+            await self.prediction_engine.load_all_models(base_path)
+        except Exception as e:
+            self.logger.error(f"Failed to load models: {e}") 

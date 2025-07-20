@@ -29,6 +29,8 @@ from worker_ant_v1.core.unified_trading_engine import UnifiedTradingEngine
 from worker_ant_v1.intelligence.enhanced_rug_detector import EnhancedRugDetector
 from worker_ant_v1.safety.kill_switch import EnhancedKillSwitch
 from worker_ant_v1.trading.squad_manager import SquadManager
+from worker_ant_v1.trading.ml_predictor import MLPredictor
+from worker_ant_v1.trading.ml_architectures.prediction_engine import PredictionEngine, UnifiedPrediction
 from worker_ant_v1.utils.logger import setup_logger
 from worker_ant_v1.utils.constants import SentimentDecision as SentimentDecisionEnum
 
@@ -150,6 +152,17 @@ class SwarmDecisionEngine:
             self.squad_manager = SquadManager()
             await self.squad_manager.initialize(self.wallet_manager)
             
+            # Initialize ML predictor with state-of-the-art architectures
+            self.ml_predictor = MLPredictor()
+            
+            # Initialize prediction engine
+            self.prediction_engine = PredictionEngine()
+            
+            # Initialize Hunter Ants for all wallets
+            active_wallets = await self.wallet_manager.get_all_wallets()
+            wallet_ids = list(active_wallets.keys())
+            await self.ml_predictor.initialize_hunter_ants(wallet_ids)
+            await self.prediction_engine.initialize_hunter_ants(wallet_ids)
             
             self.neural_command_center.wallet_manager = self.wallet_manager
             self.neural_command_center.vault_system = self.vault_system
@@ -255,57 +268,83 @@ class SwarmDecisionEngine:
             )
     
     async def _run_consensus_analysis(self, opportunity: OpportunitySignal) -> ConsensusResult:
-        """Run multi-source consensus analysis"""
+        """Run multi-source consensus analysis with state-of-the-art ML"""
         try:
+            # Get unified prediction from all three ML architectures
+            unified_prediction = await self.prediction_engine.predict(
+                opportunity.token_address, 
+                opportunity.market_data,
+                prediction_horizon=15
+            )
+            
+            # Get traditional analyses
             neural_analysis = await self._get_neural_analysis(opportunity)
-            
-            
             rug_analysis = await self._get_rug_analysis(opportunity)
-            
-            
             stealth_analysis = await self._get_stealth_analysis(opportunity)
             
-            
+            # Combine ML prediction with traditional analyses
             all_analyses = [neural_analysis, rug_analysis, stealth_analysis]
             
+            # ML consensus analysis
+            ml_action = unified_prediction.trading_recommendation
+            ml_confidence = unified_prediction.overall_confidence
+            ml_consensus_score = unified_prediction.consensus_score
             
+            # Count traditional analysis votes
             buy_votes = sum(1 for analysis in all_analyses if analysis.get('action') == SentimentDecisionEnum.BUY.value)
             avoid_votes = sum(1 for analysis in all_analyses if analysis.get('action') == 'AVOID')
             
+            # Enhanced consensus logic incorporating ML predictions
+            total_sources = len(all_analyses) + 1  # +1 for ML prediction
+            required_consensus = max(2, total_sources // 2)  # At least 2 sources must agree
             
-            if buy_votes >= 2 and avoid_votes == 0:  # Majority buy, no avoid votes
-                avg_confidence = np.mean([a.get('confidence', 0) for a in all_analyses if a.get('action') == SentimentDecisionEnum.BUY.value])
+            # ML prediction counts as a vote
+            if ml_action in ["STRONG_BUY", "BUY"]:
+                buy_votes += 1
+            elif ml_action in ["AVOID"]:
+                avoid_votes += 1
+            
+            # Check consensus
+            if buy_votes >= required_consensus and avoid_votes == 0:
+                # Calculate weighted confidence
+                traditional_confidence = np.mean([a.get('confidence', 0) for a in all_analyses if a.get('action') == SentimentDecisionEnum.BUY.value])
+                weighted_confidence = (traditional_confidence * 0.4 + ml_confidence * 0.6)
                 
-                if avg_confidence >= self.consensus_thresholds['min_confidence']:
-                    base_position = 0.35  # 35% max from config
-                    confidence_multiplier = avg_confidence
-                    position_size = base_position * confidence_multiplier
+                if weighted_confidence >= self.consensus_thresholds['min_confidence']:
+                    # Use ML position size recommendation
+                    base_position = unified_prediction.position_size_recommendation
+                    confidence_multiplier = weighted_confidence
+                    position_size = min(0.35, base_position * confidence_multiplier)  # Cap at 35%
                     
                     return ConsensusResult(
                         action=SentimentDecisionEnum.BUY.value,
-                        confidence=avg_confidence,
-                        reasoning=f"Consensus reached: {buy_votes}/3 sources approve",
-                        risk_level="medium",
+                        confidence=weighted_confidence,
+                        reasoning=f"ML-enhanced consensus: {buy_votes}/{total_sources} sources approve (ML confidence: {ml_confidence:.2f})",
+                        risk_level="medium" if unified_prediction.risk_assessment.get('overall_risk', 0.5) < 0.6 else "high",
                         position_size=position_size,
                         execution_parameters={
                             'max_slippage': 0.03,
                             'timeout_seconds': 30,
-                            'priority': 'high'
+                            'priority': 'high' if ml_action == "STRONG_BUY" else 'medium',
+                            'ml_consensus_score': ml_consensus_score,
+                            'oracle_confidence': unified_prediction.oracle_confidence,
+                            'hunter_confidence': unified_prediction.hunter_action_confidence,
+                            'network_confidence': unified_prediction.network_contagion_score
                         },
-                        consensus_sources=[a.get('source', 'unknown') for a in all_analyses if a.get('action') == SentimentDecisionEnum.BUY.value],
+                        consensus_sources=[a.get('source', 'unknown') for a in all_analyses if a.get('action') == SentimentDecisionEnum.BUY.value] + ['ml_ensemble'],
                         dissenting_sources=[]
                     )
             
-            
+            # If no consensus, return AVOID
             return ConsensusResult(
                 action="AVOID",
                 confidence=0.0,
-                reasoning="Insufficient consensus or confidence",
+                reasoning=f"Insufficient consensus: {buy_votes}/{total_sources} buy votes, ML confidence: {ml_confidence:.2f}",
                 risk_level="high",
                 position_size=0.0,
                 execution_parameters={},
                 consensus_sources=[],
-                dissenting_sources=[a.get('source', 'unknown') for a in all_analyses]
+                dissenting_sources=['ml_ensemble'] + [a.get('source', 'unknown') for a in all_analyses if a.get('action') != SentimentDecisionEnum.BUY.value]
             )
             
         except Exception as e:
