@@ -35,6 +35,7 @@ from pathlib import Path
 from worker_ant_v1.utils.logger import setup_logger
 from worker_ant_v1.intelligence.narrative_ant import NarrativeAnt
 from worker_ant_v1.intelligence.sentiment_analyzer import SentimentAnalyzer
+from worker_ant_v1.intelligence.echo_ant import EchoAnt
 from worker_ant_v1.trading.squad_manager import SquadManager, SquadType
 from worker_ant_v1.core.wallet_manager import UnifiedWalletManager
 from worker_ant_v1.utils.constants import SentimentDecision
@@ -151,6 +152,7 @@ class IgnitionAnt:
         # Core systems
         self.narrative_ant: Optional[NarrativeAnt] = None
         self.sentiment_analyzer: Optional[SentimentAnalyzer] = None
+        self.echo_ant: Optional[EchoAnt] = None
         self.squad_manager: Optional[SquadManager] = None
         self.wallet_manager: Optional[UnifiedWalletManager] = None
         
@@ -204,6 +206,7 @@ class IgnitionAnt:
         try:
             self.narrative_ant = systems.get('narrative_ant')
             self.sentiment_analyzer = systems.get('sentiment_analyzer')
+            self.echo_ant = systems.get('echo_ant')
             self.squad_manager = systems.get('squad_manager')
             self.wallet_manager = systems.get('wallet_manager')
             
@@ -551,12 +554,37 @@ class IgnitionAnt:
                 await asyncio.sleep(60)
     
     async def _execute_inception(self, opportunity: InceptionOpportunity):
-        """Execute the inception operation"""
+        """Execute the inception operation with EchoAnt social amplification"""
         try:
             self.logger.info(f"🚀 Executing inception for {opportunity.memetic_profile.token_symbol} "
                            f"using {opportunity.inception_tactic.value}")
             
             opportunity.inception_status = "executing"
+            
+            # Activate EchoAnt for high-conviction signals
+            echo_campaign_id = ""
+            if (self.echo_ant and 
+                opportunity.confidence_score >= 0.8 and 
+                opportunity.memetic_profile.memetic_score >= 0.85):
+                
+                self.logger.info(f"🔊 Activating EchoAnt social amplification for {opportunity.memetic_profile.token_symbol}")
+                
+                inception_data = {
+                    'token_address': opportunity.token_address,
+                    'token_symbol': opportunity.memetic_profile.token_symbol,
+                    'memetic_hooks': opportunity.memetic_profile.memetic_hooks,
+                    'confidence_score': opportunity.confidence_score,
+                    'memetic_score': opportunity.memetic_profile.memetic_score,
+                    'inception_tactic': opportunity.inception_tactic.value
+                }
+                
+                echo_campaign_id = await self.echo_ant.amplify_inception_signal(inception_data)
+                
+                if echo_campaign_id:
+                    self.logger.info(f"✅ EchoAnt campaign {echo_campaign_id} launched for social amplification")
+                    opportunity.inception_status = "executing_with_amplification"
+                else:
+                    self.logger.warning(f"⚠️ EchoAnt amplification failed, proceeding with standard inception")
             
             # Create inception squad
             squad_id = await self._create_inception_squad(opportunity)
@@ -566,14 +594,24 @@ class IgnitionAnt:
                 self.logger.error(f"❌ Failed to create inception squad for {opportunity.memetic_profile.token_symbol}")
                 return
             
-            # Execute inception phases
-            for phase in opportunity.execution_phases:
+            # Execute inception phases with coordination timing for social amplification
+            for i, phase in enumerate(opportunity.execution_phases):
                 await self._execute_inception_phase(opportunity, phase, squad_id)
                 
-                # Wait between phases
-                await asyncio.sleep(phase['duration_minutes'] * 60)
+                # Strategic delay for social amplification synchronization
+                if echo_campaign_id and i == 0:
+                    # Give EchoAnt's subtle phase time to build social proof
+                    self.logger.info(f"⏰ Strategic delay for social amplification synchronization...")
+                    await asyncio.sleep(phase['duration_minutes'] * 60 + 600)  # Extra 10 minutes
+                else:
+                    await asyncio.sleep(phase['duration_minutes'] * 60)
             
             opportunity.inception_status = "completed"
+            
+            # Store echo campaign reference for performance tracking
+            if echo_campaign_id:
+                opportunity.actual_performance = opportunity.actual_performance or {}
+                opportunity.actual_performance['echo_campaign_id'] = echo_campaign_id
             
             # Monitor post-inception performance
             asyncio.create_task(self._monitor_inception_results(opportunity))

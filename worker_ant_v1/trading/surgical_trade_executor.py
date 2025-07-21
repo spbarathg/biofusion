@@ -971,6 +971,283 @@ class SurgicalTradeExecutor:
             self.logger.error(f"Transaction send error: {e}")
             return None
             
+    async def detect_and_frontrun_rug_pull(self, token_address: str, deployer_wallet: str,
+                                          our_liquidity_positions: List[str]) -> bool:
+        """
+        THE CANARY SYSTEM: Detect and frontrun rug pull attempts
+        
+        Monitors mempool for deployer wallet attempting to remove liquidity,
+        then broadcasts our own liquidity removal with higher priority fee
+        to ensure it gets sequenced first.
+        
+        Args:
+            token_address: The token to monitor
+            deployer_wallet: The deployer wallet address to watch
+            our_liquidity_positions: List of our liquidity position identifiers
+            
+        Returns:
+            bool: True if rug pull detected and successfully frontran
+        """
+        try:
+            self.logger.info(f"🕯️ Activating Canary System for {token_address[:8]}... monitoring deployer: {deployer_wallet[:8]}...")
+            
+            # Start mempool monitoring for deployer transactions
+            rug_detected = await self._monitor_mempool_for_rug_pull(token_address, deployer_wallet)
+            
+            if rug_detected:
+                self.logger.warning(f"🚨 RUG PULL DETECTED! Deployer {deployer_wallet[:8]} attempting liquidity removal")
+                
+                # Execute emergency liquidity removal with frontrunning
+                frontrun_success = await self._emergency_frontrun_liquidity_removal(
+                    token_address, our_liquidity_positions
+                )
+                
+                if frontrun_success:
+                    self.logger.info(f"✅ Successfully frontran rug pull! Our liquidity removed first")
+                    return True
+                else:
+                    self.logger.error(f"❌ Failed to frontrun rug pull - potential losses")
+                    return False
+            
+            return False
+            
+        except Exception as e:
+            self.logger.error(f"❌ Rug pull detection/frontrunning failed: {e}")
+            return False
+    
+    async def _monitor_mempool_for_rug_pull(self, token_address: str, deployer_wallet: str,
+                                          monitoring_duration: int = 3600) -> bool:
+        """
+        Monitor mempool for suspicious deployer transactions
+        
+        Args:
+            token_address: Token to monitor
+            deployer_wallet: Deployer wallet to watch
+            monitoring_duration: How long to monitor in seconds (default 1 hour)
+            
+        Returns:
+            bool: True if rug pull attempt detected
+        """
+        try:
+            self.logger.info(f"👁️ Monitoring mempool for deployer activity...")
+            
+            start_time = time.time()
+            
+            while (time.time() - start_time) < monitoring_duration:
+                # Get pending transactions from mempool
+                pending_txs = await self._get_mempool_transactions()
+                
+                for tx in pending_txs:
+                    # Check if transaction is from deployer wallet
+                    if tx.get('from', '').lower() == deployer_wallet.lower():
+                        
+                        # Analyze transaction for rug pull indicators
+                        is_rug_attempt = await self._analyze_transaction_for_rug_pull(tx, token_address)
+                        
+                        if is_rug_attempt:
+                            self.logger.warning(f"🚨 Rug pull transaction detected in mempool!")
+                            return True
+                
+                # Check every 2 seconds
+                await asyncio.sleep(2)
+            
+            self.logger.info(f"✅ Monitoring period completed - no rug pull detected")
+            return False
+            
+        except Exception as e:
+            self.logger.error(f"Mempool monitoring error: {e}")
+            return False
+    
+    async def _get_mempool_transactions(self) -> List[Dict[str, Any]]:
+        """Get pending transactions from mempool"""
+        try:
+            # Placeholder for actual mempool monitoring
+            # In production, this would connect to Solana RPC and get pending transactions
+            
+            # Simulate mempool data
+            mock_mempool_txs = []
+            
+            # Occasionally simulate a rug pull transaction for testing
+            if random.random() < 0.01:  # 1% chance for testing
+                mock_mempool_txs.append({
+                    'from': '0x' + 'deployer_wallet_address',
+                    'to': '0x' + 'liquidity_pool_address', 
+                    'data': '0x' + 'remove_liquidity_function_call',
+                    'value': '0x0',
+                    'gas': '0x5208',
+                    'gasPrice': '0x3b9aca00'
+                })
+            
+            return mock_mempool_txs
+            
+        except Exception as e:
+            self.logger.error(f"Error getting mempool transactions: {e}")
+            return []
+    
+    async def _analyze_transaction_for_rug_pull(self, tx: Dict[str, Any], token_address: str) -> bool:
+        """Analyze transaction to determine if it's a rug pull attempt"""
+        try:
+            # Transaction data analysis for rug pull indicators
+            tx_data = tx.get('data', '')
+            
+            # Common rug pull function signatures (simplified for example)
+            rug_pull_signatures = [
+                '0xa9059cbb',  # transfer (large amount to deployer)
+                '0x23b872dd',  # transferFrom (draining liquidity)
+                '0x2195995c',  # removeLiquidity
+                '0xbaa2abde',  # removeLiquidityETH
+                '0x02751cec',  # removeLiquidityETHSupportingFeeOnTransferTokens
+            ]
+            
+            # Check if transaction contains rug pull function signatures
+            for signature in rug_pull_signatures:
+                if tx_data.startswith(signature):
+                    self.logger.warning(f"🚨 Suspicious function call detected: {signature}")
+                    
+                    # Additional checks for amount/percentage
+                    if await self._is_large_liquidity_removal(tx, token_address):
+                        return True
+            
+            return False
+            
+        except Exception as e:
+            self.logger.error(f"Transaction analysis error: {e}")
+            return False
+    
+    async def _is_large_liquidity_removal(self, tx: Dict[str, Any], token_address: str) -> bool:
+        """Check if transaction represents a large liquidity removal"""
+        try:
+            # Analyze transaction to determine if it's removing significant liquidity
+            # This would involve decoding the transaction data and comparing to pool size
+            
+            # Simplified check for example
+            # In production, this would analyze the actual transaction parameters
+            
+            # Simulate analysis - assume large removal if gas price is high (rushed transaction)
+            gas_price = int(tx.get('gasPrice', '0x0'), 16)
+            high_gas_threshold = 50 * 10**9  # 50 gwei
+            
+            if gas_price > high_gas_threshold:
+                self.logger.warning(f"High gas price detected: {gas_price / 10**9:.1f} gwei - suggests urgency")
+                return True
+            
+            return False
+            
+        except Exception as e:
+            self.logger.error(f"Liquidity removal analysis error: {e}")
+            return False
+    
+    async def _emergency_frontrun_liquidity_removal(self, token_address: str, 
+                                                   our_positions: List[str]) -> bool:
+        """
+        Execute emergency frontrunning of rug pull attempt
+        
+        Broadcasts our liquidity removal with higher priority fee to get included first
+        """
+        try:
+            self.logger.info(f"⚡ Executing emergency frontrun liquidity removal...")
+            
+            # Calculate optimal priority fee to beat the rug puller
+            frontrun_gas_price = await self._calculate_frontrun_gas_price()
+            
+            # Execute liquidity removal for all our positions
+            removal_results = []
+            
+            for position_id in our_positions:
+                try:
+                    # Remove liquidity with high priority
+                    removal_result = await self._remove_liquidity_with_priority(
+                        token_address, position_id, frontrun_gas_price
+                    )
+                    removal_results.append(removal_result)
+                    
+                    if removal_result:
+                        self.logger.info(f"✅ Emergency removal successful for position {position_id}")
+                    else:
+                        self.logger.error(f"❌ Emergency removal failed for position {position_id}")
+                        
+                except Exception as e:
+                    self.logger.error(f"Position removal error {position_id}: {e}")
+                    removal_results.append(False)
+            
+            # Return True if at least some positions were saved
+            success_rate = sum(removal_results) / len(removal_results) if removal_results else 0
+            
+            self.logger.info(f"🛡️ Emergency frontrun completed: {success_rate:.1%} success rate")
+            
+            return success_rate > 0.5  # Consider successful if we saved more than half
+            
+        except Exception as e:
+            self.logger.error(f"Emergency frontrun execution error: {e}")
+            return False
+    
+    async def _calculate_frontrun_gas_price(self) -> int:
+        """Calculate optimal gas price to frontrun rug pull transaction"""
+        try:
+            # Get current network gas prices
+            current_gas_price = await self._get_current_gas_price()
+            
+            # Add aggressive premium to ensure frontrunning
+            # In a rug pull situation, paying extra gas is worth it to save liquidity
+            frontrun_multiplier = 2.5  # 150% premium
+            frontrun_gas_price = int(current_gas_price * frontrun_multiplier)
+            
+            # Cap at reasonable maximum
+            max_gas_price = 200 * 10**9  # 200 gwei max
+            frontrun_gas_price = min(frontrun_gas_price, max_gas_price)
+            
+            self.logger.info(f"💰 Frontrun gas price calculated: {frontrun_gas_price / 10**9:.1f} gwei")
+            
+            return frontrun_gas_price
+            
+        except Exception as e:
+            self.logger.error(f"Gas price calculation error: {e}")
+            return 100 * 10**9  # Fallback to 100 gwei
+    
+    async def _get_current_gas_price(self) -> int:
+        """Get current network gas price"""
+        try:
+            # Placeholder for actual gas price fetching
+            # In production, this would query Solana network for current fees
+            
+            # Simulate current gas price
+            base_gas_price = 20 * 10**9  # 20 gwei base
+            return base_gas_price
+            
+        except Exception as e:
+            self.logger.error(f"Gas price fetch error: {e}")
+            return 50 * 10**9  # Fallback
+    
+    async def _remove_liquidity_with_priority(self, token_address: str, position_id: str, 
+                                            gas_price: int) -> bool:
+        """Remove liquidity position with high priority gas"""
+        try:
+            # Placeholder for actual liquidity removal
+            # In production, this would:
+            # 1. Construct the remove liquidity transaction
+            # 2. Set the high priority gas price
+            # 3. Broadcast immediately
+            
+            self.logger.info(f"⚡ Removing liquidity position {position_id} with priority gas {gas_price / 10**9:.1f} gwei")
+            
+            # Simulate transaction execution
+            await asyncio.sleep(random.uniform(0.5, 2.0))  # Simulate network delay
+            
+            # Simulate success rate (higher gas price = higher success rate)
+            success_probability = min(0.95, gas_price / (100 * 10**9))  # Up to 95% success
+            success = random.random() < success_probability
+            
+            if success:
+                self.logger.info(f"✅ Priority liquidity removal successful")
+            else:
+                self.logger.error(f"❌ Priority liquidity removal failed")
+            
+            return success
+            
+        except Exception as e:
+            self.logger.error(f"Priority liquidity removal error: {e}")
+            return False
+
     def _update_execution_metrics(self, latency_ms: int):
         """Update execution performance metrics"""
         if self.avg_execution_time_ms == 0:

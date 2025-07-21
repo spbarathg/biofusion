@@ -23,6 +23,12 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r requirements.txt
         
+    - name: Validate Production Secrets
+      run: |
+        python scripts/validate_production_secrets.py --ci --workspace .
+      env:
+        PYTHONPATH: ${{ github.workspace }}
+        
     - name: Run linting
       run: |
         flake8 worker_ant_v1/

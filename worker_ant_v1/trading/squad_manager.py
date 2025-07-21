@@ -29,6 +29,7 @@ class SquadType(Enum):
     ACCUMULATOR = "accumulator"  # For building positions over time
     FOMO = "fomo"              # For trending and viral tokens
     STEALTH = "stealth"        # For low-key, under-the-radar trades
+    LIQUIDITY_PROVISION = "liquidity_provision"  # For adding/monitoring liquidity with rug-pull immunity
 
 
 @dataclass
@@ -157,6 +158,21 @@ class SquadManager:
                     entry_speed="stealth",
                     exit_strategy="conservative"
                 )
+            },
+            SquadType.LIQUIDITY_PROVISION: {
+                'required_wallets': 3,
+                'preferred_behaviors': [WalletBehavior.ACCUMULATOR, WalletBehavior.MIMICKER],
+                'min_aggression': 0.6,
+                'max_patience': 0.9,
+                'ruleset': SquadRuleset(
+                    max_position_size_sol=80.0,  # Larger amounts for liquidity provision
+                    risk_level="high",
+                    slippage_tolerance=0.02,
+                    hold_duration_minutes=360,  # 6 hours monitoring
+                    entry_speed="gradual",
+                    exit_strategy="immediate",  # Immediate exit on rug detection
+                    coordination_mode="synchronized"
+                )
             }
         }
         
@@ -227,6 +243,14 @@ class SquadManager:
                              volume_24h: float, is_trending: bool, volatility: float) -> Optional[SquadType]:
         """Determine the appropriate squad type for an opportunity"""
         try:
+            # LIQUIDITY_PROVISION: High-conviction trades needing liquidity support and rug protection
+            liquidity_provision_criteria = (
+                hasattr(self, '_should_use_liquidity_provision') and 
+                self._should_use_liquidity_provision(token_age_hours, market_cap, volume_24h, volatility)
+            )
+            if liquidity_provision_criteria:
+                return SquadType.LIQUIDITY_PROVISION
+            
             # SNIPER: Very new tokens (< 1 hour)
             if token_age_hours < 1:
                 return SquadType.SNIPER
@@ -477,6 +501,31 @@ class SquadManager:
                 self.logger.error(f"Squad cleanup error: {e}")
                 await asyncio.sleep(3600)
     
+    def _should_use_liquidity_provision(self, token_age_hours: float, market_cap: float,
+                                       volume_24h: float, volatility: float) -> bool:
+        """Determine if liquidity provision squad should be deployed"""
+        try:
+            # Criteria for liquidity provision:
+            # 1. High-conviction trade (would be passed as additional parameter in real implementation)
+            # 2. Significant capital deployment potential
+            # 3. New enough to influence early liquidity
+            # 4. Not too volatile to manage effectively
+            
+            # For now, use heuristics based on available data
+            liquidity_provision_criteria = [
+                token_age_hours <= 12,           # New enough to influence
+                market_cap < 5000000,            # Small enough that our liquidity matters  
+                volume_24h > 100000,             # Sufficient volume to warrant attention
+                0.3 <= volatility <= 0.9         # Manageable volatility range
+            ]
+            
+            # Need at least 3 of 4 criteria
+            return sum(liquidity_provision_criteria) >= 3
+            
+        except Exception as e:
+            self.logger.error(f"Liquidity provision criteria error: {e}")
+            return False
+
     def get_squad_manager_status(self) -> Dict[str, Any]:
         """Get overall squad manager status"""
         try:
