@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 HISTORICAL DATA INGESTION SYSTEM
 =================================
@@ -33,7 +32,7 @@ import asyncpg
 from dataclasses import dataclass, asdict
 import time
 
-# Add project root to path
+
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
@@ -135,8 +134,8 @@ class HeliusProvider(DataProvider):
         await self._rate_limit_wait()
         
         try:
+        try:
             # Helius doesn't have direct price history, we'll use transaction data
-            # to derive price points
             transactions = await self.get_token_transactions(token_address, start_date, end_date)
             price_points = self._derive_price_from_transactions(transactions)
             return price_points
@@ -162,7 +161,7 @@ class HeliusProvider(DataProvider):
         transactions = []
         
         try:
-            # Helius pagination
+        try:
             before = None
             page_count = 0
             
@@ -204,11 +203,11 @@ class HeliusProvider(DataProvider):
         try:
             timestamp = datetime.fromtimestamp(tx_data.get("blockTime", 0), tz=timezone.utc)
             
-            # Extract swap information
+            
             token_transfers = tx_data.get("tokenTransfers", [])
             native_transfers = tx_data.get("nativeTransfers", [])
             
-            # Find relevant transfers
+            
             token_amount = 0
             sol_amount = 0
             wallet_address = "unknown"
@@ -244,7 +243,7 @@ class HeliusProvider(DataProvider):
         """Derive price points from transaction data"""
         price_points = []
         
-        # Group transactions by hour
+        
         hourly_data = {}
         
         for tx in transactions:
@@ -257,7 +256,7 @@ class HeliusProvider(DataProvider):
                 price = tx.amount_sol / tx.amount_tokens
                 hourly_data[hour_key].append((price, tx.amount_sol))
         
-        # Calculate volume-weighted average price for each hour
+        
         for hour, trades in hourly_data.items():
             if not trades:
                 continue
@@ -411,12 +410,12 @@ class HistoricalDataIngester:
     async def initialize(self):
         """Initialize the ingestion system"""
         try:
-            # Initialize database
+        try:
             db_config = get_database_config()
             self.db_manager = TimescaleDBManager(db_config)
             await self.db_manager.initialize()
             
-            # Initialize providers
+            
             network_config = await get_network_config_async()
             
             if network_config.get("helius_api_key"):
@@ -477,7 +476,7 @@ class HistoricalDataIngester:
             if token_success:
                 successful_ingests += 1
             
-            # Small delay between tokens to be respectful
+            
             await asyncio.sleep(0.5)
         
         success_rate = (successful_ingests / total_tokens) * 100
@@ -491,9 +490,9 @@ class HistoricalDataIngester:
             return
         
         try:
-            # Convert to database format
+        try:
             for point in price_data:
-                # Store as performance metric
+            for point in price_data:
                 from worker_ant_v1.core.database import PerformanceMetric
                 
                 metric = PerformanceMetric(
@@ -518,11 +517,11 @@ class HistoricalDataIngester:
     
     async def shutdown(self):
         """Shutdown the ingestion system"""
-        # Close all providers
+        """Shutdown the ingestion system"""
         for provider in self.providers.values():
             await provider.close()
         
-        # Shutdown database
+        
         if self.db_manager:
             await self.db_manager.shutdown()
 
@@ -557,7 +556,7 @@ def load_custom_tokens(token_list_file: str) -> List[TokenInfo]:
                     decimals=item.get("decimals", 9)
                 ))
             else:
-                # Simple address list
+            else:
                 tokens.append(TokenInfo(item, "UNKNOWN", "Unknown Token"))
         
         return tokens
@@ -591,7 +590,7 @@ Examples:
     
     args = parser.parse_args()
     
-    # Determine date range
+    
     if args.start_date and args.end_date:
         start_date = datetime.strptime(args.start_date, "%Y-%m-%d").replace(tzinfo=timezone.utc)
         end_date = datetime.strptime(args.end_date, "%Y-%m-%d").replace(tzinfo=timezone.utc)
@@ -599,7 +598,7 @@ Examples:
         end_date = datetime.now(timezone.utc)
         start_date = end_date - timedelta(days=args.days)
     
-    # Get token list
+    
     if args.tokens == "popular":
         tokens = get_popular_tokens()
     elif args.tokens == "custom" and args.token_list:
@@ -617,7 +616,7 @@ Examples:
     print(f"   🪙 Tokens: {len(tokens)} tokens")
     print(f"   🔌 Providers: {args.providers or 'all available'}")
     
-    # Initialize and run ingestion
+    
     ingester = HistoricalDataIngester()
     
     try:

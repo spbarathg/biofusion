@@ -126,6 +126,7 @@ class StealthOperationsSystem:
         
         # Core systems
         self.wallet_manager: Optional[UnifiedWalletManager] = None
+        self.observer_ant = None  # Will be injected for traceability-based obfuscation
         
         # Stealth profiles and operations
         self.stealth_profiles: Dict[str, StealthProfile] = {}
@@ -665,14 +666,26 @@ class StealthOperationsSystem:
                                          execution_strategy: Dict[str, Any],
                                          mev_detection: MEVDetection,
                                          operation_id: str) -> Dict[str, Any]:
-        """Execute transaction with MEV protection measures"""
+        """Execute transaction with MEV protection measures and traceability-based obfuscation"""
         try:
             self.logger.info(f"⚡ Executing transaction with MEV protection: {execution_strategy['type']}")
             
-            # Apply delay if recommended
-            if execution_strategy['delay_ms'] > 0:
-                delay_seconds = execution_strategy['delay_ms'] / 1000.0
-                self.logger.info(f"⏰ Applying MEV avoidance delay: {delay_seconds:.1f}s")
+            # Get traceability score for enhanced obfuscation
+            traceability_score = await self._get_traceability_score()
+            obfuscation_level = self._calculate_obfuscation_level(traceability_score)
+            
+            # Apply traceability-based obfuscation
+            enhanced_strategy = await self._enhance_strategy_with_obfuscation(
+                execution_strategy, obfuscation_level, traceability_score
+            )
+            
+            # Apply delay if recommended (with traceability-based randomization)
+            base_delay = enhanced_strategy.get('delay_ms', 0)
+            if base_delay > 0 or obfuscation_level > 0.3:
+                # Add randomized delay based on traceability score
+                randomized_delay = await self._calculate_randomized_delay(base_delay, obfuscation_level)
+                delay_seconds = randomized_delay / 1000.0
+                self.logger.info(f"⏰ Applying enhanced stealth delay: {delay_seconds:.1f}s (obfuscation level: {obfuscation_level:.2f})")
                 await asyncio.sleep(delay_seconds)
             
             # Execute via private RPC if recommended

@@ -834,5 +834,3 @@ class MemecoinTradingBot:
             self.logger.error(f"Error getting status: {e}")
             return {"error": str(e)}
 
-# This file is now a module containing the HyperIntelligentTradingSwarm and MemecoinTradingBot classes.
-# Use entry_points/run_bot.py as the sole executable entry point. 

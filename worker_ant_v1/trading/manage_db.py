@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 DATABASE MANAGEMENT SCRIPT
 ===========================
@@ -23,7 +22,7 @@ import sys
 from pathlib import Path
 from typing import Optional, List
 
-# Add project root to path
+
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
@@ -46,10 +45,10 @@ class DatabaseManager:
         self.alembic_cfg_path = self.project_root / "alembic.ini"
         self.migrations_dir = self.project_root / "migrations"
         
-        # Initialize Alembic config
+        
         self.alembic_cfg = Config(str(self.alembic_cfg_path))
         
-        # Set database URL
+        
         try:
             db_config = get_database_config()
             db_url = (
@@ -65,12 +64,12 @@ class DatabaseManager:
         try:
             print("🔧 Initializing Alembic migration environment...")
             
-            # Check if already initialized
+            
             if self.migrations_dir.exists() and (self.migrations_dir / "env.py").exists():
                 print("✅ Migration environment already initialized")
                 return True
             
-            # Initialize Alembic
+            
             command.init(self.alembic_cfg, str(self.migrations_dir))
             print("✅ Migration environment initialized successfully")
             return True
@@ -168,11 +167,11 @@ class DatabaseManager:
         try:
             print("🏥 Checking database health...")
             
-            # Test basic connectivity
+            
             db_config = get_database_config()
             db_manager = TimescaleDBManager(db_config)
             
-            # Try to initialize (this tests connectivity)
+            
             success = await db_manager.initialize()
             await db_manager.shutdown()
             
@@ -193,10 +192,10 @@ class DatabaseManager:
         try:
             print("🔄 Checking migration status...")
             
-            # Get script directory
+            
             script_dir = ScriptDirectory.from_config(self.alembic_cfg)
             
-            # Get current revision
+            
             with EnvironmentContext(
                 self.alembic_cfg,
                 script_dir,
@@ -210,7 +209,7 @@ class DatabaseManager:
                     migration_context = env_context.get_context()
                     current_rev = migration_context.get_current_revision()
             
-            # Get head revision
+            
             head_rev = script_dir.get_current_head()
             
             print(f"📍 Current revision: {current_rev or 'None'}")
@@ -234,21 +233,21 @@ class DatabaseManager:
         try:
             print("🏗️  Creating initial migration with current TimescaleDB schema...")
             
-            # Create the initial migration file
+            
             revision_result = command.revision(
                 self.alembic_cfg,
                 message="Initial TimescaleDB schema setup",
                 autogenerate=False
             )
             
-            # Get the generated file path
+            
             script_dir = ScriptDirectory.from_config(self.alembic_cfg)
             revision_file = script_dir.get_revision(revision_result.revision).path
             
-            # Read the current schema from database.py and create the migration
+            
             initial_schema = self._get_initial_schema()
             
-            # Replace the migration content
+            
             with open(revision_file, 'w') as f:
                 f.write(initial_schema)
             
@@ -275,7 +274,7 @@ from alembic import op
 import sqlalchemy as sa
 
 
-# revision identifiers, used by Alembic.
+
 revision = '${revision}'
 down_revision = None
 branch_labels = None
@@ -285,10 +284,10 @@ depends_on = None
 def upgrade() -> None:
     """Create initial TimescaleDB schema"""
     
-    # Enable TimescaleDB extension
+    
     op.execute("CREATE EXTENSION IF NOT EXISTS timescaledb;")
     
-    # Create trades hypertable
+    
     op.execute("""
         CREATE TABLE IF NOT EXISTS trades (
             timestamp TIMESTAMPTZ NOT NULL,
@@ -323,10 +322,10 @@ def upgrade() -> None:
         );
     """)
     
-    # Create hypertable for trades
+    
     op.execute("SELECT create_hypertable('trades', 'timestamp', if_not_exists => TRUE);")
     
-    # Create system_events hypertable
+    
     op.execute("""
         CREATE TABLE IF NOT EXISTS system_events (
             timestamp TIMESTAMPTZ NOT NULL,
@@ -346,7 +345,7 @@ def upgrade() -> None:
     
     op.execute("SELECT create_hypertable('system_events', 'timestamp', if_not_exists => TRUE);")
     
-    # Create performance_metrics hypertable
+    
     op.execute("""
         CREATE TABLE IF NOT EXISTS performance_metrics (
             timestamp TIMESTAMPTZ NOT NULL,
@@ -363,7 +362,7 @@ def upgrade() -> None:
     
     op.execute("SELECT create_hypertable('performance_metrics', 'timestamp', if_not_exists => TRUE);")
     
-    # Create caller_profiles hypertable
+    
     op.execute("""
         CREATE TABLE IF NOT EXISTS caller_profiles (
             timestamp TIMESTAMPTZ NOT NULL,
@@ -390,7 +389,7 @@ def upgrade() -> None:
     
     op.execute("SELECT create_hypertable('caller_profiles', 'timestamp', if_not_exists => TRUE);")
     
-    # Create indexes for better query performance
+    
     indexes = [
         "CREATE INDEX IF NOT EXISTS idx_trades_token_address ON trades (token_address, timestamp DESC);",
         "CREATE INDEX IF NOT EXISTS idx_trades_wallet_id ON trades (wallet_id, timestamp DESC);",
@@ -412,7 +411,7 @@ def upgrade() -> None:
     for index_sql in indexes:
         op.execute(index_sql)
     
-    # Set up data retention policies
+    
     op.execute("SELECT add_retention_policy('trades', INTERVAL '1 year', if_not_exists => TRUE);")
     op.execute("SELECT add_retention_policy('system_events', INTERVAL '6 months', if_not_exists => TRUE);")
     op.execute("SELECT add_retention_policy('performance_metrics', INTERVAL '3 months', if_not_exists => TRUE);")
@@ -422,13 +421,13 @@ def upgrade() -> None:
 def downgrade() -> None:
     """Drop all tables and extensions"""
     
-    # Drop retention policies
+    
     op.execute("SELECT remove_retention_policy('trades', if_exists => TRUE);")
     op.execute("SELECT remove_retention_policy('system_events', if_exists => TRUE);")
     op.execute("SELECT remove_retention_policy('performance_metrics', if_exists => TRUE);")
     op.execute("SELECT remove_retention_policy('caller_profiles', if_exists => TRUE);")
     
-    # Drop tables (hypertables are dropped automatically)
+    
     op.execute("DROP TABLE IF EXISTS caller_profiles CASCADE;")
     op.execute("DROP TABLE IF EXISTS performance_metrics CASCADE;")
     op.execute("DROP TABLE IF EXISTS system_events CASCADE;")
@@ -457,37 +456,37 @@ Examples:
     
     subparsers = parser.add_subparsers(dest='command', help='Available commands')
     
-    # Init command
+    
     init_parser = subparsers.add_parser('init', help='Initialize migration environment')
     
-    # Revision command
+    
     rev_parser = subparsers.add_parser('revision', help='Create new migration')
     rev_parser.add_argument('-m', '--message', required=True, help='Migration message')
     rev_parser.add_argument('--autogenerate', action='store_true', help='Auto-generate migration')
     
-    # Upgrade command
+    
     up_parser = subparsers.add_parser('upgrade', help='Upgrade database')
     up_parser.add_argument('revision', nargs='?', default='head', help='Target revision (default: head)')
     
-    # Downgrade command
+    
     down_parser = subparsers.add_parser('downgrade', help='Downgrade database')
     down_parser.add_argument('revision', help='Target revision (e.g., -1, base, specific revision)')
     
-    # Current command
+    
     current_parser = subparsers.add_parser('current', help='Show current revision')
     
-    # History command
+    
     hist_parser = subparsers.add_parser('history', help='Show migration history')
     hist_parser.add_argument('-v', '--verbose', action='store_true', help='Verbose output')
     
-    # Show command
+    
     show_parser = subparsers.add_parser('show', help='Show revision details')
     show_parser.add_argument('revision', help='Revision to show')
     
-    # Check command
+    
     check_parser = subparsers.add_parser('check', help='Check database health and migration status')
     
-    # Initial migration command
+    
     initial_parser = subparsers.add_parser('create-initial', help='Create initial migration')
     
     args = parser.parse_args()
@@ -496,7 +495,7 @@ Examples:
         parser.print_help()
         return 1
     
-    # Initialize database manager
+    
     db_manager = DatabaseManager()
     
     try:
@@ -522,7 +521,7 @@ Examples:
             success = db_manager.show(args.revision)
             
         elif args.command == 'check':
-            # Run both database health check and migration status
+        elif args.command == 'check':
             health_ok = asyncio.run(db_manager.check_database_health())
             status_ok = db_manager.check_migration_status()
             success = health_ok and status_ok

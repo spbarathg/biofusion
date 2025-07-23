@@ -35,6 +35,7 @@ sys.path.append(str(Path(__file__).parent.parent))
 from worker_ant_v1.trading.main import HyperIntelligentTradingSwarm
 from worker_ant_v1.core.vault_wallet_system import get_vault_system
 from worker_ant_v1.core.unified_config import UnifiedConfigManager
+from worker_ant_v1.intelligence.narrative_ant import NarrativeAnt, NarrativeCategory
 from worker_ant_v1.utils.logger import get_logger
 
 
@@ -118,6 +119,10 @@ class ColonyCommander:
         # Master vault system
         self.master_vault = None
         
+        # Strategic Narrative Intelligence
+        self.narrative_ant: Optional[NarrativeAnt] = None
+        self.dominant_narratives: Dict[NarrativeCategory, float] = {}
+        
         # Configuration
         self.config_manager = UnifiedConfigManager()
         self.colony_config = {
@@ -151,6 +156,11 @@ class ColonyCommander:
             
             # Initialize master vault
             self.master_vault = await get_vault_system()
+            
+            # Initialize strategic narrative intelligence
+            self.narrative_ant = NarrativeAnt()
+            await self.narrative_ant.initialize()
+            self.logger.info("🧠 Narrative intelligence online - Colony cultural awareness enabled")
             
             # Load swarm configurations
             await self._load_swarm_configurations()
@@ -702,10 +712,15 @@ class ColonyCommander:
                 await asyncio.sleep(300)
     
     async def _operational_mode_loop(self):
-        """Monitor and update operational mode (including blitzscaling)"""
+        """Monitor and update operational mode (including blitzscaling) with narrative intelligence"""
         while self.running:
             try:
+                # Update narrative intelligence first
+                await self._update_narrative_direction()
+                
+                # Then update operational mode
                 await self._update_operational_mode()
+                
                 await asyncio.sleep(60)  # Check every minute
                 
             except Exception as e:
@@ -748,6 +763,71 @@ class ColonyCommander:
             if hasattr(swarm, 'set_blitzscaling_mode'):
                 await swarm.set_blitzscaling_mode(self.blitzscaling_active)
     
+    async def _update_narrative_direction(self):
+        """Query NarrativeAnt for dominant narratives and direct swarms accordingly"""
+        try:
+            if not self.narrative_ant:
+                return
+            
+            # Get current capital allocation recommendations from NarrativeAnt
+            allocation_recommendations = await self.narrative_ant.get_capital_allocation_recommendations()
+            
+            if not allocation_recommendations:
+                return
+            
+            # Update dominant narratives tracking
+            self.dominant_narratives = {
+                category: data['allocation_percentage'] 
+                for category, data in allocation_recommendations.items()
+                if data['allocation_percentage'] > 0.1  # Only track narratives with >10% allocation
+            }
+            
+            # Sort narratives by allocation strength
+            sorted_narratives = sorted(
+                self.dominant_narratives.items(), 
+                key=lambda x: x[1], 
+                reverse=True
+            )
+            
+            if sorted_narratives:
+                # Log dominant narrative changes
+                top_narratives = sorted_narratives[:3]  # Top 3 narratives
+                narrative_summary = ", ".join([
+                    f"{cat.value}: {weight:.1%}" 
+                    for cat, weight in top_narratives
+                ])
+                self.logger.info(f"🧠 Dominant narratives: {narrative_summary}")
+                
+                # Direct swarms to prioritize these narratives
+                await self._direct_swarms_to_narratives(sorted_narratives)
+            
+        except Exception as e:
+            self.logger.error(f"❌ Error updating narrative direction: {e}")
+    
+    async def _direct_swarms_to_narratives(self, dominant_narratives: List[Tuple[NarrativeCategory, float]]):
+        """Direct HyperIntelligentTradingSwarm instances to prioritize dominant narratives"""
+        try:
+            # Create narrative priority mapping for swarms
+            narrative_weights = {}
+            total_weight = sum(weight for _, weight in dominant_narratives)
+            
+            # Normalize weights and ensure they don't exceed 1.0
+            for category, weight in dominant_narratives:
+                normalized_weight = min(1.0, weight / max(total_weight, 1.0))
+                narrative_weights[category] = normalized_weight
+            
+            # Direct each swarm to focus on these narratives
+            for swarm_id, swarm in self.swarms.items():
+                if hasattr(swarm, 'set_narrative_priorities'):
+                    await swarm.set_narrative_priorities(narrative_weights)
+                    self.logger.debug(f"📡 Directed {swarm_id} to prioritize narratives")
+                elif hasattr(swarm, 'update_narrative_focus'):
+                    await swarm.update_narrative_focus(narrative_weights)
+                    self.logger.debug(f"📡 Updated {swarm_id} narrative focus")
+            
+        except Exception as e:
+            self.logger.error(f"❌ Error directing swarms to narratives: {e}")
+    
     def get_colony_status(self) -> Dict[str, Any]:
         """Get comprehensive colony status"""
         return {
@@ -755,6 +835,14 @@ class ColonyCommander:
             'initialized': self.initialized,
             'running': self.running,
             'start_time': self.start_time.isoformat() if self.start_time else None,
+            'narrative_intelligence': {
+                'narrative_ant_active': self.narrative_ant is not None,
+                'dominant_narratives': {
+                    cat.value: weight for cat, weight in self.dominant_narratives.items()
+                } if self.dominant_narratives else {},
+                'narrative_count': len(self.dominant_narratives),
+                'cultural_awareness_enabled': True
+            },
             'metrics': {
                 'total_capital': self.metrics.total_capital,
                 'total_profit': self.metrics.total_profit,
@@ -843,6 +931,21 @@ class ColonyCommander:
         asyncio.create_task(self.shutdown())
 
 
+    # Strategy interface methods for integration with run_bot.py
+    async def initialize_all_systems(self) -> bool:
+        """Initialize all systems (Strategy interface)"""
+        return await self.initialize_colony()
+    
+    async def run(self):
+        """Run the strategy (Strategy interface)"""
+        await self.run_colony()
+    
+    def get_status(self) -> Dict[str, Any]:
+        """Get strategy status (Strategy interface)"""
+        return self.get_colony_status()
+
+
+# Legacy main function for backwards compatibility (not used by run_bot.py)
 async def main():
     """Main entry point for the colony commander with HA support"""
     parser = argparse.ArgumentParser(description="Trading Colony Commander with HA")

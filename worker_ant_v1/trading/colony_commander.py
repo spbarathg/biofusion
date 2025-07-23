@@ -35,7 +35,8 @@ from worker_ant_v1.intelligence.sentiment_analyzer import SentimentAnalyzer
 from worker_ant_v1.intelligence.twitter_sentiment_analyzer import TwitterSentimentAnalyzer
 from worker_ant_v1.intelligence.caller_intelligence import AdvancedCallerIntelligence
 from worker_ant_v1.intelligence.technical_analyzer import TechnicalAnalyzer
-from worker_ant_v1.intelligence.ml_predictor import MLPredictor
+from worker_ant_v1.intelligence.narrative_ant import NarrativeAnt, NarrativeCategory
+from worker_ant_v1.trading.ml_architectures.prediction_engine import PredictionEngine
 from worker_ant_v1.intelligence.sentiment_first_ai import SentimentFirstAI
 from worker_ant_v1.core.wallet_manager import UnifiedWalletManager
 from worker_ant_v1.core.vault_wallet_system import VaultWalletSystem
@@ -425,7 +426,8 @@ class ColonyCommander:
         self.sentiment_analyzer = SentimentAnalyzer()
         self.caller_intelligence = AdvancedCallerIntelligence()
         self.technical_analyzer = TechnicalAnalyzer()
-        self.ml_predictor = MLPredictor()
+        self.narrative_ant = NarrativeAnt()  # Strategic narrative intelligence
+        self.ml_predictor = PredictionEngine()
         self.sentiment_ai = SentimentFirstAI()
         
         # Initialize validation components
@@ -486,6 +488,7 @@ class ColonyCommander:
         await self.sentiment_analyzer.initialize()
         await self.caller_intelligence.initialize()
         await self.technical_analyzer.initialize()
+        await self.narrative_ant.initialize()  # Initialize narrative intelligence
         await self.ml_predictor.initialize()
         
         # Load shadow memory and failed patterns from previous sessions
@@ -1062,10 +1065,11 @@ class ColonyCommander:
         }
 
     async def analyze_opportunity(self, token_address: str, 
-                                 market_data: Dict[str, Any]) -> ConsensusSignal:
+                                 market_data: Dict[str, Any],
+                                 narrative_weight: float = 1.0) -> ConsensusSignal:
         """
         Core decision engine: Only trades when AI + on-chain + Twitter ALL agree
-        PLUS secondary validation layers. No exceptions. This is the survival filter.
+        PLUS secondary validation layers AND narrative weighting. No exceptions. This is the survival filter.
         """
         
         try:
@@ -1073,6 +1077,10 @@ class ColonyCommander:
                 token_address=token_address,
                 timestamp=datetime.now()
             )
+            
+            # Log narrative weight if not default
+            if narrative_weight != 1.0:
+                self.logger.info(f"🧠 Applying narrative weight {narrative_weight:.2f} to {token_address}")
             
             # Phase 1: Primary Intelligence Gathering
             ai_prediction = await self._get_ai_prediction(token_address, market_data)
@@ -1138,8 +1146,9 @@ class ColonyCommander:
                     signal.reasoning.append(f"Failed patterns veto: {failed_patterns_check['reason']}")
                     self.logger.warning(f"🚫 Failed patterns vetoed {token_address}")
                 
-                # Final confidence calculation with all validation layers
-                signal.final_confidence_score = self._calculate_final_confidence(signal)
+                # Final confidence calculation with all validation layers AND narrative weighting
+                base_confidence = self._calculate_final_confidence(signal)
+                signal.final_confidence_score = base_confidence * narrative_weight  # Apply narrative weight
                 
                 # Final decision: Only proceed if ALL validation layers pass
                 signal.secondary_validation_passed = all([

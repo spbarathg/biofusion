@@ -74,6 +74,10 @@ class NightlyEvolutionSystem:
         
         self.successful_patterns: List[EvolutionGenetics] = []
         
+        # Genetic Reservoir: Store genetics from killed wallets for diversity preservation
+        self.genetic_reservoir: List[Dict[str, Any]] = []
+        self.genetic_reservoir_file = "data/genetic_reservoir.json"
+        
         
         self.learning_database = {
             'successful_trades': [],
@@ -82,7 +86,10 @@ class NightlyEvolutionSystem:
             'optimal_parameters': {}
         }
         
-        self.logger.info("✅ Nightly evolution system initialized")
+        # Load genetic reservoir from file
+        self._load_genetic_reservoir()
+        
+        self.logger.info("✅ Nightly evolution system initialized with genetic diversity preservation")
     
     async def run_nightly_evolution(self) -> EvolutionReport:
         """Run the complete nightly evolution process"""
@@ -381,7 +388,16 @@ class NightlyEvolutionSystem:
             decisions[wallet_id] = 'preserve'
         
         
-        for i in range(min(clone_count, elite_count)):
+        # Implement 10% wild card mandate for genetic diversity
+        wildcard_count = max(1, int(clone_count * 0.1)) if len(self.genetic_reservoir) > 0 else 0
+        normal_clone_count = clone_count - wildcard_count
+        
+        # Create wild card clones from genetic reservoir
+        for i in range(wildcard_count):
+            decisions[f"wildcard_clone_{i}"] = 'wildcard_clone'
+        
+        # Create normal clones from top performers
+        for i in range(min(normal_clone_count, elite_count)):
             wallet_id, _ = sorted_wallets[i]
             decisions[f"{wallet_id}_clone"] = 'clone'
         
@@ -429,6 +445,10 @@ class NightlyEvolutionSystem:
                         await self._clone_wallet(source_wallet, all_wallets[source_wallet])
                         results['cloned'] += 1
                 
+                elif action == 'wildcard_clone':
+                    await self._create_wildcard_wallet(wallet_key)
+                    results['cloned'] += 1
+                
                 elif action == 'preserve':
                     results['preserved'] += 1
             
@@ -439,21 +459,81 @@ class NightlyEvolutionSystem:
             return results
     
     async def _kill_wallet(self, wallet_id: str):
-        """Kill underperforming wallet"""
+        """Kill underperforming wallet and preserve its genetics in the reservoir"""
         
         try:
             self.logger.info(f"🪦 Killing underperforming wallet: {wallet_id}")
             
-            
+            # Get wallet info before killing
             wallet_info = await self.wallet_manager.get_wallet_info(wallet_id)
             if wallet_info:
+                # Store genetics in genetic reservoir for diversity preservation
+                await self._store_genetics_in_reservoir(wallet_id, wallet_info)
+                
+                # Archive wallet data
                 await self._archive_wallet_data(wallet_id, wallet_info, "killed")
             
-            
+            # Remove wallet
             await self.wallet_manager.remove_wallet(wallet_id)
             
         except Exception as e:
             self.logger.error(f"Failed to kill wallet {wallet_id}: {e}")
+    
+    async def _store_genetics_in_reservoir(self, wallet_id: str, wallet_info: Dict):
+        """Store wallet genetics in the genetic reservoir for future diversity"""
+        try:
+            genetics_data = {
+                'wallet_id': wallet_id,
+                'genetics': wallet_info.get('genetics', {}),
+                'performance_metrics': {
+                    'total_trades': wallet_info.get('total_trades', 0),
+                    'win_rate': wallet_info.get('win_rate', 0.0),
+                    'total_profit': wallet_info.get('total_profit', 0.0),
+                    'survival_score': wallet_info.get('survival_score', 0.0),
+                },
+                'timestamp_killed': datetime.now().isoformat(),
+                'reason': 'underperformance'
+            }
+            
+            # Add to reservoir
+            self.genetic_reservoir.append(genetics_data)
+            
+            # Limit reservoir size (keep last 200 genetic patterns)
+            if len(self.genetic_reservoir) > 200:
+                self.genetic_reservoir = self.genetic_reservoir[-200:]
+            
+            # Save to file
+            self._save_genetic_reservoir()
+            
+            self.logger.info(f"🧬 Stored genetics from {wallet_id} in genetic reservoir ({len(self.genetic_reservoir)} total)")
+            
+        except Exception as e:
+            self.logger.error(f"Failed to store genetics in reservoir: {e}")
+    
+    def _load_genetic_reservoir(self):
+        """Load genetic reservoir from file"""
+        try:
+            import os
+            if os.path.exists(self.genetic_reservoir_file):
+                with open(self.genetic_reservoir_file, 'r') as f:
+                    self.genetic_reservoir = json.load(f)
+                self.logger.info(f"📚 Loaded {len(self.genetic_reservoir)} genetic patterns from reservoir")
+            else:
+                self.genetic_reservoir = []
+                self.logger.info("📚 Initialized empty genetic reservoir")
+        except Exception as e:
+            self.logger.warning(f"Failed to load genetic reservoir: {e}")
+            self.genetic_reservoir = []
+    
+    def _save_genetic_reservoir(self):
+        """Save genetic reservoir to file"""
+        try:
+            import os
+            os.makedirs(os.path.dirname(self.genetic_reservoir_file), exist_ok=True)
+            with open(self.genetic_reservoir_file, 'w') as f:
+                json.dump(self.genetic_reservoir, f, indent=2)
+        except Exception as e:
+            self.logger.warning(f"Failed to save genetic reservoir: {e}")
     
     async def _evolve_wallet(self, wallet_id: str, wallet_info: Dict):
         """Evolve wallet genetics based on performance"""
@@ -490,6 +570,35 @@ class NightlyEvolutionSystem:
         except Exception as e:
             self.logger.error(f"Failed to clone wallet {source_wallet_id}: {e}")
     
+    async def _create_wildcard_wallet(self, wallet_key: str):
+        """Create a wild card wallet using genetics from the genetic reservoir"""
+        try:
+            if not self.genetic_reservoir:
+                self.logger.warning("🃏 No genetics in reservoir for wild card creation")
+                return
+            
+            # Randomly select genetics from the reservoir
+            import random
+            selected_genetics_data = random.choice(self.genetic_reservoir)
+            reservoir_genetics = EvolutionGenetics(**selected_genetics_data['genetics'])
+            
+            # Apply light mutation to the reservoir genetics (smaller capital allocation initially)
+            wildcard_genetics = await self._mutate_genetics(reservoir_genetics, mutation_rate=0.08)
+            
+            # Create new wallet with wild card genetics
+            new_wallet_id = f"wildcard_{int(datetime.now().timestamp())}_{wallet_key.split('_')[-1]}"
+            await self.wallet_manager.create_wallet(new_wallet_id, wildcard_genetics)
+            
+            # Assign smaller initial capital allocation for wild cards
+            if hasattr(self.wallet_manager, 'set_wallet_capital_allocation'):
+                await self.wallet_manager.set_wallet_capital_allocation(new_wallet_id, 0.5)  # 50% of normal allocation
+            
+            self.logger.info(f"🃏 Created wild card wallet {new_wallet_id} from genetic reservoir "
+                           f"(source: {selected_genetics_data['wallet_id']})")
+            
+        except Exception as e:
+            self.logger.error(f"Failed to create wild card wallet {wallet_key}: {e}")
+    
     async def _mutate_genetics(self, genetics: EvolutionGenetics, 
                              mutation_rate: float = None) -> EvolutionGenetics:
         """Apply genetic mutations to evolve genetics"""
@@ -505,7 +614,6 @@ class NightlyEvolutionSystem:
             if isinstance(value, (int, float)) and np.random.random() < mutation_rate:
                 
                 if isinstance(value, float):
-                if isinstance(value, float):
                     mutation = np.random.normal(0, 0.1)
                     new_value = value + mutation
                     
@@ -520,7 +628,6 @@ class NightlyEvolutionSystem:
                     
                     genetics_dict[key] = new_value
                 
-                elif isinstance(value, int):
                 elif isinstance(value, int):
                     mutation = np.random.randint(-2, 3)
                     new_value = max(1, value + mutation)
@@ -574,7 +681,6 @@ class NightlyEvolutionSystem:
                     successful_genetics.append(wallet_info.get('genetics', {}))
             
             if successful_genetics:
-            if successful_genetics:
                 optimal_ranges = {}
                 for key in ['aggression', 'risk_tolerance', 'patience', 'signal_trust']:
                     values = [g.get(key, 0.5) for g in successful_genetics if key in g]
@@ -602,10 +708,8 @@ class NightlyEvolutionSystem:
             
             
             if recent_evolution.avg_fitness_improvement > 0.1:
-            if recent_evolution.avg_fitness_improvement > 0.1:
                 self.evolution_config['mutation_rate'] = max(0.05, 
                     self.evolution_config['mutation_rate'] * 0.9)
-            elif recent_evolution.avg_fitness_improvement < 0.01:
             elif recent_evolution.avg_fitness_improvement < 0.01:
                 self.evolution_config['mutation_rate'] = min(0.3, 
                     self.evolution_config['mutation_rate'] * 1.1)

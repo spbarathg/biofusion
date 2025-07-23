@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 PRODUCTION SECRETS VALIDATOR - SECURITY CHECKPOINT
 =================================================
@@ -117,7 +116,7 @@ class ProductionSecretsValidator:
     def __init__(self):
         self.logger = self._setup_logger()
         
-        # File patterns to scan
+        
         self.scan_patterns = [
             "*.env*",
             "*.ini",
@@ -133,7 +132,7 @@ class ProductionSecretsValidator:
             "*.secret.yml"
         ]
         
-        # Directories to scan
+        
         self.scan_directories = [
             "config",
             "deployment", 
@@ -143,7 +142,7 @@ class ProductionSecretsValidator:
             "."
         ]
         
-        # Files to exclude from scanning
+        
         self.exclude_patterns = [
             "*.log",
             "*.tmp",
@@ -157,7 +156,7 @@ class ProductionSecretsValidator:
             "dist/*"
         ]
         
-        # Placeholder patterns (CRITICAL)
+        
         self.placeholder_patterns = [
             (r'REPLACE_WITH[_\w]*', SecuritySeverity.CRITICAL, "Replace placeholder with actual value"),
             (r'your_[\w_]+', SecuritySeverity.CRITICAL, "Replace 'your_*' placeholder with actual value"),
@@ -168,28 +167,28 @@ class ProductionSecretsValidator:
             (r'TODO:.*secret|FIXME:.*password', SecuritySeverity.HIGH, "Complete TODO/FIXME for security item")
         ]
         
-        # Weak password patterns (HIGH)
+        
         self.weak_password_patterns = [
             (r'password\s*=\s*["\']?(admin|root|password|123456|qwerty)["\']?', SecuritySeverity.HIGH, "Weak password detected"),
             (r'pass\s*=\s*["\']?(\w{1,5})["\']?', SecuritySeverity.MEDIUM, "Very short password detected"),
             (r'secret\s*=\s*["\']?(test|demo|sample)["\']?', SecuritySeverity.HIGH, "Test/demo secret in production config")
         ]
         
-        # Default credential patterns (HIGH) 
+        
         self.default_credential_patterns = [
             (r'user\s*=\s*["\']?(admin|root|administrator)["\']?', SecuritySeverity.MEDIUM, "Default username detected"),
             (r'username\s*=\s*["\']?(admin|root)["\']?', SecuritySeverity.MEDIUM, "Default username detected"),
             (r'api_key\s*=\s*["\']?(demo|test|example)["\']?', SecuritySeverity.HIGH, "Default API key detected")
         ]
         
-        # Exposed secrets patterns (CRITICAL)
+        
         self.exposed_secret_patterns = [
             (r'private_key\s*=\s*["\']?[a-zA-Z0-9+/]{40,}', SecuritySeverity.CRITICAL, "Private key exposed in config"),
             (r'secret_key\s*=\s*["\']?[a-zA-Z0-9+/]{32,}', SecuritySeverity.HIGH, "Secret key may be exposed"),
             (r'["\'][a-zA-Z0-9]{32,}["\']', SecuritySeverity.MEDIUM, "Potential secret value in plaintext")
         ]
         
-        # Known insecure configurations (MEDIUM-HIGH)
+        
         self.insecure_config_patterns = [
             (r'ssl\s*=\s*["\']?(false|0|disabled)["\']?', SecuritySeverity.MEDIUM, "SSL disabled - security risk"),
             (r'verify_ssl\s*=\s*["\']?(false|0)["\']?', SecuritySeverity.MEDIUM, "SSL verification disabled"),
@@ -197,7 +196,7 @@ class ProductionSecretsValidator:
             (r'cors_allow_all\s*=\s*["\']?(true|1)["\']?', SecuritySeverity.HIGH, "CORS allow all enabled - security risk")
         ]
         
-        # Statistics
+        
         self.stats = {
             'files_scanned': 0,
             'lines_scanned': 0,
@@ -237,7 +236,7 @@ class ProductionSecretsValidator:
         workspace = Path(workspace_path).resolve()
         all_issues = []
         
-        # Scan all target directories
+        
         for directory in self.scan_directories:
             dir_path = workspace / directory
             if dir_path.exists():
@@ -245,7 +244,7 @@ class ProductionSecretsValidator:
                 issues = self._scan_directory(dir_path)
                 all_issues.extend(issues)
         
-        # Generate report
+        
         scan_duration = time.time() - start_time
         report = self._generate_report(all_issues, scan_duration)
         
@@ -258,15 +257,15 @@ class ProductionSecretsValidator:
         issues = []
         
         try:
-            # Get all files matching scan patterns
+        try:
             files_to_scan = []
             for pattern in self.scan_patterns:
                 files_to_scan.extend(directory.rglob(pattern))
             
-            # Filter out excluded files
+            
             filtered_files = self._filter_excluded_files(files_to_scan)
             
-            # Scan each file
+            
             for file_path in filtered_files:
                 if file_path.is_file():
                     file_issues = self._scan_file(file_path)
@@ -300,14 +299,14 @@ class ProductionSecretsValidator:
         issues = []
         
         try:
-            # Skip binary files
+        try:
             if self._is_binary_file(file_path):
                 return issues
             
             with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
                 lines = f.readlines()
             
-            # Scan each line
+            
             for line_num, line in enumerate(lines, 1):
                 line_issues = self._scan_line(str(file_path), line_num, line)
                 issues.extend(line_issues)
@@ -331,12 +330,12 @@ class ProductionSecretsValidator:
         """Scan a single line for security issues"""
         issues = []
         
-        # Skip comments and empty lines
+        
         stripped_line = line.strip()
         if not stripped_line or stripped_line.startswith('#'):
             return issues
         
-        # Check all pattern categories
+        
         pattern_categories = [
             (self.placeholder_patterns, IssueType.PLACEHOLDER),
             (self.weak_password_patterns, IssueType.WEAK_PASSWORD),
@@ -385,7 +384,7 @@ class ProductionSecretsValidator:
     def _generate_report(self, issues: List[SecurityIssue], scan_duration: float) -> ValidationReport:
         """Generate comprehensive validation report"""
         
-        # Count issues by severity and type
+        
         issues_by_severity = {severity: 0 for severity in SecuritySeverity}
         issues_by_type = {issue_type: 0 for issue_type in IssueType}
         
@@ -398,8 +397,8 @@ class ProductionSecretsValidator:
             if issue.severity == SecuritySeverity.CRITICAL:
                 critical_issues.append(issue)
         
+        
         # Determine if production ready
-        # Production ready if no critical or high severity issues
         critical_count = issues_by_severity[SecuritySeverity.CRITICAL]
         high_count = issues_by_severity[SecuritySeverity.HIGH]
         is_production_ready = (critical_count == 0 and high_count == 0)
@@ -423,20 +422,20 @@ class ProductionSecretsValidator:
         print("🔒 PRODUCTION SECRETS VALIDATION REPORT")
         print("="*60)
         
-        # Summary
+        
         print(f"\n📊 SCAN SUMMARY:")
         print(f"  Files scanned: {report.total_files_scanned}")
         print(f"  Lines scanned: {report.total_lines_scanned:,}")
         print(f"  Scan duration: {report.scan_duration_seconds:.2f}s")
         print(f"  Total issues: {report.total_issues}")
         
-        # Production readiness
+        
         if report.is_production_ready:
             print(f"\n✅ PRODUCTION READY: No critical security issues found")
         else:
             print(f"\n❌ NOT PRODUCTION READY: {len(report.critical_issues)} critical issues found")
         
-        # Issues by severity
+        
         print(f"\n🚨 ISSUES BY SEVERITY:")
         for severity in SecuritySeverity:
             count = report.issues_by_severity[severity]
@@ -444,14 +443,14 @@ class ProductionSecretsValidator:
                 emoji = {"critical": "🔴", "high": "🟠", "medium": "🟡", "low": "🔵", "info": "⚪"}
                 print(f"  {emoji.get(severity.value, '•')} {severity.value.upper()}: {count}")
         
-        # Issues by type
+        
         print(f"\n🔍 ISSUES BY TYPE:")
         for issue_type in IssueType:
             count = report.issues_by_type[issue_type]
             if count > 0:
                 print(f"  • {issue_type.value.replace('_', ' ').title()}: {count}")
         
-        # Critical issues detail
+        
         if report.critical_issues:
             print(f"\n🚨 CRITICAL ISSUES REQUIRING IMMEDIATE ATTENTION:")
             for issue in report.critical_issues[:10]:  # Show first 10
@@ -464,7 +463,7 @@ class ProductionSecretsValidator:
             if len(report.critical_issues) > 10:
                 print(f"  ... and {len(report.critical_issues) - 10} more critical issues")
         
-        # Detailed issues (if verbose)
+        
         if verbose and report.security_issues:
             print(f"\n📋 ALL SECURITY ISSUES:")
             for i, issue in enumerate(report.security_issues, 1):
@@ -525,14 +524,14 @@ Examples:
     
     args = parser.parse_args()
     
-    # Initialize validator
+    
     validator = ProductionSecretsValidator()
     
-    # Run validation
+    
     try:
         report = validator.validate_production_secrets(args.workspace)
         
-        # Output results
+        
         if args.json:
             result_json = json.dumps(report.to_dict(), indent=2)
             
@@ -545,7 +544,7 @@ Examples:
         else:
             validator.print_report(report, verbose=args.verbose)
         
-        # CI mode exit codes
+        
         if args.ci:
             if not report.is_production_ready:
                 print(f"\n❌ CI FAILURE: {len(report.critical_issues)} critical security issues found")

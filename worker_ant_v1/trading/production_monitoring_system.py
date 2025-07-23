@@ -22,6 +22,7 @@ from sklearn.ensemble import IsolationForest
 from sklearn.preprocessing import StandardScaler
 
 from worker_ant_v1.utils.logger import setup_logger
+from worker_ant_v1.monitoring.real_solana_integration import SolanaClient
 
 
 class MetricType(Enum):
@@ -118,6 +119,332 @@ class PredictiveInsight:
     factors: List[str]
     impact_score: float
     recommended_action: Optional[str] = None
+
+
+class ObserverAnt:
+    """Self-awareness module that monitors the swarm's on-chain footprint for traceability analysis"""
+    
+    def __init__(self, wallet_manager=None):
+        self.logger = setup_logger("ObserverAnt")
+        self.wallet_manager = wallet_manager
+        self.solana_client: Optional[SolanaClient] = None
+        
+        # Traceability analysis
+        self.transaction_history: deque = deque(maxlen=10000)
+        self.pattern_analysis: Dict[str, Any] = {}
+        self.traceability_scores: deque = deque(maxlen=100)
+        
+        # Monitoring configuration
+        self.monitoring_active = False
+        self.analysis_interval = 300  # 5 minutes
+        self.pattern_detection_window = 3600  # 1 hour
+        
+        # Pattern detection thresholds
+        self.correlation_thresholds = {
+            'timing_correlation': 0.7,
+            'amount_correlation': 0.6,
+            'gas_correlation': 0.5,
+            'frequency_correlation': 0.8
+        }
+        
+        self.logger.info("👁️ Observer Ant initialized - Self-awareness monitoring active")
+    
+    async def initialize(self, solana_client: SolanaClient):
+        """Initialize the Observer Ant with Solana client"""
+        try:
+            self.solana_client = solana_client
+            self.monitoring_active = True
+            
+            # Start monitoring loop
+            asyncio.create_task(self._collection_loop())
+            
+            self.logger.info("✅ Observer Ant monitoring initialized")
+            
+        except Exception as e:
+            self.logger.error(f"❌ Failed to initialize Observer Ant: {e}")
+    
+    async def _collection_loop(self):
+        """Main collection loop to monitor on-chain transactions"""
+        while self.monitoring_active:
+            try:
+                await self._collect_transaction_data()
+                await self._analyze_patterns()
+                await self._calculate_traceability_score()
+                
+                await asyncio.sleep(self.analysis_interval)
+                
+            except Exception as e:
+                self.logger.error(f"❌ Observer Ant collection error: {e}")
+                await asyncio.sleep(self.analysis_interval)
+    
+    async def _collect_transaction_data(self):
+        """Collect transaction data from all swarm wallets"""
+        try:
+            if not self.wallet_manager or not self.solana_client:
+                return
+            
+            # Get all wallet addresses
+            all_wallets = await self.wallet_manager.get_all_wallets()
+            wallet_addresses = [wallet.get('address') for wallet in all_wallets.values() if wallet.get('address')]
+            
+            # Collect recent transactions for each wallet
+            current_time = datetime.now()
+            for address in wallet_addresses:
+                try:
+                    # Query recent transactions (last hour)
+                    transactions = await self.solana_client.get_recent_transactions(
+                        address, 
+                        limit=50
+                    )
+                    
+                    for tx in transactions:
+                        tx_data = {
+                            'wallet_address': address,
+                            'transaction_hash': tx.get('signature'),
+                            'timestamp': tx.get('timestamp', current_time),
+                            'amount_sol': tx.get('amount', 0.0),
+                            'gas_fee': tx.get('fee', 0),
+                            'transaction_type': tx.get('type', 'unknown'),
+                            'program_id': tx.get('program_id'),
+                            'success': tx.get('success', True)
+                        }
+                        
+                        self.transaction_history.append(tx_data)
+                        
+                except Exception as e:
+                    self.logger.warning(f"Failed to collect transactions for {address}: {e}")
+            
+        except Exception as e:
+            self.logger.error(f"Error collecting transaction data: {e}")
+    
+    async def _analyze_patterns(self):
+        """Analyze transaction patterns for correlation detection"""
+        try:
+            if len(self.transaction_history) < 10:
+                return
+            
+            # Get recent transactions within analysis window
+            cutoff_time = datetime.now() - timedelta(seconds=self.pattern_detection_window)
+            recent_txs = [
+                tx for tx in self.transaction_history 
+                if tx['timestamp'] > cutoff_time
+            ]
+            
+            if len(recent_txs) < 5:
+                return
+            
+            # Analyze timing patterns
+            timing_correlation = self._analyze_timing_patterns(recent_txs)
+            
+            # Analyze amount patterns
+            amount_correlation = self._analyze_amount_patterns(recent_txs)
+            
+            # Analyze gas fee patterns
+            gas_correlation = self._analyze_gas_patterns(recent_txs)
+            
+            # Analyze frequency patterns
+            frequency_correlation = self._analyze_frequency_patterns(recent_txs)
+            
+            # Store pattern analysis
+            self.pattern_analysis = {
+                'timestamp': datetime.now(),
+                'timing_correlation': timing_correlation,
+                'amount_correlation': amount_correlation,
+                'gas_correlation': gas_correlation,
+                'frequency_correlation': frequency_correlation,
+                'total_transactions': len(recent_txs),
+                'unique_wallets': len(set(tx['wallet_address'] for tx in recent_txs))
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Error analyzing patterns: {e}")
+    
+    def _analyze_timing_patterns(self, transactions: List[Dict]) -> float:
+        """Analyze timing correlation between wallet transactions"""
+        try:
+            if len(transactions) < 3:
+                return 0.0
+            
+            # Group transactions by wallet
+            wallet_tx_times = defaultdict(list)
+            for tx in transactions:
+                wallet_tx_times[tx['wallet_address']].append(tx['timestamp'])
+            
+            # Calculate timing correlations between wallets
+            correlations = []
+            wallet_addresses = list(wallet_tx_times.keys())
+            
+            for i in range(len(wallet_addresses)):
+                for j in range(i + 1, len(wallet_addresses)):
+                    addr1, addr2 = wallet_addresses[i], wallet_addresses[j]
+                    times1, times2 = wallet_tx_times[addr1], wallet_tx_times[addr2]
+                    
+                    # Check for synchronized transactions (within 30 seconds)
+                    sync_count = 0
+                    for t1 in times1:
+                        for t2 in times2:
+                            if abs((t1 - t2).total_seconds()) < 30:
+                                sync_count += 1
+                    
+                    total_combinations = len(times1) * len(times2)
+                    if total_combinations > 0:
+                        correlation = sync_count / total_combinations
+                        correlations.append(correlation)
+            
+            return np.mean(correlations) if correlations else 0.0
+            
+        except Exception as e:
+            self.logger.warning(f"Error analyzing timing patterns: {e}")
+            return 0.0
+    
+    def _analyze_amount_patterns(self, transactions: List[Dict]) -> float:
+        """Analyze amount correlation patterns"""
+        try:
+            amounts = [tx['amount_sol'] for tx in transactions if tx['amount_sol'] > 0]
+            if len(amounts) < 3:
+                return 0.0
+            
+            # Check for similar transaction amounts (indicating automated patterns)
+            amount_variance = np.var(amounts) if amounts else 1.0
+            amount_mean = np.mean(amounts) if amounts else 1.0
+            
+            # High correlation = low variance relative to mean
+            coefficient_of_variation = amount_variance / (amount_mean ** 2) if amount_mean > 0 else 1.0
+            correlation = max(0.0, 1.0 - coefficient_of_variation)
+            
+            return min(1.0, correlation)
+            
+        except Exception as e:
+            self.logger.warning(f"Error analyzing amount patterns: {e}")
+            return 0.0
+    
+    def _analyze_gas_patterns(self, transactions: List[Dict]) -> float:
+        """Analyze gas fee correlation patterns"""
+        try:
+            gas_fees = [tx['gas_fee'] for tx in transactions if tx['gas_fee'] > 0]
+            if len(gas_fees) < 3:
+                return 0.0
+            
+            # Similar to amount analysis
+            gas_variance = np.var(gas_fees) if gas_fees else 1.0
+            gas_mean = np.mean(gas_fees) if gas_fees else 1.0
+            
+            coefficient_of_variation = gas_variance / (gas_mean ** 2) if gas_mean > 0 else 1.0
+            correlation = max(0.0, 1.0 - coefficient_of_variation)
+            
+            return min(1.0, correlation)
+            
+        except Exception as e:
+            self.logger.warning(f"Error analyzing gas patterns: {e}")
+            return 0.0
+    
+    def _analyze_frequency_patterns(self, transactions: List[Dict]) -> float:
+        """Analyze transaction frequency patterns"""
+        try:
+            # Group by wallet and calculate transaction frequencies
+            wallet_frequencies = defaultdict(int)
+            for tx in transactions:
+                wallet_frequencies[tx['wallet_address']] += 1
+            
+            frequencies = list(wallet_frequencies.values())
+            if len(frequencies) < 2:
+                return 0.0
+            
+            # High correlation = similar frequencies across wallets
+            freq_variance = np.var(frequencies)
+            freq_mean = np.mean(frequencies)
+            
+            coefficient_of_variation = freq_variance / (freq_mean ** 2) if freq_mean > 0 else 1.0
+            correlation = max(0.0, 1.0 - coefficient_of_variation)
+            
+            return min(1.0, correlation)
+            
+        except Exception as e:
+            self.logger.warning(f"Error analyzing frequency patterns: {e}")
+            return 0.0
+    
+    async def _calculate_traceability_score(self):
+        """Calculate overall traceability score (0.0 to 1.0)"""
+        try:
+            if not self.pattern_analysis:
+                return
+            
+            # Weight different correlation types
+            weights = {
+                'timing_correlation': 0.3,
+                'amount_correlation': 0.25,
+                'gas_correlation': 0.2,
+                'frequency_correlation': 0.25
+            }
+            
+            # Calculate weighted traceability score
+            traceability_score = 0.0
+            for pattern_type, weight in weights.items():
+                correlation = self.pattern_analysis.get(pattern_type, 0.0)
+                if correlation >= self.correlation_thresholds[pattern_type]:
+                    traceability_score += correlation * weight
+            
+            # Store the score
+            self.traceability_scores.append({
+                'timestamp': datetime.now(),
+                'score': traceability_score,
+                'pattern_details': self.pattern_analysis.copy()
+            })
+            
+            # Log high traceability scores
+            if traceability_score > 0.6:
+                self.logger.warning(f"🔍 High traceability detected: {traceability_score:.2f}")
+            elif traceability_score > 0.4:
+                self.logger.info(f"👁️ Moderate traceability: {traceability_score:.2f}")
+            
+        except Exception as e:
+            self.logger.error(f"Error calculating traceability score: {e}")
+    
+    def get_traceability_score(self) -> float:
+        """Get the current traceability score"""
+        try:
+            if not self.traceability_scores:
+                return 0.0
+            
+            # Return the most recent score
+            return self.traceability_scores[-1]['score']
+            
+        except Exception as e:
+            self.logger.error(f"Error getting traceability score: {e}")
+            return 0.0
+    
+    def get_traceability_analysis(self) -> Dict[str, Any]:
+        """Get detailed traceability analysis"""
+        try:
+            current_score = self.get_traceability_score()
+            recent_scores = [score['score'] for score in list(self.traceability_scores)[-10:]]
+            
+            return {
+                'current_score': current_score,
+                'average_score_10_periods': np.mean(recent_scores) if recent_scores else 0.0,
+                'trend': 'increasing' if len(recent_scores) > 1 and recent_scores[-1] > recent_scores[0] else 'stable',
+                'pattern_analysis': self.pattern_analysis,
+                'total_transactions_monitored': len(self.transaction_history),
+                'monitoring_active': self.monitoring_active,
+                'risk_level': self._assess_risk_level(current_score)
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Error getting traceability analysis: {e}")
+            return {'current_score': 0.0, 'error': str(e)}
+    
+    def _assess_risk_level(self, score: float) -> str:
+        """Assess risk level based on traceability score"""
+        if score >= 0.8:
+            return "CRITICAL"
+        elif score >= 0.6:
+            return "HIGH"
+        elif score >= 0.4:
+            return "MEDIUM"
+        elif score >= 0.2:
+            return "LOW"
+        else:
+            return "MINIMAL"
 
 
 class EnhancedMetricsCollector:
@@ -476,7 +803,7 @@ class EnhancedMetricsCollector:
         try:
             # Get real AI metrics from the sentiment analyzer and ML predictor
             from worker_ant_v1.intelligence.sentiment_first_ai import SentimentFirstAI
-            from worker_ant_v1.trading.ml_predictor import MLPredictor
+            from worker_ant_v1.trading.ml_architectures.prediction_engine import PredictionEngine
             
             # Sentiment AI metrics
             try:
@@ -516,7 +843,8 @@ class EnhancedMetricsCollector:
             
             # ML Predictor metrics
             try:
-                ml_predictor = MLPredictor()
+                ml_predictor = PredictionEngine()
+                await ml_predictor.initialize()
                 if hasattr(ml_predictor, 'get_model_metrics'):
                     ml_metrics = ml_predictor.get_model_metrics()
                     
@@ -575,6 +903,17 @@ class EnhancedMetricsCollector:
                 self.logger.warning(f"Could not get AI system metrics: {e}")
                 self.record_metric('ai_memory_usage_mb', 200.0)
                 self.record_metric('ai_gpu_utilization', 0.0)
+
+        except ValueError as e:
+            self.logger.error(
+                f"Error recording AI metrics: {str(e)}",
+                exc_info=True
+            )
+        except Exception as e:
+            self.logger.error(
+                f"Unexpected error in AI metrics: {str(e)}",
+                exc_info=True
+            )
 
         except ValueError as e:
             self.logger.error(

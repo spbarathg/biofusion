@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Code formatting script for Antbot project.
 
@@ -40,35 +39,35 @@ def main():
     print("🎨 Antbot Code Formatting")
     print("=" * 40)
 
-    # Get project root
+
     project_root = Path(__file__).parent.parent
     worker_ant_dir = project_root / "worker_ant_v1"
     entry_points_dir = project_root / "entry_points"
 
-    # Check if directories exist
+
     if not worker_ant_dir.exists():
         print(f"❌ Worker ant directory not found: {worker_ant_dir}")
         return 1
 
-    # Run black formatting
+
     black_success = run_command(
         ["black", "--line-length=88", str(worker_ant_dir), str(entry_points_dir)],
         "Running black code formatter"
     )
 
-    # Run isort import sorting
+
     isort_success = run_command(
         ["isort", "--profile=black", str(worker_ant_dir), str(entry_points_dir)],
         "Running isort import sorter"
     )
 
-    # Run flake8 linting
+
     flake8_success = run_command(
         ["flake8", "--max-line-length=88", "--extend-ignore=E203,W503", str(worker_ant_dir), str(entry_points_dir)],
         "Running flake8 linter"
     )
 
-    # Summary
+
     print("\n📊 Formatting Summary:")
     print(f"   Black: {'✅' if black_success else '❌'}")
     print(f"   isort: {'✅' if isort_success else '❌'}")

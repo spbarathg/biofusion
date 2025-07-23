@@ -615,5 +615,3 @@ class HyperCompoundSwarm:
         except Exception as e:
             self.logger.error(f"❌ Shutdown error: {e}")
 
-# This file is now a module containing the HyperCompoundSwarm class.
-# Use entry_points/run_bot.py as the sole executable entry point. 

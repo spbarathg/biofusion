@@ -1,744 +1,445 @@
 """
-SWARM DECISION ENGINE - NEURAL COMMAND CENTER BRAIN (NATS Enhanced)
-==================================================================
+SWARM DECISION ENGINE - NARRATIVE-WEIGHTED OPPORTUNITY ANALYSIS
+=============================================================
 
-The core decision-making engine for the 10-wallet neural swarm.
-Integrates all intelligence sources and makes final trading decisions using NATS message bus.
-
-Enhanced with NATS messaging for distributed communication:
-- Multi-source consensus validation
-- Pattern-based opportunity analysis  
-- Risk-adjusted position sizing
-- Stealth execution coordination
+Central decision-making engine that analyzes trading opportunities
+with narrative intelligence weighting and anti-fragile principles.
 """
 
 import asyncio
-import time
-import numpy as np
-from typing import Dict, List, Optional, Tuple, Any, Set
-from dataclasses import dataclass, field
+from typing import Dict, List, Optional, Any, Tuple
+from dataclasses import dataclass
 from datetime import datetime, timedelta
-from enum import Enum
-import logging
+import numpy as np
 
-from worker_ant_v1.trading.colony_commander import ColonyCommander
-from worker_ant_v1.trading.stealth_operations import StealthOperationsSystem
-from worker_ant_v1.core.wallet_manager import UnifiedWalletManager
-from worker_ant_v1.core.vault_wallet_system import VaultWalletSystem
-from worker_ant_v1.core.unified_trading_engine import UnifiedTradingEngine
-from worker_ant_v1.intelligence.enhanced_rug_detector import EnhancedRugDetector
-from worker_ant_v1.safety.kill_switch import EnhancedKillSwitch
-from worker_ant_v1.trading.squad_manager import SquadManager
-from worker_ant_v1.trading.ml_predictor import MLPredictor
-from worker_ant_v1.trading.ml_architectures.prediction_engine import PredictionEngine, UnifiedPrediction
-from worker_ant_v1.core.message_bus import get_message_bus, MessageBus, MessageEnvelope, MessageType, MessagePriority, swarm_subject, intelligence_subject
 from worker_ant_v1.utils.logger import setup_logger
-from worker_ant_v1.utils.constants import SentimentDecision as SentimentDecisionEnum
-
-class SwarmState(Enum):
-    """Swarm operational states"""
-    INITIALIZING = "initializing"
-    HUNTING = "hunting"
-    FEASTING = "feasting"
-    STALKING = "stalking"
-    RETREATING = "retreating"
-    EVOLVING = "evolving"
-    HIBERNATING = "hibernating"
-    EMERGENCY = "emergency"
 
 
 @dataclass
-class SwarmDecision:
-    """Swarm decision with comprehensive analysis"""
-    decision_id: str
+class OpportunitySignal:
+    """Trading opportunity signal with confidence metrics"""
     token_address: str
-    swarm_state: SwarmState
-    consensus_level: float
-    confidence_score: float
-    recommended_action: str
-    position_size: float
-    squad_assignment: Optional[str]
+    signal_type: str  # 'buy', 'sell', 'hold'
+    confidence: float
+    price_target: Optional[float]
     risk_level: float
-    execution_priority: int
-    timestamp: datetime
+    narrative_alignment: float
+    time_horizon: str  # 'short', 'medium', 'long'
     reasoning: str
-    intelligence_sources: Dict[str, Any]
-    wallet_assignments: Dict[str, str]
-    expected_profit: float
-    max_drawdown: float
-    time_horizon_minutes: int
+    metadata: Dict[str, Any]
+
+
+@dataclass
+class SwarmConsensus:
+    """Consensus result from swarm analysis"""
+    recommended_action: str
+    consensus_confidence: float
+    narrative_weight: float
+    risk_assessment: float
+    position_size_recommendation: float
+    entry_conditions: Dict[str, Any]
+    exit_conditions: Dict[str, Any]
+    reasoning: str
 
 
 class SwarmDecisionEngine:
-    """Orchestrates decisions across the 10-wallet swarm using NATS message bus"""
+    """
+    Central decision engine that processes multiple signals and applies
+    narrative weighting to determine optimal trading decisions.
+    """
     
-    def __init__(self, swarm_id: str = "default"):
+    def __init__(self):
         self.logger = setup_logger("SwarmDecisionEngine")
-        self.swarm_id = swarm_id
         
-        # Message bus for distributed communication
-        self.message_bus: Optional[MessageBus] = None
+        # Signal processing configuration
+        self.confidence_threshold = 0.6
+        self.narrative_weight_multiplier = 1.5
+        self.max_risk_per_trade = 0.02
         
-        # Core components
-        self.neural_command_center: Optional[ColonyCommander] = None
-        self.stealth_operations: Optional[StealthOperationsSystem] = None
-        self.wallet_manager: Optional[UnifiedWalletManager] = None
-        self.vault_system: Optional[VaultWalletSystem] = None
-        self.trading_engine: Optional[UnifiedTradingEngine] = None
-        self.rug_detector: Optional[EnhancedRugDetector] = None
-        self.kill_switch: Optional[EnhancedKillSwitch] = None
-        self.squad_manager: Optional[SquadManager] = None
-        self.ml_predictor: Optional[MLPredictor] = None
-        self.prediction_engine: Optional[PredictionEngine] = None
-        
-        # Swarm state
-        self.current_state = SwarmState.HUNTING
-        self.swarm_health = 1.0
-        self.decision_history: List[SwarmDecision] = []
-        
-        # Performance tracking
-        self.swarm_metrics = {
-            'total_opportunities': 0,
-            'executed_opportunities': 0,
-            'successful_executions': 0,
-            'total_profit': 0.0,
-            'avg_consensus_level': 0.0,
-            'swarm_efficiency': 0.0
+        # Signal sources and weights
+        self.signal_weights = {
+            'technical_analysis': 0.25,
+            'sentiment_analysis': 0.25, 
+            'narrative_analysis': 0.30,
+            'market_structure': 0.20
         }
         
-        # Configuration
-        self.config = {
-            'min_consensus_threshold': 0.7,
-            'max_risk_per_opportunity': 0.3,
-            'opportunity_timeout_minutes': 30,
-            'swarm_coordination_delay': 2.0,  # seconds
-            'evolution_trigger_threshold': 0.6
+        # Anti-fragile decision factors
+        self.anti_fragile_factors = {
+            'market_volatility_adjustment': True,
+            'position_sizing_discipline': True,
+            'narrative_momentum_bias': True,
+            'risk_cascading_prevention': True
         }
         
-        # System state
-        self.initialized = False
-        self.decision_making_active = False
+        self.logger.info("🧠 Swarm Decision Engine initialized with narrative weighting")
+    
+    async def analyze_opportunity(
+        self, 
+        token_address: str, 
+        market_data: Dict[str, Any],
+        narrative_weight: float = 1.0
+    ) -> SwarmConsensus:
+        """
+        Analyze trading opportunity with narrative intelligence weighting
         
-    async def initialize_swarm(self) -> bool:
-        """Initialize all swarm components with NATS message bus"""
+        Args:
+            token_address: Token contract address
+            market_data: Current market data for the token
+            narrative_weight: Narrative strength multiplier (0.0 to 2.0)
+        """
         try:
-            self.logger.info("🧬 Initializing Swarm Decision Engine with NATS message bus...")
+            self.logger.debug(f"🔍 Analyzing opportunity for {token_address} with narrative weight {narrative_weight:.2f}")
             
-            # Initialize message bus
-            self.message_bus = await get_message_bus()
+            # Gather signals from multiple sources
+            signals = await self._gather_signals(token_address, market_data)
             
-            # Initialize core components
-            self.neural_command_center = ColonyCommander()
-            self.stealth_operations = StealthOperationsSystem()
+            # Apply narrative weighting to signal confidence
+            weighted_signals = self._apply_narrative_weighting(signals, narrative_weight)
             
-            # Get wallet and vault systems
-            from worker_ant_v1.core.wallet_manager import get_wallet_manager
-            from worker_ant_v1.core.vault_wallet_system import get_vault_system
+            # Calculate consensus
+            consensus = await self._calculate_swarm_consensus(weighted_signals, narrative_weight)
             
-            self.wallet_manager = await get_wallet_manager()
-            self.vault_system = await get_vault_system()
+            # Apply anti-fragile decision filters
+            final_consensus = await self._apply_anti_fragile_filters(consensus, market_data)
             
-            # Initialize trading engine
-            self.trading_engine = UnifiedTradingEngine()
-            await self.trading_engine.initialize()
+            self.logger.debug(f"📊 Analysis complete: {final_consensus.recommended_action} "
+                            f"(confidence: {final_consensus.consensus_confidence:.2f})")
             
-            # Initialize safety systems
-            self.rug_detector = EnhancedRugDetector(
-                solana_client=None,  # Will be injected
-                jupiter_dex=None     # Will be injected
-            )
-            await self.rug_detector.initialize()
-            
-            self.kill_switch = EnhancedKillSwitch()
-            await self.kill_switch.initialize()
-            
-            # Initialize squad manager
-            self.squad_manager = SquadManager()
-            await self.squad_manager.initialize(self.wallet_manager)
-            
-            # Initialize ML predictor with state-of-the-art architectures
-            self.ml_predictor = MLPredictor()
-            
-            # Initialize prediction engine
-            self.prediction_engine = PredictionEngine()
-            await self.prediction_engine.initialize()
-            
-            # Initialize Hunter Ants for all wallets
-            active_wallets = await self.wallet_manager.get_all_wallets()
-            wallet_ids = list(active_wallets.keys())
-            await self.ml_predictor.initialize_hunter_ants(wallet_ids)
-            await self.prediction_engine.initialize_hunter_ants(wallet_ids)
-            
-            # Connect components
-            await self.neural_command_center.initialize(self.wallet_manager, self.vault_system)
-            
-            # Setup NATS message subscriptions
-            await self._setup_message_subscriptions()
-            
-            # Start background tasks
-            asyncio.create_task(self._decision_making_loop())
-            asyncio.create_task(self._performance_tracking_loop())
-            asyncio.create_task(self._swarm_health_monitoring())
-            
-            self.current_state = SwarmState.HUNTING
-            self.initialized = True
-            self.decision_making_active = True
-            
-            self.logger.info("✅ Swarm Decision Engine initialized and hunting with NATS messaging")
-            
-            return True
+            return final_consensus
             
         except Exception as e:
-            self.logger.error(f"❌ Failed to initialize swarm: {e}")
-            return False
-
-    async def _setup_message_subscriptions(self):
-        """Setup NATS message subscriptions for swarm communication"""
+            self.logger.error(f"❌ Opportunity analysis failed for {token_address}: {e}")
+            return self._create_safe_consensus("hold", 0.0, narrative_weight)
+    
+    async def _gather_signals(self, token_address: str, market_data: Dict[str, Any]) -> List[OpportunitySignal]:
+        """Gather signals from multiple analysis sources"""
+        signals = []
+        
         try:
-            # Subscribe to market opportunities
-            await self.message_bus.subscribe(
-                intelligence_subject("market"),
-                self._handle_market_opportunity,
-                queue_group=f"swarm_{self.swarm_id}"
-            )
+            # Technical analysis signal
+            technical_signal = await self._generate_technical_signal(token_address, market_data)
+            if technical_signal:
+                signals.append(technical_signal)
             
-            # Subscribe to sentiment signals
-            await self.message_bus.subscribe(
-                intelligence_subject("sentiment"),
-                self._handle_sentiment_signal,
-                queue_group=f"swarm_{self.swarm_id}"
-            )
+            # Sentiment analysis signal
+            sentiment_signal = await self._generate_sentiment_signal(token_address, market_data)
+            if sentiment_signal:
+                signals.append(sentiment_signal)
             
-            # Subscribe to ML predictions
-            await self.message_bus.subscribe(
-                intelligence_subject("ml"),
-                self._handle_ml_prediction,
-                queue_group=f"swarm_{self.swarm_id}"
-            )
+            # Market structure signal
+            structure_signal = await self._generate_structure_signal(token_address, market_data)
+            if structure_signal:
+                signals.append(structure_signal)
             
-            # Subscribe to colony commands
-            await self.message_bus.subscribe(
-                f"colony.command.{self.swarm_id}",
-                self._handle_colony_command
-            )
+            # Narrative momentum signal
+            narrative_signal = await self._generate_narrative_signal(token_address, market_data)
+            if narrative_signal:
+                signals.append(narrative_signal)
             
-            # Subscribe to colony-wide commands
-            await self.message_bus.subscribe(
-                "colony.command.all",
-                self._handle_colony_command
-            )
-            
-            # Subscribe to safety alerts
-            await self.message_bus.subscribe(
-                "safety.alert.*",
-                self._handle_safety_alert
-            )
-            
-            # Subscribe to kill switch
-            await self.message_bus.subscribe(
-                "safety.kill_switch.*",
-                self._handle_kill_switch
-            )
-            
-            self.logger.info("✅ NATS message subscriptions setup complete")
+            return signals
             
         except Exception as e:
-            self.logger.error(f"❌ Failed to setup message subscriptions: {e}")
-
-    async def _handle_market_opportunity(self, message: MessageEnvelope):
-        """Handle market opportunity messages from intelligence systems"""
+            self.logger.warning(f"Signal gathering failed for {token_address}: {e}")
+            return []
+    
+    async def _generate_technical_signal(self, token_address: str, market_data: Dict[str, Any]) -> Optional[OpportunitySignal]:
+        """Generate technical analysis signal"""
         try:
-            opportunity_data = message.data
-            token_address = opportunity_data.get('token_address')
+            # Extract technical indicators from market data
+            price = market_data.get('current_price', 0)
+            volume = market_data.get('volume_24h', 0)
+            price_change_24h = market_data.get('price_change_24h', 0)
             
-            if not token_address:
-                self.logger.warning("⚠️ Received market opportunity without token address")
-                return
+            # Simple momentum-based signal
+            if price_change_24h > 0.05 and volume > 10000:  # 5% gain with volume
+                signal_type = 'buy'
+                confidence = min(0.8, abs(price_change_24h) * 10)
+            elif price_change_24h < -0.05:  # 5% loss
+                signal_type = 'sell'
+                confidence = min(0.7, abs(price_change_24h) * 8)
+            else:
+                signal_type = 'hold'
+                confidence = 0.5
             
-            self.swarm_metrics['total_opportunities'] += 1
-            
-            # Analyze opportunity using neural command center
-            consensus_signal = await self.neural_command_center.analyze_opportunity(
-                token_address, opportunity_data
-            )
-            
-            # Make swarm decision
-            decision = await self._make_swarm_decision(consensus_signal, opportunity_data)
-            
-            if decision and decision.recommended_action != "HOLD":
-                # Publish decision to execution systems
-                await self._publish_swarm_decision(decision)
-                
-            self.logger.info(f"📊 Processed market opportunity for {token_address}: {decision.recommended_action if decision else 'REJECTED'}")
-            
-        except Exception as e:
-            self.logger.error(f"❌ Error handling market opportunity: {e}")
-
-    async def _handle_sentiment_signal(self, message: MessageEnvelope):
-        """Handle sentiment analysis signals"""
-        try:
-            sentiment_data = message.data
-            self.logger.debug(f"📈 Received sentiment signal: {sentiment_data.get('sentiment', 'unknown')}")
-            
-            # Forward to neural command center for integration
-            # This will be used in the next opportunity analysis
-            
-        except Exception as e:
-            self.logger.error(f"❌ Error handling sentiment signal: {e}")
-
-    async def _handle_ml_prediction(self, message: MessageEnvelope):
-        """Handle ML prediction messages"""
-        try:
-            prediction_data = message.data
-            token_address = prediction_data.get('token_address')
-            
-            if token_address:
-                self.logger.debug(f"🤖 Received ML prediction for {token_address}")
-                # Process ML prediction as market opportunity
-                await self._handle_market_opportunity(message)
-            
-        except Exception as e:
-            self.logger.error(f"❌ Error handling ML prediction: {e}")
-
-    async def _handle_colony_command(self, message: MessageEnvelope):
-        """Handle commands from Colony Commander"""
-        try:
-            command_data = message.data
-            command = command_data.get('command')
-            
-            self.logger.info(f"📢 Received colony command: {command}")
-            
-            if command == "activate_blitzscaling":
-                await self._activate_blitzscaling_mode()
-            elif command == "deactivate_blitzscaling":
-                await self._deactivate_blitzscaling_mode()
-            elif command == "change_state":
-                new_state = command_data.get('state')
-                if new_state:
-                    self.current_state = SwarmState(new_state)
-                    self.logger.info(f"🔄 Swarm state changed to: {new_state}")
-            elif command == "shutdown":
-                await self._shutdown_swarm()
-            elif command == "rebalance":
-                await self._rebalance_swarm_capital()
-            
-        except Exception as e:
-            self.logger.error(f"❌ Error handling colony command: {e}")
-
-    async def _handle_safety_alert(self, message: MessageEnvelope):
-        """Handle safety alerts"""
-        try:
-            alert_data = message.data
-            alert_type = alert_data.get('type')
-            severity = alert_data.get('severity', 'medium')
-            
-            self.logger.warning(f"🚨 Safety alert received: {alert_type} (severity: {severity})")
-            
-            if severity == 'high' or alert_type == 'rug_detected':
-                # Immediate risk mitigation
-                self.current_state = SwarmState.RETREATING
-                await self._execute_emergency_procedures()
-            
-        except Exception as e:
-            self.logger.error(f"❌ Error handling safety alert: {e}")
-
-    async def _handle_kill_switch(self, message: MessageEnvelope):
-        """Handle kill switch activation"""
-        try:
-            kill_data = message.data
-            reason = kill_data.get('reason', 'Unknown')
-            
-            self.logger.error(f"🛑 KILL SWITCH ACTIVATED: {reason}")
-            
-            self.current_state = SwarmState.EMERGENCY
-            self.decision_making_active = False
-            
-            # Immediately stop all trading activities
-            await self._emergency_shutdown()
-            
-        except Exception as e:
-            self.logger.error(f"❌ Error handling kill switch: {e}")
-
-    async def _make_swarm_decision(self, consensus_signal, opportunity_data: Dict[str, Any]) -> Optional[SwarmDecision]:
-        """Make swarm-level trading decision based on consensus"""
-        try:
-            if not consensus_signal.passes_consensus:
-                return None
-            
-            token_address = opportunity_data.get('token_address')
-            
-            # Get ML prediction for additional intelligence
-            ml_prediction = await self.prediction_engine.predict(
-                token_address, 
-                opportunity_data,
-                prediction_horizon=15
-            )
-            
-            # Determine squad assignment
-            squad_assignment = None
-            if self.squad_manager:
-                squad_assignment = await self.squad_manager.determine_squad_for_opportunity(opportunity_data)
-            
-            # Calculate position sizing based on risk and confidence
-            position_size = self._calculate_position_size(
-                consensus_signal.confidence_level,
-                ml_prediction.overall_confidence,
-                opportunity_data.get('risk_score', 0.5)
-            )
-            
-            # Create swarm decision
-            decision = SwarmDecision(
-                decision_id=f"swarm_{self.swarm_id}_{int(time.time())}",
+            return OpportunitySignal(
                 token_address=token_address,
-                swarm_state=self.current_state,
-                consensus_level=consensus_signal.consensus_strength,
-                confidence_score=consensus_signal.confidence_level,
-                recommended_action=consensus_signal.recommended_action,
-                position_size=position_size,
-                squad_assignment=squad_assignment,
-                risk_level=opportunity_data.get('risk_score', 0.5),
-                execution_priority=self._calculate_execution_priority(consensus_signal),
-                timestamp=datetime.utcnow(),
-                reasoning=consensus_signal.reasoning,
-                intelligence_sources={
-                    'ai_prediction': consensus_signal.ai_prediction,
-                    'onchain_sentiment': consensus_signal.onchain_sentiment,
-                    'twitter_sentiment': consensus_signal.twitter_sentiment,
-                    'technical_score': consensus_signal.technical_score,
-                    'ml_prediction': ml_prediction.trading_recommendation
-                },
-                wallet_assignments={},  # Will be filled by squad manager
-                expected_profit=ml_prediction.oracle_price_prediction * position_size,
-                max_drawdown=position_size * 0.1,  # 10% max drawdown
-                time_horizon_minutes=15
+                signal_type=signal_type,
+                confidence=confidence,
+                price_target=price * (1 + price_change_24h * 0.5),
+                risk_level=abs(price_change_24h),
+                narrative_alignment=0.5,  # Neutral for technical
+                time_horizon='short',
+                reasoning=f"Technical: {price_change_24h:.1%} change, volume {volume:,.0f}",
+                metadata={'source': 'technical_analysis', 'price': price, 'volume': volume}
             )
             
-            # Store decision in history
-            self.decision_history.append(decision)
-            
-            return decision
-            
         except Exception as e:
-            self.logger.error(f"❌ Error making swarm decision: {e}")
+            self.logger.warning(f"Technical signal generation failed: {e}")
             return None
-
-    async def _publish_swarm_decision(self, decision: SwarmDecision):
-        """Publish swarm decision to execution systems"""
+    
+    async def _generate_sentiment_signal(self, token_address: str, market_data: Dict[str, Any]) -> Optional[OpportunitySignal]:
+        """Generate sentiment analysis signal"""
         try:
-            # Send to trading engine for execution
-            await self.message_bus.send_trade_order(
-                {
-                    'decision_id': decision.decision_id,
-                    'token_address': decision.token_address,
-                    'action': decision.recommended_action,
-                    'position_size': decision.position_size,
-                    'risk_level': decision.risk_level,
-                    'squad_assignment': decision.squad_assignment,
-                    'priority': decision.execution_priority
-                },
-                "trading_engine"
-            )
+            # Mock sentiment analysis - would integrate with real sentiment engine
+            sentiment_score = market_data.get('sentiment_score', 0.5)
+            social_volume = market_data.get('social_volume', 0)
             
-            # Send to squad manager if assigned
-            if decision.squad_assignment:
-                await self.message_bus.send_squad_signal(
-                    {
-                        'decision_id': decision.decision_id,
-                        'token_address': decision.token_address,
-                        'action': decision.recommended_action,
-                        'position_size': decision.position_size
-                    },
-                    decision.squad_assignment
-                )
-            
-            # Broadcast decision to interested systems
-            decision_message = MessageEnvelope(
-                message_id=decision.decision_id,
-                message_type=MessageType.SWARM_DECISION,
-                subject=swarm_subject(self.swarm_id, "decision"),
-                sender_id=f"swarm_{self.swarm_id}",
-                timestamp=datetime.utcnow(),
-                priority=MessagePriority.HIGH,
-                data={
-                    'decision': {
-                        'decision_id': decision.decision_id,
-                        'token_address': decision.token_address,
-                        'action': decision.recommended_action,
-                        'position_size': decision.position_size,
-                        'confidence_score': decision.confidence_score,
-                        'squad_assignment': decision.squad_assignment
-                    }
-                },
-                broadcast=True
-            )
-            
-            await self.message_bus.publish(decision_message)
-            
-            self.swarm_metrics['executed_opportunities'] += 1
-            self.logger.info(f"📡 Published swarm decision {decision.decision_id}")
-            
-        except Exception as e:
-            self.logger.error(f"❌ Error publishing swarm decision: {e}")
-
-    def _calculate_position_size(self, consensus_confidence: float, ml_confidence: float, risk_score: float) -> float:
-        """Calculate position size based on multiple confidence factors"""
-        try:
-            # Base position size on combined confidence
-            combined_confidence = (consensus_confidence + ml_confidence) / 2
-            
-            # Risk adjustment
-            risk_adjustment = 1.0 - risk_score
-            
-            # Position size calculation
-            base_size = combined_confidence * 0.3  # Max 30% base allocation
-            adjusted_size = base_size * risk_adjustment
-            
-            # Apply swarm state modifiers
-            if self.current_state == SwarmState.FEASTING:
-                adjusted_size *= 1.5  # Increase size during profitable periods
-            elif self.current_state == SwarmState.RETREATING:
-                adjusted_size *= 0.5  # Reduce size during risky periods
-            
-            # Cap at maximum risk per opportunity
-            max_size = self.config['max_risk_per_opportunity']
-            
-            return min(adjusted_size, max_size)
-            
-        except Exception as e:
-            self.logger.error(f"❌ Error calculating position size: {e}")
-            return 0.1  # Conservative fallback
-
-    def _calculate_execution_priority(self, consensus_signal) -> int:
-        """Calculate execution priority (1=highest, 5=lowest)"""
-        try:
-            # High consensus and confidence = high priority
-            if consensus_signal.consensus_strength > 0.9 and consensus_signal.confidence_level > 0.8:
-                return 1
-            elif consensus_signal.consensus_strength > 0.8 and consensus_signal.confidence_level > 0.7:
-                return 2
-            elif consensus_signal.consensus_strength > 0.7 and consensus_signal.confidence_level > 0.6:
-                return 3
-            elif consensus_signal.consensus_strength > 0.6:
-                return 4
+            if sentiment_score > 0.7:
+                signal_type = 'buy'
+                confidence = sentiment_score * 0.9
+            elif sentiment_score < 0.3:
+                signal_type = 'sell'
+                confidence = (1 - sentiment_score) * 0.8
             else:
-                return 5
-                
-        except Exception as e:
-            self.logger.error(f"❌ Error calculating execution priority: {e}")
-            return 5
-
-    async def _decision_making_loop(self):
-        """Main decision-making loop (replaced queue-based with event-driven)"""
-        while self.decision_making_active:
-            try:
-                # Monitor swarm health and adjust state
-                await self._monitor_swarm_health()
-                
-                # Process any pending analysis
-                await self._process_pending_analysis()
-                
-                # Sleep and wait for message-driven events
-                await asyncio.sleep(5)  # Check every 5 seconds
-                
-            except Exception as e:
-                self.logger.error(f"❌ Decision making loop error: {e}")
-                await asyncio.sleep(10)
-
-    async def _monitor_swarm_health(self):
-        """Monitor overall swarm health and performance"""
-        try:
-            # Calculate success rate
-            if self.swarm_metrics['executed_opportunities'] > 0:
-                success_rate = self.swarm_metrics['successful_executions'] / self.swarm_metrics['executed_opportunities']
-            else:
-                success_rate = 0.0
+                signal_type = 'hold'
+                confidence = 0.4
             
-            # Update swarm health
-            self.swarm_health = success_rate
-            
-            # State transitions based on performance
-            if success_rate > 0.8 and self.current_state != SwarmState.FEASTING:
-                self.current_state = SwarmState.FEASTING
-                self.logger.info("🍯 Swarm state: FEASTING (high success rate)")
-            elif success_rate < 0.4 and self.current_state != SwarmState.RETREATING:
-                self.current_state = SwarmState.RETREATING
-                self.logger.info("🛡️ Swarm state: RETREATING (low success rate)")
-            elif 0.4 <= success_rate <= 0.8 and self.current_state not in [SwarmState.HUNTING, SwarmState.STALKING]:
-                self.current_state = SwarmState.HUNTING
-                self.logger.info("🎯 Swarm state: HUNTING (moderate performance)")
-            
-        except Exception as e:
-            self.logger.error(f"❌ Error monitoring swarm health: {e}")
-
-    async def _process_pending_analysis(self):
-        """Process any pending analysis or maintenance tasks"""
-        try:
-            # Clean up old decisions
-            cutoff_time = datetime.utcnow() - timedelta(hours=24)
-            self.decision_history = [
-                d for d in self.decision_history 
-                if d.timestamp > cutoff_time
-            ]
-            
-            # Update performance metrics
-            await self._update_performance_metrics()
-            
-        except Exception as e:
-            self.logger.error(f"❌ Error in pending analysis: {e}")
-
-    async def _performance_tracking_loop(self):
-        """Background performance tracking"""
-        while self.decision_making_active:
-            try:
-                await self._update_performance_metrics()
-                
-                # Publish performance status
-                await self._publish_swarm_status()
-                
-                await asyncio.sleep(60)  # Update every minute
-                
-            except Exception as e:
-                self.logger.error(f"❌ Performance tracking error: {e}")
-                await asyncio.sleep(60)
-
-    async def _update_performance_metrics(self):
-        """Update swarm performance metrics"""
-        try:
-            # Calculate efficiency
-            if self.swarm_metrics['executed_opportunities'] > 0:
-                self.swarm_metrics['swarm_efficiency'] = (
-                    self.swarm_metrics['successful_executions'] / 
-                    self.swarm_metrics['executed_opportunities']
-                )
-            
-            # Calculate average consensus level
-            if self.decision_history:
-                recent_decisions = self.decision_history[-100:]  # Last 100 decisions
-                self.swarm_metrics['avg_consensus_level'] = sum(
-                    d.consensus_level for d in recent_decisions
-                ) / len(recent_decisions)
-            
-        except Exception as e:
-            self.logger.error(f"❌ Error updating performance metrics: {e}")
-
-    async def _publish_swarm_status(self):
-        """Publish current swarm status to message bus"""
-        try:
-            status_message = MessageEnvelope(
-                message_id=f"status_{self.swarm_id}_{int(time.time())}",
-                message_type=MessageType.SWARM_STATUS,
-                subject=swarm_subject(self.swarm_id, "status"),
-                sender_id=f"swarm_{self.swarm_id}",
-                timestamp=datetime.utcnow(),
-                priority=MessagePriority.LOW,
-                data={
-                    'swarm_id': self.swarm_id,
-                    'current_state': self.current_state.value,
-                    'swarm_health': self.swarm_health,
-                    'metrics': self.swarm_metrics,
-                    'active_decisions': len(self.decision_history)
-                }
-            )
-            
-            await self.message_bus.publish(status_message)
-            
-        except Exception as e:
-            self.logger.error(f"❌ Error publishing swarm status: {e}")
-
-    async def _swarm_health_monitoring(self):
-        """Background swarm health monitoring"""
-        while self.decision_making_active:
-            try:
-                await self._monitor_swarm_health()
-                await asyncio.sleep(30)  # Check every 30 seconds
-                
-            except Exception as e:
-                self.logger.error(f"❌ Swarm health monitoring error: {e}")
-                await asyncio.sleep(30)
-
-    async def _activate_blitzscaling_mode(self):
-        """Activate aggressive blitzscaling mode"""
-        try:
-            self.config['max_risk_per_opportunity'] = 0.5  # Increase max risk
-            self.current_state = SwarmState.FEASTING
-            self.logger.info("🚀 BLITZSCALING MODE ACTIVATED")
-            
-        except Exception as e:
-            self.logger.error(f"❌ Error activating blitzscaling mode: {e}")
-
-    async def _deactivate_blitzscaling_mode(self):
-        """Deactivate blitzscaling mode"""
-        try:
-            self.config['max_risk_per_opportunity'] = 0.3  # Reset to conservative
-            self.current_state = SwarmState.HUNTING
-            self.logger.info("🛡️ Blitzscaling mode deactivated")
-            
-        except Exception as e:
-            self.logger.error(f"❌ Error deactivating blitzscaling mode: {e}")
-
-    async def _execute_emergency_procedures(self):
-        """Execute emergency risk mitigation procedures"""
-        try:
-            self.logger.warning("🚨 Executing emergency procedures")
-            
-            # Reduce all position sizes
-            self.config['max_risk_per_opportunity'] = 0.1
-            
-            # Pause decision making temporarily
-            self.decision_making_active = False
-            await asyncio.sleep(60)  # 1 minute pause
-            self.decision_making_active = True
-            
-        except Exception as e:
-            self.logger.error(f"❌ Error in emergency procedures: {e}")
-
-    async def _emergency_shutdown(self):
-        """Emergency shutdown of swarm operations"""
-        try:
-            self.logger.error("🛑 EMERGENCY SHUTDOWN INITIATED")
-            
-            self.decision_making_active = False
-            
-            # Send emergency stop to all connected systems
-            await self.message_bus.send_kill_switch(
-                "Swarm emergency shutdown",
-                f"swarm_{self.swarm_id}"
+            return OpportunitySignal(
+                token_address=token_address,
+                signal_type=signal_type,
+                confidence=confidence,
+                price_target=None,
+                risk_level=1 - sentiment_score if sentiment_score < 0.5 else sentiment_score - 0.5,
+                narrative_alignment=sentiment_score,
+                time_horizon='medium',
+                reasoning=f"Sentiment: {sentiment_score:.2f} score, social volume {social_volume}",
+                metadata={'source': 'sentiment_analysis', 'sentiment': sentiment_score}
             )
             
         except Exception as e:
-            self.logger.error(f"❌ Error during emergency shutdown: {e}")
-
-    async def _shutdown_swarm(self):
-        """Graceful shutdown of swarm operations"""
+            self.logger.warning(f"Sentiment signal generation failed: {e}")
+            return None
+    
+    async def _generate_structure_signal(self, token_address: str, market_data: Dict[str, Any]) -> Optional[OpportunitySignal]:
+        """Generate market structure signal"""
         try:
-            self.logger.info("🛑 Shutting down swarm...")
+            # Market structure analysis
+            liquidity = market_data.get('liquidity_usd', 0)
+            holder_count = market_data.get('holder_count', 0)
+            mcap = market_data.get('market_cap', 0)
             
-            self.decision_making_active = False
+            # Structure score based on liquidity and distribution
+            structure_score = 0.0
+            if liquidity > 50000:  # Good liquidity
+                structure_score += 0.3
+            if holder_count > 1000:  # Good distribution
+                structure_score += 0.3
+            if 1000000 < mcap < 100000000:  # Sweet spot market cap
+                structure_score += 0.4
             
-            # Publish shutdown status
-            await self._publish_swarm_status()
+            signal_type = 'buy' if structure_score > 0.6 else 'hold' if structure_score > 0.3 else 'sell'
+            confidence = structure_score
+            
+            return OpportunitySignal(
+                token_address=token_address,
+                signal_type=signal_type,
+                confidence=confidence,
+                price_target=None,
+                risk_level=1 - structure_score,
+                narrative_alignment=0.5,
+                time_horizon='long',
+                reasoning=f"Structure: liquidity ${liquidity:,.0f}, {holder_count} holders",
+                metadata={'source': 'market_structure', 'liquidity': liquidity}
+            )
             
         except Exception as e:
-            self.logger.error(f"❌ Error during shutdown: {e}")
-
-    async def _rebalance_swarm_capital(self):
-        """Rebalance capital allocation across swarm"""
+            self.logger.warning(f"Structure signal generation failed: {e}")
+            return None
+    
+    async def _generate_narrative_signal(self, token_address: str, market_data: Dict[str, Any]) -> Optional[OpportunitySignal]:
+        """Generate narrative momentum signal"""
         try:
-            self.logger.info("⚖️ Rebalancing swarm capital...")
+            # Narrative indicators
+            trending_keywords = market_data.get('trending_keywords', [])
+            narrative_mentions = market_data.get('narrative_mentions', 0)
+            influencer_sentiment = market_data.get('influencer_sentiment', 0.5)
             
-            # Implementation would coordinate with vault system
-            # for capital reallocation based on performance
+            # Calculate narrative momentum
+            narrative_score = 0.0
+            if len(trending_keywords) > 3:
+                narrative_score += 0.3
+            if narrative_mentions > 100:
+                narrative_score += 0.3
+            narrative_score += influencer_sentiment * 0.4
+            
+            signal_type = 'buy' if narrative_score > 0.7 else 'hold' if narrative_score > 0.4 else 'sell'
+            confidence = narrative_score
+            
+            return OpportunitySignal(
+                token_address=token_address,
+                signal_type=signal_type,
+                confidence=confidence,
+                price_target=None,
+                risk_level=0.3,  # Narrative trades are medium risk
+                narrative_alignment=narrative_score,
+                time_horizon='short',
+                reasoning=f"Narrative: {len(trending_keywords)} keywords, {narrative_mentions} mentions",
+                metadata={'source': 'narrative_analysis', 'keywords': trending_keywords}
+            )
             
         except Exception as e:
-            self.logger.error(f"❌ Error during capital rebalancing: {e}")
-
-    def get_swarm_metrics(self) -> Dict[str, Any]:
-        """Get current swarm performance metrics"""
-        return {
-            'swarm_id': self.swarm_id,
-            'current_state': self.current_state.value,
-            'swarm_health': self.swarm_health,
-            'metrics': self.swarm_metrics,
-            'recent_decisions': len([d for d in self.decision_history if d.timestamp > datetime.utcnow() - timedelta(hours=1)]),
-            'message_bus_stats': self.message_bus.get_stats() if self.message_bus else None
-        } 
+            self.logger.warning(f"Narrative signal generation failed: {e}")
+            return None
+    
+    def _apply_narrative_weighting(self, signals: List[OpportunitySignal], narrative_weight: float) -> List[OpportunitySignal]:
+        """Apply narrative weighting to boost signal confidence"""
+        weighted_signals = []
+        
+        for signal in signals:
+            # Clone the signal
+            weighted_signal = OpportunitySignal(
+                token_address=signal.token_address,
+                signal_type=signal.signal_type,
+                confidence=signal.confidence,
+                price_target=signal.price_target,
+                risk_level=signal.risk_level,
+                narrative_alignment=signal.narrative_alignment,
+                time_horizon=signal.time_horizon,
+                reasoning=signal.reasoning,
+                metadata=signal.metadata.copy()
+            )
+            
+            # Apply narrative weighting to confidence
+            if narrative_weight > 1.0:  # Strong narrative
+                boost_factor = min(1.5, 1.0 + (narrative_weight - 1.0) * 0.5)
+                weighted_signal.confidence = min(1.0, signal.confidence * boost_factor)
+                weighted_signal.reasoning += f" [Narrative boost: {boost_factor:.2f}x]"
+            
+            weighted_signals.append(weighted_signal)
+        
+        return weighted_signals
+    
+    async def _calculate_swarm_consensus(self, signals: List[OpportunitySignal], narrative_weight: float) -> SwarmConsensus:
+        """Calculate consensus from weighted signals"""
+        if not signals:
+            return self._create_safe_consensus("hold", 0.0, narrative_weight)
+        
+        try:
+            # Aggregate signals by type
+            signal_votes = {'buy': 0, 'sell': 0, 'hold': 0}
+            weighted_confidence = {'buy': 0, 'sell': 0, 'hold': 0}
+            
+            for signal in signals:
+                weight = self.signal_weights.get(signal.metadata.get('source', ''), 0.25)
+                signal_votes[signal.signal_type] += weight
+                weighted_confidence[signal.signal_type] += signal.confidence * weight
+            
+            # Determine consensus action
+            consensus_action = max(signal_votes, key=signal_votes.get)
+            
+            # Calculate consensus confidence
+            total_votes = sum(signal_votes.values())
+            action_confidence = weighted_confidence[consensus_action] / max(signal_votes[consensus_action], 0.1)
+            consensus_confidence = action_confidence * (signal_votes[consensus_action] / total_votes)
+            
+            # Calculate risk assessment
+            risk_scores = [s.risk_level for s in signals]
+            avg_risk = np.mean(risk_scores) if risk_scores else 0.5
+            
+            # Position sizing based on confidence and risk
+            position_size = self._calculate_position_size(consensus_confidence, avg_risk, narrative_weight)
+            
+            return SwarmConsensus(
+                recommended_action=consensus_action,
+                consensus_confidence=consensus_confidence,
+                narrative_weight=narrative_weight,
+                risk_assessment=avg_risk,
+                position_size_recommendation=position_size,
+                entry_conditions={'min_confidence': 0.6, 'max_risk': 0.02},
+                exit_conditions={'stop_loss': 0.05, 'take_profit': 0.15},
+                reasoning=f"Swarm consensus: {len(signals)} signals, narrative weight {narrative_weight:.2f}"
+            )
+            
+        except Exception as e:
+            self.logger.error(f"Consensus calculation failed: {e}")
+            return self._create_safe_consensus("hold", 0.0, narrative_weight)
+    
+    def _calculate_position_size(self, confidence: float, risk: float, narrative_weight: float) -> float:
+        """Calculate recommended position size based on confidence and risk"""
+        base_size = min(self.max_risk_per_trade, confidence * 0.03)
+        
+        # Adjust for risk
+        risk_adjusted_size = base_size * (1 - risk)
+        
+        # Narrative weighting adjustment
+        if narrative_weight > 1.2:  # Strong narrative
+            risk_adjusted_size *= min(1.3, narrative_weight)
+        
+        return max(0.005, min(0.05, risk_adjusted_size))  # Cap between 0.5% and 5%
+    
+    async def _apply_anti_fragile_filters(self, consensus: SwarmConsensus, market_data: Dict[str, Any]) -> SwarmConsensus:
+        """Apply anti-fragile decision filters"""
+        filtered_consensus = consensus
+        
+        try:
+            # Market volatility adjustment
+            if self.anti_fragile_factors['market_volatility_adjustment']:
+                market_volatility = market_data.get('volatility_score', 0.5)
+                if market_volatility > 0.8:  # High volatility
+                    filtered_consensus.position_size_recommendation *= 0.5
+                    filtered_consensus.reasoning += " [Volatility reduction applied]"
+            
+            # Position sizing discipline
+            if self.anti_fragile_factors['position_sizing_discipline']:
+                if filtered_consensus.position_size_recommendation > self.max_risk_per_trade:
+                    filtered_consensus.position_size_recommendation = self.max_risk_per_trade
+                    filtered_consensus.reasoning += " [Position size capped]"
+            
+            # Confidence threshold enforcement
+            if filtered_consensus.consensus_confidence < self.confidence_threshold:
+                filtered_consensus.recommended_action = "hold"
+                filtered_consensus.reasoning += " [Confidence too low, defaulting to hold]"
+            
+            return filtered_consensus
+            
+        except Exception as e:
+            self.logger.warning(f"Anti-fragile filter application failed: {e}")
+            return consensus
+    
+    def _create_safe_consensus(self, action: str, confidence: float, narrative_weight: float) -> SwarmConsensus:
+        """Create a safe consensus for error cases"""
+        return SwarmConsensus(
+            recommended_action=action,
+            consensus_confidence=confidence,
+            narrative_weight=narrative_weight,
+            risk_assessment=0.5,
+            position_size_recommendation=0.0,
+            entry_conditions={},
+            exit_conditions={},
+            reasoning="Safe consensus due to insufficient data or error"
+        )
+    
+    def get_narrative_weight_for_token(self, token_address: str, narrative_data: Dict[str, Any]) -> float:
+        """Calculate narrative weight for a specific token"""
+        try:
+            # Extract narrative metrics
+            narrative_strength = narrative_data.get('narrative_strength', 0.5)
+            cultural_relevance = narrative_data.get('cultural_relevance', 0.5)
+            momentum_score = narrative_data.get('momentum_score', 0.5)
+            
+            # Calculate composite narrative weight
+            narrative_weight = (
+                narrative_strength * 0.4 +
+                cultural_relevance * 0.3 +
+                momentum_score * 0.3
+            )
+            
+            # Scale to 0.5 - 2.0 range
+            scaled_weight = 0.5 + (narrative_weight * 1.5)
+            
+            return max(0.5, min(2.0, scaled_weight))
+            
+        except Exception as e:
+            self.logger.warning(f"Narrative weight calculation failed: {e}")
+            return 1.0
+    
+    def update_signal_weights(self, new_weights: Dict[str, float]):
+        """Update signal source weights"""
+        self.signal_weights.update(new_weights)
+        self.logger.info(f"📊 Updated signal weights: {self.signal_weights}")
+    
+    def update_confidence_threshold(self, new_threshold: float):
+        """Update confidence threshold for decisions"""
+        self.confidence_threshold = max(0.1, min(0.9, new_threshold))
+        self.logger.info(f"🎯 Updated confidence threshold: {self.confidence_threshold}") 

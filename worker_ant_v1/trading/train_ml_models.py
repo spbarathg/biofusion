@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 TRAIN ML MODELS - STATE-OF-THE-ART PREDICTION ENGINE TRAINING
 ============================================================
@@ -23,7 +22,7 @@ from pathlib import Path
 from typing import Dict, List, Any
 from datetime import datetime, timedelta
 
-# Add the project root to the path
+
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
@@ -50,22 +49,22 @@ class MLModelTrainer:
         self.logger.info("🧠 Training Oracle Ant (Transformer) model...")
         
         try:
-            # Load training data
+        try:
             training_data = await self._load_training_data(data_path)
             
-            # Initialize Oracle Ant
+            
             oracle_ant = OracleAntPredictor()
             
-            # Prepare training data
+            
             train_loader = self._prepare_oracle_training_data(training_data, batch_size)
             
-            # Training loop
+            
             for epoch in range(epochs):
                 epoch_loss = 0.0
                 num_batches = 0
                 
                 for batch in train_loader:
-                    # Forward pass
+                for batch in train_loader:
                     loss = await self._oracle_training_step(oracle_ant, batch)
                     epoch_loss += loss
                     num_batches += 1
@@ -75,12 +74,12 @@ class MLModelTrainer:
                 if epoch % 10 == 0:
                     self.logger.info(f"Epoch {epoch}/{epochs}: Loss = {avg_loss:.6f}")
                 
-                # Save checkpoint every 50 epochs
+                
                 if epoch % 50 == 0:
                     checkpoint_path = self.models_dir / f"oracle_ant_epoch_{epoch}.pth"
                     oracle_ant.save_model(str(checkpoint_path))
             
-            # Save final model
+            
             final_path = self.models_dir / "oracle_ant_final.pth"
             oracle_ant.save_model(str(final_path))
             
@@ -97,34 +96,34 @@ class MLModelTrainer:
         self.logger.info(f"🏹 Training Hunter Ant (RL) model for wallet {wallet_id}...")
         
         try:
-            # Initialize Hunter Ant
+        try:
             hunter_ant = HunterAnt(wallet_id)
             
-            # Training loop
+            
             for episode in range(episodes):
-                # Reset environment
+            for episode in range(episodes):
                 state = hunter_ant.env.reset()
                 
                 episode_reward = 0.0
                 episode_length = 0
                 
-                # Episode loop
+                
+                while True:
                 while True:
                     # Get real market data for training
-                    # Use a sample token for training (BONK as example)
                     sample_token = "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263"
-                    # Use a random historical timestamp for training
+                    sample_token = "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263"
                     training_timestamp = datetime.now() - timedelta(hours=episode_length)
                     market_data = await self._get_real_market_data(sample_token, training_timestamp)
                     
-                    # Get action from agent
+                    
                     action, value = await hunter_ant.act(market_data)
                     
-                    # Simulate environment step
+                    
                     reward = self._simulate_market_step(action, market_data)
                     done = episode_length > 100  # End episode after 100 steps
                     
-                    # Update agent
+                    
                     await hunter_ant.update(reward, done)
                     
                     episode_reward += reward
@@ -136,12 +135,12 @@ class MLModelTrainer:
                 if episode % 100 == 0:
                     self.logger.info(f"Episode {episode}/{episodes}: Reward = {episode_reward:.4f}, Length = {episode_length}")
                 
-                # Save checkpoint every 500 episodes
+                
                 if episode % 500 == 0:
                     checkpoint_path = self.models_dir / f"hunter_ant_{wallet_id}_episode_{episode}.pth"
                     hunter_ant.save_model(str(checkpoint_path))
             
-            # Save final model
+            
             final_path = self.models_dir / f"hunter_ant_{wallet_id}_final.pth"
             hunter_ant.save_model(str(final_path))
             
@@ -158,22 +157,22 @@ class MLModelTrainer:
         self.logger.info("🕸️ Training Network Ant (GNN) model...")
         
         try:
-            # Load graph data
+        try:
             graph_data = await self._load_graph_data(graph_data_path)
             
-            # Initialize Network Ant
+            
             network_ant = NetworkAntPredictor()
             
-            # Prepare training data
+            
             train_loader = self._prepare_network_training_data(graph_data, batch_size)
             
-            # Training loop
+            
             for epoch in range(epochs):
                 epoch_loss = 0.0
                 num_batches = 0
                 
                 for batch in train_loader:
-                    # Forward pass
+                for batch in train_loader:
                     loss = await self._network_training_step(network_ant, batch)
                     epoch_loss += loss
                     num_batches += 1
@@ -183,12 +182,12 @@ class MLModelTrainer:
                 if epoch % 10 == 0:
                     self.logger.info(f"Epoch {epoch}/{epochs}: Loss = {avg_loss:.6f}")
                 
-                # Save checkpoint every 25 epochs
+                
                 if epoch % 25 == 0:
                     checkpoint_path = self.models_dir / f"network_ant_epoch_{epoch}.pth"
                     network_ant.save_model(str(checkpoint_path))
             
-            # Save final model
+            
             final_path = self.models_dir / "network_ant_final.pth"
             network_ant.save_model(str(final_path))
             
@@ -210,7 +209,7 @@ class MLModelTrainer:
             
         except Exception as e:
             self.logger.error(f"Failed to load training data: {e}")
-            # Return real historical data from database
+            self.logger.error(f"Failed to load training data: {e}")
             return await self._get_oracle_training_data_from_db()
     
     async def _load_graph_data(self, graph_data_path: str) -> Dict[str, Any]:
@@ -225,7 +224,7 @@ class MLModelTrainer:
             
         except Exception as e:
             self.logger.error(f"Failed to load graph data: {e}")
-            # Return real graph data from database
+            self.logger.error(f"Failed to load graph data: {e}")
             return await self._get_graph_data_from_db()
     
     def _prepare_oracle_training_data(self, data: List[Dict[str, Any]], 
@@ -243,7 +242,7 @@ class MLModelTrainer:
                                      batch_size: int) -> List[Dict[str, Any]]:
         """Prepare training data for Network Ant"""
         
-        # Split graph into batches
+        
         nodes = graph_data.get('nodes', [])
         edges = graph_data.get('edges', [])
         
@@ -262,15 +261,15 @@ class MLModelTrainer:
     async def _oracle_training_step(self, oracle_ant, batch) -> float:
         """Single training step for Oracle Ant"""
         
+        
         # This would implement the actual training logic
-        # For now, return a dummy loss
         return 0.1
     
     async def _network_training_step(self, network_ant, batch) -> float:
         """Single training step for Network Ant"""
         
+        
         # This would implement the actual training logic
-        # For now, return a dummy loss
         return 0.1
     
     async def _get_real_market_data(self, token_address: str, timestamp: datetime) -> Dict[str, Any]:
@@ -279,13 +278,13 @@ class MLModelTrainer:
             from worker_ant_v1.core.database import get_database_manager
             db_manager = await get_database_manager()
             
-            # Query historical data around the timestamp
+            
             start_time = timestamp - timedelta(hours=1)
             end_time = timestamp + timedelta(hours=1)
             
-            # Get price data from performance_metrics table
+            
             async with db_manager.pool.acquire() as conn:
-                # Get latest price data
+            async with db_manager.pool.acquire() as conn:
                 price_row = await conn.fetchrow("""
                     SELECT value, labels FROM performance_metrics 
                     WHERE metric_name = 'token_price_usd' 
@@ -300,12 +299,12 @@ class MLModelTrainer:
                 price = float(price_row['value'])
                 labels = json.loads(price_row['labels']) if price_row['labels'] else {}
                 
-                # Extract additional data from labels
+                
                 volume_24h = float(labels.get('volume_24h', 0))
                 market_cap = float(labels.get('market_cap', 0)) if labels.get('market_cap') else None
                 price_change_24h = float(labels.get('price_change_24h', 0)) if labels.get('price_change_24h') else 0
                 
-                # Calculate technical indicators from historical prices
+                
                 tech_indicators = await self._calculate_technical_indicators(
                     token_address, timestamp, conn
                 )
@@ -361,7 +360,7 @@ class MLModelTrainer:
                                             conn) -> Dict[str, float]:
         """Calculate technical indicators from historical price data"""
         try:
-            # Get 50 hours of historical data for technical analysis
+        try:
             start_time = timestamp - timedelta(hours=50)
             
             rows = await conn.fetch("""
@@ -377,17 +376,17 @@ class MLModelTrainer:
             
             prices = [float(row['value']) for row in rows]
             
-            # Calculate RSI
+            
             rsi = self._calculate_rsi(prices)
             
-            # Calculate moving average ratio
+            
             if len(prices) >= 20:
                 ma_20 = sum(prices[:20]) / 20
                 ma_ratio = prices[0] / ma_20 if ma_20 > 0 else 1.0
             else:
                 ma_ratio = 1.0
             
-            # Calculate volatility (standard deviation of returns)
+            
             if len(prices) >= 2:
                 returns = [(prices[i] - prices[i+1]) / prices[i+1] for i in range(len(prices)-1) if prices[i+1] > 0]
                 if returns:
@@ -446,17 +445,17 @@ class MLModelTrainer:
         
         import random
         
-        # Simple reward function based on action and market conditions
+        
         base_reward = 0.0
         
         if action in [1, 2, 3]:  # Buy actions
-            # Reward buying when price is likely to go up
+        if action in [1, 2, 3]:  # Buy actions
             if market_data['sentiment_score'] > 0.3 and market_data['rsi'] < 70:
                 base_reward = 0.1
             else:
                 base_reward = -0.05
         elif action in [4, 5, 6]:  # Sell actions
-            # Reward selling when price is likely to go down
+        elif action in [4, 5, 6]:  # Sell actions
             if market_data['sentiment_score'] < -0.3 or market_data['rsi'] > 80:
                 base_reward = 0.1
             else:
@@ -464,7 +463,7 @@ class MLModelTrainer:
         else:  # Hold action
             base_reward = 0.01  # Small reward for holding
         
-        # Add noise
+        
         noise = random.uniform(-0.02, 0.02)
         return base_reward + noise
     
@@ -474,13 +473,13 @@ class MLModelTrainer:
             from worker_ant_v1.core.database import get_database_manager
             db_manager = await get_database_manager()
             
-            # Get 30 days of historical price data for training
+            
             end_time = datetime.now()
             start_time = end_time - timedelta(days=30)
             
             training_data = []
             
-            # Sample tokens for training
+            
             training_tokens = [
                 "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263",  # BONK
                 "7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr",  # POPCAT
@@ -500,7 +499,7 @@ class MLModelTrainer:
                     if len(rows) < 50:
                         continue
                     
-                    # Group into sequences of 50 time steps
+                    
                     for i in range(0, len(rows) - 50, 10):  # Overlapping windows
                         sequence = rows[i:i+50]
                         
@@ -587,7 +586,7 @@ class MLModelTrainer:
             from worker_ant_v1.core.database import get_database_manager
             db_manager = await get_database_manager()
             
-            # Get trading data for graph construction
+            
             end_time = datetime.now()
             start_time = end_time - timedelta(days=7)  # Last week
             
@@ -595,7 +594,7 @@ class MLModelTrainer:
             edges = []
             
             async with db_manager.pool.acquire() as conn:
-                # Get trade data grouped by wallet
+            async with db_manager.pool.acquire() as conn:
                 rows = await conn.fetch("""
                     SELECT wallet_id, token_address, trade_type, amount_sol, amount_tokens, 
                            success, profit_loss_sol, timestamp
@@ -607,7 +606,7 @@ class MLModelTrainer:
                 if len(rows) < 10:
                     return self._generate_minimal_graph_data()
                 
-                # Analyze wallet performance
+                
                 wallet_stats = {}
                 for row in rows:
                     wallet_id = row['wallet_id']
@@ -628,12 +627,12 @@ class MLModelTrainer:
                     if row['success']:
                         stats['successful_trades'] += 1
                 
-                # Create wallet nodes
+                
                 for wallet_id, stats in wallet_stats.items():
                     success_rate = stats['successful_trades'] / stats['total_trades'] if stats['total_trades'] > 0 else 0
                     avg_profit = stats['total_profit'] / stats['total_trades'] if stats['total_trades'] > 0 else 0
                     
-                    # Classify wallet behavior
+                    
                     behavior_type = "organic_trader"
                     if success_rate > 0.8 and avg_profit > 0.5:
                         behavior_type = "smart_money"
@@ -658,7 +657,7 @@ class MLModelTrainer:
                     }
                     wallets.append(wallet_node)
                 
-                # Create transaction edges
+                
                 edge_count = 0
                 for row in rows[:200]:  # Limit edges for performance
                     edge = {
@@ -693,7 +692,7 @@ class MLModelTrainer:
         
         self.logger.warning("Using minimal fallback graph data - run data ingestion for better results")
         
-        # Generate minimal synthetic wallets
+        
         wallets = []
         for i in range(20):  # Smaller dataset
             wallet_data = {
@@ -712,7 +711,7 @@ class MLModelTrainer:
             }
             wallets.append(wallet_data)
         
-        # Generate minimal transactions
+        
         edges = []
         for i in range(50):  # Fewer edges
             edge = {

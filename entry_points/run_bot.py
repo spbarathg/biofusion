@@ -24,6 +24,7 @@ from tests.bulletproof_testing_suite import BulletproofTestingSuite
 from worker_ant_v1.core.system_validator import validate_production_config_sync
 from worker_ant_v1.trading.main import HyperIntelligentTradingSwarm
 from worker_ant_v1.trading.hyper_compound_squad import HyperCompoundSwarm
+from entry_points.colony_commander import ColonyCommander
 
 
 class BotLauncher:
@@ -110,6 +111,10 @@ class BotLauncher:
             return HyperIntelligentTradingSwarm(initial_capital=self.capital)
         elif self.strategy == "hyper_compound":
             return HyperCompoundSwarm()
+        elif self.strategy == "colony":
+            # Determine HA mode based on mode and environment
+            enable_ha = self.mode in ["production", "live"] and not os.getenv("DISABLE_HA", "").lower() == "true"
+            return ColonyCommander(enable_ha=enable_ha)
         else:
             raise ValueError(f"Unknown strategy: {self.strategy}")
 
@@ -251,7 +256,7 @@ def main():
 
     parser.add_argument(
         "--strategy",
-        choices=["hyper_intelligent", "hyper_compound"],
+        choices=["hyper_intelligent", "hyper_compound", "colony"],
         default="hyper_intelligent",
         help="Trading strategy (default: hyper_intelligent)",
     )

@@ -34,7 +34,7 @@ Each functional domain has **one and only one** canonical module. Creating dupli
 - **Logging**: `logger.py` - **CANONICAL** system-wide logging
 - **Market Data**: `market_data_fetcher.py` - All market data operations
 - **Constants**: `constants.py` - All system constants
-- **Codebase Management**: `codebase_cleaner.py` - **CANONICAL** cleanup utility
+- **Codebase Management**: `codebase_cleanup.py` - **CANONICAL** cleanup utility
 
 #### **Trading Operations** (`worker_ant_v1/trading/`)
 - **Market Scanning**: `market_scanner.py` - Opportunity detection

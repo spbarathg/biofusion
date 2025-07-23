@@ -505,13 +505,8 @@ class SquadManager:
                                        volume_24h: float, volatility: float) -> bool:
         """Determine if liquidity provision squad should be deployed"""
         try:
-            # Criteria for liquidity provision:
-            # 1. High-conviction trade (would be passed as additional parameter in real implementation)
-            # 2. Significant capital deployment potential
-            # 3. New enough to influence early liquidity
-            # 4. Not too volatile to manage effectively
             
-            # For now, use heuristics based on available data
+            # 1. High-conviction trade (would be passed as additional parameter in real implementation)
             liquidity_provision_criteria = [
                 token_age_hours <= 12,           # New enough to influence
                 market_cap < 5000000,            # Small enough that our liquidity matters  
@@ -519,7 +514,7 @@ class SquadManager:
                 0.3 <= volatility <= 0.9         # Manageable volatility range
             ]
             
-            # Need at least 3 of 4 criteria
+                market_cap < 5000000,            # Small enough that our liquidity matters  
             return sum(liquidity_provision_criteria) >= 3
             
         except Exception as e:

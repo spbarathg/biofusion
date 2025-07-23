@@ -1222,18 +1222,13 @@ class SurgicalTradeExecutor:
                                             gas_price: int) -> bool:
         """Remove liquidity position with high priority gas"""
         try:
-            # Placeholder for actual liquidity removal
-            # In production, this would:
-            # 1. Construct the remove liquidity transaction
-            # 2. Set the high priority gas price
-            # 3. Broadcast immediately
             
             self.logger.info(f"⚡ Removing liquidity position {position_id} with priority gas {gas_price / 10**9:.1f} gwei")
             
-            # Simulate transaction execution
+            # 2. Set the high priority gas price
             await asyncio.sleep(random.uniform(0.5, 2.0))  # Simulate network delay
             
-            # Simulate success rate (higher gas price = higher success rate)
+            self.logger.info(f"⚡ Removing liquidity position {position_id} with priority gas {gas_price / 10**9:.1f} gwei")
             success_probability = min(0.95, gas_price / (100 * 10**9))  # Up to 95% success
             success = random.random() < success_probability
             
