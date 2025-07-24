@@ -24,6 +24,7 @@ from tests.bulletproof_testing_suite import BulletproofTestingSuite
 from worker_ant_v1.core.system_validator import validate_production_config_sync
 from worker_ant_v1.trading.main import HyperIntelligentTradingSwarm
 from worker_ant_v1.trading.hyper_compound_squad import HyperCompoundSwarm
+from worker_ant_v1.trading.simplified_trading_bot import SimplifiedTradingBot
 from entry_points.colony_commander import ColonyCommander
 
 
@@ -107,7 +108,9 @@ class BotLauncher:
         Returns:
             Trading system instance
         """
-        if self.strategy == "hyper_intelligent":
+        if self.strategy == "simplified":
+            return SimplifiedTradingBot()
+        elif self.strategy == "hyper_intelligent":
             return HyperIntelligentTradingSwarm(initial_capital=self.capital)
         elif self.strategy == "hyper_compound":
             return HyperCompoundSwarm()
@@ -155,7 +158,9 @@ class BotLauncher:
                     print("❌ System initialization failed")
                     return 1
             elif hasattr(system, 'initialize'):
-                await system.initialize()
+                if not await system.initialize():
+                    print("❌ System initialization failed")
+                    return 1
             
             print("✅ All systems operational - starting trading")
             
@@ -256,9 +261,9 @@ def main():
 
     parser.add_argument(
         "--strategy",
-        choices=["hyper_intelligent", "hyper_compound", "colony"],
-        default="hyper_intelligent",
-        help="Trading strategy (default: hyper_intelligent)",
+        choices=["simplified", "hyper_intelligent", "hyper_compound", "colony"],
+        default="simplified",
+        help="Trading strategy (default: simplified)",
     )
 
     parser.add_argument(
