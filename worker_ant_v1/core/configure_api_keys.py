@@ -433,14 +433,4 @@ def main():
     
     return success
 
-
-if __name__ == "__main__":
-    try:
-        result = main()
-        exit(0 if result else 1)
-    except KeyboardInterrupt:
-        print("\n🛑 Configuration cancelled by user")
-        exit(1)
-    except Exception as e:
-        print(f"\n❌ Configuration failed: {e}")
-        exit(1) 
+ 

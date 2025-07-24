@@ -133,7 +133,7 @@ class UnifiedTradingEngine:
             
             # Get core systems
             from worker_ant_v1.core.wallet_manager import get_wallet_manager
-            from worker_ant_v1.core.vault_wallet_system import get_vault_system
+            from worker_ant_v1.safety.vault_wallet_system import get_vault_system
             from worker_ant_v1.intelligence.token_intelligence_system import get_token_intelligence_system
             
             self.wallet_manager = await get_wallet_manager()

@@ -21,9 +21,9 @@ from pathlib import Path
 sys.path.append(str(Path(__file__).parent.parent))
 
 from tests.bulletproof_testing_suite import BulletproofTestingSuite
-from worker_ant_v1.core.system_validator import validate_production_config_sync
+from worker_ant_v1.trading.system_validator import validate_production_config_sync
 from worker_ant_v1.trading.main import HyperIntelligentTradingSwarm
-from worker_ant_v1.trading.hyper_compound_squad import HyperCompoundSwarm
+# HyperCompoundSwarm removed - using SimplifiedTradingBot instead
 from worker_ant_v1.trading.simplified_trading_bot import SimplifiedTradingBot
 from entry_points.colony_commander import ColonyCommander
 

@@ -60,7 +60,6 @@ class TradeRecord:
     # Token information
     token_address: str
     token_symbol: str
-    token_name: Optional[str] = None
     
     # Trade details
     trade_type: str  # BUY, SELL
@@ -72,6 +71,9 @@ class TradeRecord:
     
     # Performance metrics
     latency_ms: int
+    
+    # Optional fields with defaults
+    token_name: Optional[str] = None
     gas_cost_sol: float = 0.0
     rpc_cost_sol: float = 0.0
     api_cost_sol: float = 0.0

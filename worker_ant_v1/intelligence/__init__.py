@@ -9,19 +9,16 @@ Intelligence and analysis systems including:
 - Memory management and pattern recognition
 """
 
-from worker_ant_v1.intelligence.sentiment_analyzer import SentimentAnalyzer, SentimentData, AggregatedSentiment
+# SentimentAnalyzer removed - using canonical SentimentFirstAI instead
 from worker_ant_v1.intelligence.technical_analyzer import TechnicalAnalyzer, TechnicalSignal, TechnicalAnalysis
 # PredictionEngine removed - using simplified mathematical core instead
 from worker_ant_v1.intelligence.sentiment_first_ai import SentimentFirstAI, SentimentDecision
-from worker_ant_v1.trading.caller_intelligence import AdvancedCallerIntelligence
+from worker_ant_v1.intelligence.caller_intelligence import AdvancedCallerIntelligence
 # ProductionMemoryManager removed - memory management integrated into core systems
 from worker_ant_v1.intelligence.token_intelligence_system import TokenIntelligenceSystem
 # BattlePatternIntelligence removed - simplified approach only
 
 __all__ = [
-    'SentimentAnalyzer',
-    'SentimentData', 
-    'AggregatedSentiment',
     'TechnicalAnalyzer',
     'TechnicalSignal',
     'TechnicalAnalysis',

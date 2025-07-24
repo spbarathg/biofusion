@@ -257,7 +257,6 @@ class ProductionSecretsValidator:
         issues = []
         
         try:
-        try:
             files_to_scan = []
             for pattern in self.scan_patterns:
                 files_to_scan.extend(directory.rglob(pattern))
@@ -298,7 +297,6 @@ class ProductionSecretsValidator:
         """Scan a single file for security issues"""
         issues = []
         
-        try:
         try:
             if self._is_binary_file(file_path):
                 return issues
@@ -561,5 +559,4 @@ Examples:
             sys.exit(2)
 
 
-if __name__ == "__main__":
-    main() 
+ 

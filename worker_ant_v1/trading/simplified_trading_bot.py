@@ -32,9 +32,9 @@ from worker_ant_v1.intelligence.technical_analyzer import TechnicalAnalyzer
 # Essential systems
 from worker_ant_v1.core.unified_trading_engine import UnifiedTradingEngine
 from worker_ant_v1.core.wallet_manager import UnifiedWalletManager
-from worker_ant_v1.core.vault_wallet_system import VaultWalletSystem
+from worker_ant_v1.safety.vault_wallet_system import VaultWalletSystem
 from worker_ant_v1.trading.market_scanner import RealMarketScanner
-from worker_ant_v1.safety.kill_switch import EnhancedKillSwitch
+from worker_ant_v1.trading.kill_switch import EnhancedKillSwitch
 from worker_ant_v1.utils.logger import get_logger
 
 
@@ -128,7 +128,7 @@ class SimplifiedTradingBot:
             await self.trading_engine.initialize()
             
             from worker_ant_v1.core.wallet_manager import get_wallet_manager
-            from worker_ant_v1.core.vault_wallet_system import get_vault_system
+            from worker_ant_v1.safety.vault_wallet_system import get_vault_system
             from worker_ant_v1.trading.market_scanner import get_market_scanner
             
             self.wallet_manager = await get_wallet_manager()

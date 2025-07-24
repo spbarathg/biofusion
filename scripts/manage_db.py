@@ -521,7 +521,6 @@ Examples:
             success = db_manager.show(args.revision)
             
         elif args.command == 'check':
-        elif args.command == 'check':
             health_ok = asyncio.run(db_manager.check_database_health())
             status_ok = db_manager.check_migration_status()
             success = health_ok and status_ok
@@ -542,6 +541,4 @@ Examples:
         print(f"\n❌ Unexpected error: {e}")
         return 1
 
-
-if __name__ == "__main__":
-    exit(main()) 
+ 

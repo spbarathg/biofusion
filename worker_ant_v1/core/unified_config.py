@@ -6,7 +6,7 @@ from pathlib import Path
 import json
 import asyncio
 
-from worker_ant_v1.core.secrets_manager import get_secrets_manager
+from worker_ant_v1.monitoring.secrets_manager import get_secrets_manager
 
 class TradingMode(Enum):
     LIVE = "LIVE"

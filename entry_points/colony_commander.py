@@ -22,7 +22,7 @@ import uuid
 import socket
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Tuple
 from dataclasses import dataclass, field
 from enum import Enum
 import logging
@@ -33,9 +33,9 @@ import json
 sys.path.append(str(Path(__file__).parent.parent))
 
 from worker_ant_v1.trading.main import HyperIntelligentTradingSwarm
-from worker_ant_v1.core.vault_wallet_system import get_vault_system
+from worker_ant_v1.safety.vault_wallet_system import get_vault_system
 from worker_ant_v1.core.unified_config import UnifiedConfigManager
-from worker_ant_v1.intelligence.narrative_ant import NarrativeAnt, NarrativeCategory
+# NarrativeAnt removed - using simplified approach
 from worker_ant_v1.utils.logger import get_logger
 
 
@@ -121,7 +121,7 @@ class ColonyCommander:
         
         # Strategic Narrative Intelligence
         self.narrative_ant: Optional[NarrativeAnt] = None
-        self.dominant_narratives: Dict[NarrativeCategory, float] = {}
+        self.dominant_narratives: Dict[str, float] = {}
         
         # Configuration
         self.config_manager = UnifiedConfigManager()
@@ -804,7 +804,7 @@ class ColonyCommander:
         except Exception as e:
             self.logger.error(f"❌ Error updating narrative direction: {e}")
     
-    async def _direct_swarms_to_narratives(self, dominant_narratives: List[Tuple[NarrativeCategory, float]]):
+    async def _direct_swarms_to_narratives(self, dominant_narratives: List[Tuple[str, float]]):
         """Direct HyperIntelligentTradingSwarm instances to prioritize dominant narratives"""
         try:
             # Create narrative priority mapping for swarms

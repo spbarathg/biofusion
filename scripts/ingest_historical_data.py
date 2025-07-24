@@ -647,10 +647,4 @@ Examples:
     finally:
         await ingester.shutdown()
 
-
-if __name__ == "__main__":
-    try:
-        exit(asyncio.run(main()))
-    except KeyboardInterrupt:
-        print("\n🛑 Process interrupted")
-        exit(1) 
+ 

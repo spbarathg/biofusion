@@ -13,7 +13,7 @@ from typing import Dict, List, Any
 
 from worker_ant_v1.core.unified_config import get_security_config
 from worker_ant_v1.utils.logger import setup_logger
-from worker_ant_v1.utils.analyzers import (
+from worker_ant_v1.trading.analyzers import (
     LiquidityAnalyzer,
     OwnershipAnalyzer,
     CodeAnalyzer,

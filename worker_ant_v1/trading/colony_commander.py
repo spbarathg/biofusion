@@ -31,15 +31,15 @@ import hashlib
 import redis.asyncio as redis
 import uuid
 
-from worker_ant_v1.intelligence.sentiment_analyzer import SentimentAnalyzer
-from worker_ant_v1.intelligence.twitter_sentiment_analyzer import TwitterSentimentAnalyzer
+from worker_ant_v1.intelligence.sentiment_first_ai import SentimentFirstAI
+# TwitterSentimentAnalyzer removed - using SentimentFirstAI instead
 from worker_ant_v1.intelligence.caller_intelligence import AdvancedCallerIntelligence
 from worker_ant_v1.intelligence.technical_analyzer import TechnicalAnalyzer
 from worker_ant_v1.intelligence.narrative_ant import NarrativeAnt, NarrativeCategory
 from worker_ant_v1.trading.ml_architectures.prediction_engine import PredictionEngine
 from worker_ant_v1.intelligence.sentiment_first_ai import SentimentFirstAI
 from worker_ant_v1.core.wallet_manager import UnifiedWalletManager
-from worker_ant_v1.core.vault_wallet_system import VaultWalletSystem
+from worker_ant_v1.safety.vault_wallet_system import VaultWalletSystem
 from worker_ant_v1.utils.logger import setup_logger
 from worker_ant_v1.utils.constants import SentimentDecision as SentimentDecisionEnum
 from ..core.unified_config import UnifiedConfig
@@ -423,7 +423,7 @@ class ColonyCommander:
                                      os.getenv('ENABLE_SOCIAL_SIGNALS', 'false').lower() == 'true'
         
         # Initialize intelligence components
-        self.sentiment_analyzer = SentimentAnalyzer()
+        self.sentiment_analyzer = SentimentFirstAI()
         self.caller_intelligence = AdvancedCallerIntelligence()
         self.technical_analyzer = TechnicalAnalyzer()
         self.narrative_ant = NarrativeAnt()  # Strategic narrative intelligence
@@ -437,7 +437,7 @@ class ColonyCommander:
         # Initialize Twitter analyzer (required for sentiment analysis)
         self.twitter_analyzer = None
         try:
-            self.twitter_analyzer = TwitterSentimentAnalyzer()
+            # Using SentimentFirstAI for all sentiment analysis
             self.logger.info("✅ Twitter sentiment analyzer initialized")
             self.social_signals_enabled = True
         except Exception as e:

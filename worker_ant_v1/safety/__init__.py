@@ -12,7 +12,7 @@ from worker_ant_v1.safety.alert_system import (
     Alert,
     create_alert_system
 )
-from worker_ant_v1.safety.kill_switch import EnhancedKillSwitch, KillSwitchTrigger, ThreatLevel
+from worker_ant_v1.trading.kill_switch import EnhancedKillSwitch, KillSwitchTrigger
 from worker_ant_v1.intelligence.enhanced_rug_detector import EnhancedRugDetector
 
 __all__ = [
@@ -23,6 +23,5 @@ __all__ = [
     'create_alert_system',
     'EnhancedKillSwitch',
     'KillSwitchTrigger',
-    'ThreatLevel',
     'EnhancedRugDetector'
 ]

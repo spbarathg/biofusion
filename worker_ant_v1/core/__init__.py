@@ -33,7 +33,7 @@ def safe_import():
         components['get_trading_engine'] = None
 
     try:
-        from worker_ant_v1.core.vault_wallet_system import VaultWalletSystem
+        from worker_ant_v1.safety.vault_wallet_system import VaultWalletSystem
         components['VaultWalletSystem'] = VaultWalletSystem
     except ImportError:
         components['VaultWalletSystem'] = None

@@ -17,7 +17,7 @@ import json
 import os
 
 from worker_ant_v1.utils.logger import get_logger
-from worker_ant_v1.intelligence.sentiment_analyzer import SentimentAnalyzer
+# SentimentAnalyzer removed - using built-in sentiment analysis in this file
 from worker_ant_v1.utils.constants import SentimentDecision as SentimentDecisionEnum, SentimentConstants
 from enum import Enum
 
@@ -39,7 +39,7 @@ class SentimentFirstAI:
     
     def __init__(self):
         self.logger = get_logger("SentimentFirstAI")
-        self.sentiment_analyzer = SentimentAnalyzer()
+        # Using built-in sentiment analysis - no external analyzer needed
         
         # Aggressive memecoin trading thresholds
         self.decision_thresholds = {

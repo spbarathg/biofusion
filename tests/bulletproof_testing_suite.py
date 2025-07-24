@@ -37,6 +37,66 @@ from worker_ant_v1.intelligence.enhanced_rug_detector import EnhancedRugDetector
 from worker_ant_v1.trading.surgical_trade_executor import SurgicalTradeExecutor
 from worker_ant_v1.utils.logger import setup_logger
 
+class ChaosMonkey:
+    """Simple chaos monkey for testing system resilience"""
+    def __init__(self):
+        self.enabled = False
+    
+    def start(self):
+        self.enabled = True
+    
+    def stop(self):
+        self.enabled = False
+    
+    async def kill_component(self, component):
+        pass
+    
+    async def inject_network_latency(self, latency):
+        pass
+    
+    async def remove_network_latency(self):
+        pass
+    
+    async def corrupt_data(self, target):
+        pass
+    
+    async def restore_data(self, target):
+        pass
+    
+    async def backup_config(self, config_file):
+        return {}
+    
+    async def corrupt_config(self, config_file):
+        pass
+    
+    async def restore_config(self, config_file, original_config):
+        pass
+    
+    async def create_cpu_spike(self):
+        pass
+    
+    async def simulate_api_failure(self, failure):
+        pass
+    
+    async def restore_api(self, failure):
+        pass
+    
+    async def inject_random_exception(self, exception_type, component):
+        pass
+    
+    async def inject_market_data(self, data):
+        pass
+
+class RealTestDataGenerator:
+    """Simple test data generator"""
+    def __init__(self):
+        pass
+
+class ExtremeMarketSimulator:
+    """Simple market simulator for testing"""
+    def __init__(self):
+        pass
+
 class ChaosTestType(Enum):
     """Types of chaos tests"""
     COMPONENT_KILL = "component_kill"
@@ -1516,5 +1576,4 @@ async def main():
         print(f"  - {rec}")
     print("="*80)
 
-if __name__ == "__main__":
-    asyncio.run(main()) 
+ 

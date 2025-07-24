@@ -19,7 +19,7 @@ import os
 
 from worker_ant_v1.utils.logger import setup_logger
 from worker_ant_v1.utils.constants import SentimentDecision as SentimentDecisionEnum
-from worker_ant_v1.intelligence.sentiment_analyzer import SentimentAnalyzer
+from worker_ant_v1.intelligence.sentiment_first_ai import SentimentFirstAI
 from worker_ant_v1.intelligence.technical_analyzer import TechnicalAnalyzer
 from worker_ant_v1.intelligence.enhanced_rug_detector import EnhancedRugDetector
 
@@ -82,7 +82,7 @@ class TokenIntelligenceSystem:
         self.logger = setup_logger("TokenIntelligenceSystem")
         
         # Analysis components
-        self.sentiment_analyzer: Optional[SentimentAnalyzer] = None
+        self.sentiment_analyzer: Optional[SentimentFirstAI] = None
         self.technical_analyzer: Optional[TechnicalAnalyzer] = None
         self.rug_detector: Optional[EnhancedRugDetector] = None
         
@@ -113,7 +113,7 @@ class TokenIntelligenceSystem:
             self.logger.info("🧠 Initializing Token Intelligence System...")
             
             # Initialize analysis components
-            self.sentiment_analyzer = SentimentAnalyzer()
+            self.sentiment_analyzer = SentimentFirstAI()
             self.technical_analyzer = TechnicalAnalyzer()
             self.rug_detector = EnhancedRugDetector()
             
