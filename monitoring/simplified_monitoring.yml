@@ -1,0 +1,30 @@
+# SIMPLE MONITORING CONFIGURATION - LEAN MATHEMATICAL CORE
+# ========================================================
+
+global:
+  scrape_interval: 30s      # Simplified scrape interval
+  evaluation_interval: 30s   # Simplified alert evaluation interval
+
+# Simple alerting rules only
+rule_files:
+  - "simple_alerts.yml"
+
+# Basic scrape configuration for simplified bot
+scrape_configs:
+  # Basic system metrics
+  - job_name: "simplified-bot"
+    scrape_interval: 30s
+    metrics_path: /health
+    scheme: http
+    static_configs:
+      - targets: ["localhost:8080"]
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        replacement: simplified-bot
+
+# Storage configuration
+storage:
+  tsdb:
+    retention.time: 24h      # Keep only 24 hours of data
+    retention.size: 1GB      # Limit storage to 1GB 

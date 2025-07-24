@@ -1,0 +1,42 @@
+# SIMPLE ALERT RULES - LEAN MATHEMATICAL CORE
+# ===========================================
+
+groups:
+  - name: simplified_bot_alerts
+    rules:
+      # Critical system alerts only
+      - alert: BotDown
+        expr: up{job="simplified-bot"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Simplified trading bot is down"
+          description: "The simplified trading bot has been down for more than 1 minute."
+
+      - alert: HighCPUUsage
+        expr: system_cpu_percent > 90
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High CPU usage detected"
+          description: "CPU usage is above 90% for more than 5 minutes."
+
+      - alert: HighMemoryUsage
+        expr: system_memory_percent > 95
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "High memory usage detected"
+          description: "Memory usage is above 95% for more than 2 minutes."
+
+      - alert: TradingError
+        expr: trading_errors_total > 10
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High trading error rate"
+          description: "More than 10 trading errors in the last minute." 

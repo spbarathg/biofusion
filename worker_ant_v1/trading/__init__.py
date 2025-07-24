@@ -11,15 +11,12 @@ Trading execution components including:
 
 from worker_ant_v1.trading.market_scanner import RealMarketScanner, ScanResult
 from worker_ant_v1.utils.market_data_fetcher import MarketOpportunity
-from worker_ant_v1.trading.surgical_trade_executor import SurgicalTradeExecutor, ExecutionResult
 from worker_ant_v1.core.unified_trading_engine import UnifiedTradingEngine, TradeOrder, TradeResult
 
 __all__ = [
     'RealMarketScanner',
     'MarketOpportunity',
     'ScanResult', 
-    'SurgicalTradeExecutor',
-    'ExecutionResult',
     'UnifiedTradingEngine',
     'TradeOrder',
     'TradeResult'
