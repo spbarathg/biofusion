@@ -394,12 +394,9 @@ class ColonyCommander:
         
         # Redis connection for leader election
         self.redis_client: Optional[redis.Redis] = None
-        self.redis_config = {
-            'host': os.getenv('REDIS_HOST', 'localhost'),
-            'port': int(os.getenv('REDIS_PORT', '6379')),
-            'password': os.getenv('REDIS_PASSWORD'),
-            'db': int(os.getenv('REDIS_DB', '0')),
-        }
+        # Redis configuration - CANONICAL ACCESS THROUGH UNIFIED CONFIG
+        from worker_ant_v1.core.unified_config import get_redis_config
+        self.redis_config = get_redis_config()
         
         # Leader election configuration
         self.election_config = {
@@ -417,10 +414,10 @@ class ColonyCommander:
         self.failover_in_progress = False
         self.emergency_authority = False
         
-        # Load configuration
-        self.config = UnifiedConfig()
-        self.social_signals_enabled = getattr(self.config, 'enable_social_signals', False) or \
-                                     os.getenv('ENABLE_SOCIAL_SIGNALS', 'false').lower() == 'true'
+        # Load configuration - CANONICAL ACCESS THROUGH UNIFIED CONFIG
+        from worker_ant_v1.core.unified_config import get_social_signals_config
+        social_config = get_social_signals_config()
+        self.social_signals_enabled = social_config['enable_social_signals']
         
         # Initialize intelligence components
         self.sentiment_analyzer = SentimentFirstAI()
@@ -1210,9 +1207,12 @@ class ColonyCommander:
     async def _get_twitter_analysis(self, token_address: str) -> float:
         """Get Twitter sentiment from Discord server feed (production-ready)"""
         try:
-            # Connect to Discord and fetch recent messages from the configured channel
-            bot_token = os.getenv('DISCORD_BOT_TOKEN')
-            channel_id = int(os.getenv('DISCORD_CHANNEL_ID', '0'))
+            # Discord configuration - CANONICAL ACCESS THROUGH UNIFIED CONFIG
+            from worker_ant_v1.core.unified_config import get_social_signals_config
+            social_config = get_social_signals_config()
+            bot_token = social_config['discord_bot_token']
+            channel_id = social_config['discord_channel_id']
+            
             if not bot_token or not channel_id:
                 self.logger.error("Discord bot token or channel ID not configured for Twitter sentiment feed.")
                 return 0.0

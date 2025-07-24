@@ -115,8 +115,10 @@ class BotLauncher:
         elif self.strategy == "hyper_compound":
             return HyperCompoundSwarm()
         elif self.strategy == "colony":
-            # Determine HA mode based on mode and environment
-            enable_ha = self.mode in ["production", "live"] and not os.getenv("DISABLE_HA", "").lower() == "true"
+            # Determine HA mode based on mode and environment - CANONICAL ACCESS THROUGH UNIFIED CONFIG
+            from worker_ant_v1.core.unified_config import get_ha_config
+            ha_config = get_ha_config()
+            enable_ha = self.mode in ["production", "live"] and not ha_config['disable_ha']
             return ColonyCommander(enable_ha=enable_ha)
         else:
             raise ValueError(f"Unknown strategy: {self.strategy}")

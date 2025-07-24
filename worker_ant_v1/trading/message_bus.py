@@ -161,29 +161,32 @@ class MessageBusStats:
 
 
 class MessageBusConfig:
-    """Message bus configuration"""
+    """Message bus configuration - CANONICAL ACCESS THROUGH UNIFIED CONFIG"""
     
     def __init__(self):
+        from worker_ant_v1.core.unified_config import get_trading_config
+        config = get_trading_config()  # Force through unified config
+        
         # NATS server configuration
-        self.nats_servers = os.getenv('NATS_SERVERS', 'nats://localhost:4222').split(',')
-        self.connection_timeout = float(os.getenv('NATS_CONNECTION_TIMEOUT', '10.0'))
-        self.reconnect_time_wait = float(os.getenv('NATS_RECONNECT_WAIT', '2.0'))
-        self.max_reconnect_attempts = int(os.getenv('NATS_MAX_RECONNECT', '60'))
+        self.nats_servers = config.nats_servers.split(',')
+        self.connection_timeout = config.nats_connection_timeout
+        self.reconnect_time_wait = config.nats_reconnect_wait
+        self.max_reconnect_attempts = config.nats_max_reconnect
         
         # Message configuration
-        self.message_max_size = int(os.getenv('NATS_MAX_MESSAGE_SIZE', '1048576'))  # 1MB
-        self.enable_compression = os.getenv('NATS_ENABLE_COMPRESSION', 'true').lower() == 'true'
-        self.compression_threshold = int(os.getenv('NATS_COMPRESSION_THRESHOLD', '1024'))  # 1KB
+        self.message_max_size = config.nats_max_message_size
+        self.enable_compression = config.nats_enable_compression
+        self.compression_threshold = config.nats_compression_threshold
         
         # Performance configuration
-        self.enable_metrics = os.getenv('NATS_ENABLE_METRICS', 'true').lower() == 'true'
-        self.stats_interval = float(os.getenv('NATS_STATS_INTERVAL', '30.0'))
-        self.dead_letter_queue = os.getenv('NATS_DEAD_LETTER_QUEUE', 'antbot.dlq')
+        self.enable_metrics = config.nats_enable_metrics
+        self.stats_interval = config.nats_stats_interval
+        self.dead_letter_queue = config.nats_dead_letter_queue
         
         # Persistence configuration
-        self.enable_persistence = os.getenv('NATS_ENABLE_PERSISTENCE', 'false').lower() == 'true'
-        self.stream_name = os.getenv('NATS_STREAM_NAME', 'ANTBOT_STREAM')
-        self.retention_policy = os.getenv('NATS_RETENTION_POLICY', 'limits')  # limits, interest, workqueue
+        self.enable_persistence = config.nats_enable_persistence
+        self.stream_name = config.nats_stream_name
+        self.retention_policy = config.nats_retention_policy
 
 
 class MessageBus:
@@ -210,7 +213,11 @@ class MessageBus:
         # System state
         self.connected = False
         self.running = False
-        self.component_id = os.getenv('COMPONENT_ID', f"antbot_{uuid.uuid4().hex[:8]}")
+        
+        # Component identification - CANONICAL ACCESS THROUGH UNIFIED CONFIG
+        from worker_ant_v1.core.unified_config import get_trading_config
+        unified_config = get_trading_config()
+        self.component_id = unified_config.component_id or f"antbot_{uuid.uuid4().hex[:8]}"
         
         # Background tasks
         self.stats_task: Optional[asyncio.Task] = None

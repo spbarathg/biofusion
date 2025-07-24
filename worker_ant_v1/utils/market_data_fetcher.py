@@ -111,11 +111,14 @@ class MarketDataFetcher:
             },
         }
         
-        # API keys
+        # API keys - CANONICAL ACCESS THROUGH UNIFIED CONFIG
+        from worker_ant_v1.core.unified_config import get_trading_config
+        config = get_trading_config()
+        
         self.api_keys = {
-            DataSource.BIRDEYE: os.getenv("BIRDEYE_API_KEY"),
-            DataSource.HELIUS: os.getenv("HELIUS_API_KEY"),
-            DataSource.DEXSCREENER: os.getenv("DEXSCREENER_API_KEY"),
+            DataSource.BIRDEYE: config.birdeye_api_key,
+            DataSource.HELIUS: config.helius_api_key,
+            DataSource.DEXSCREENER: config.dexscreener_api_key,
         }
         
         # Rate limiting

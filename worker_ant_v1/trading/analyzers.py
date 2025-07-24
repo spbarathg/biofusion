@@ -71,8 +71,11 @@ class LiquidityAnalyzer:
     def __init__(self):
         self.logger = setup_logger("LiquidityAnalyzer")
         self.session = None
-        self.birdeye_api_key = os.getenv('BIRDEYE_API_KEY')
-        self.jupiter_api_key = os.getenv('JUPITER_API_KEY')
+        # API configuration - CANONICAL ACCESS THROUGH UNIFIED CONFIG
+        from worker_ant_v1.core.unified_config import get_api_config
+        api_config = get_api_config()
+        self.birdeye_api_key = api_config['birdeye_api_key']
+        self.jupiter_api_key = api_config['jupiter_api_key']
     
     async def analyze(self, token_address: str) -> Dict[str, float]:
         """Analyze liquidity for a token"""
@@ -153,8 +156,9 @@ class LiquidityAnalyzer:
     async def _get_lp_distribution(self, token_address: str) -> Dict[str, float]:
         """Get LP token distribution from Solana RPC"""
         try:
-            # Use Solana RPC to get token holders
-            rpc_url = os.getenv('SOLANA_RPC_URL', 'https://api.mainnet-beta.solana.com')
+            # RPC configuration - CANONICAL ACCESS THROUGH UNIFIED CONFIG
+            from worker_ant_v1.core.unified_config import get_network_rpc_url
+            rpc_url = get_network_rpc_url()
             
             # Get token accounts for this token
             payload = {
@@ -209,7 +213,9 @@ class LiquidityAnalyzer:
     async def _get_liquidity_age(self, token_address: str) -> float:
         """Get liquidity age in hours from Solana RPC"""
         try:
-            rpc_url = os.getenv('SOLANA_RPC_URL', 'https://api.mainnet-beta.solana.com')
+            # RPC configuration - CANONICAL ACCESS THROUGH UNIFIED CONFIG
+            from worker_ant_v1.core.unified_config import get_network_rpc_url
+            rpc_url = get_network_rpc_url()
             
             # Get token creation time
             payload = {
@@ -307,7 +313,10 @@ class OwnershipAnalyzer:
     def __init__(self):
         self.logger = setup_logger("OwnershipAnalyzer")
         self.session = None
-        self.birdeye_api_key = os.getenv('BIRDEYE_API_KEY')
+        # API configuration - CANONICAL ACCESS THROUGH UNIFIED CONFIG
+        from worker_ant_v1.core.unified_config import get_api_config
+        api_config = get_api_config()
+        self.birdeye_api_key = api_config['birdeye_api_key']
     
     async def analyze(self, token_address: str) -> Dict[str, float]:
         """Analyze ownership for a token"""

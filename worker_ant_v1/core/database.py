@@ -813,16 +813,19 @@ _db_manager: Optional[TimescaleDBManager] = None
 
 
 def get_database_config() -> DatabaseConfig:
-    """Get database configuration from environment variables"""
+    """Get database configuration - CANONICAL ACCESS THROUGH UNIFIED CONFIG"""
+    from worker_ant_v1.core.unified_config import get_trading_config
+    config = get_trading_config()  # Force through unified config
+    
     return DatabaseConfig(
-        host=os.getenv("TIMESCALEDB_HOST", "localhost"),
-        port=int(os.getenv("TIMESCALEDB_PORT", "5432")),
-        database=os.getenv("TIMESCALEDB_DATABASE", "antbot_trading"),
-        username=os.getenv("TIMESCALEDB_USERNAME", "antbot"),
-        password=os.getenv("TIMESCALEDB_PASSWORD", ""),
-        pool_min_size=int(os.getenv("TIMESCALEDB_POOL_MIN_SIZE", "10")),
-        pool_max_size=int(os.getenv("TIMESCALEDB_POOL_MAX_SIZE", "20")),
-        ssl_mode=os.getenv("TIMESCALEDB_SSL_MODE", "prefer")
+        host=config.timescaledb_host,
+        port=config.timescaledb_port,
+        database=config.timescaledb_database,
+        username=config.timescaledb_username,
+        password=config.timescaledb_password,
+        pool_min_size=config.timescaledb_pool_min_size,
+        pool_max_size=config.timescaledb_pool_max_size,
+        ssl_mode=config.timescaledb_ssl_mode
     )
 
 

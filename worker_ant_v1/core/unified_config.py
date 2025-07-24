@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 import json
 import asyncio
+import multiprocessing
 
 from worker_ant_v1.monitoring.secrets_manager import get_secrets_manager
 
@@ -18,7 +19,7 @@ class SecurityLevel(Enum):
     MAXIMUM = "MAXIMUM"
 
 class UnifiedConfig(BaseModel):
-    """Core configuration for the trading system"""
+    """Core configuration for the trading system - SINGLE SOURCE OF TRUTH"""
     
     # Trading parameters
     trading_mode: TradingMode
@@ -42,6 +43,78 @@ class UnifiedConfig(BaseModel):
     quicknode_rpc_url: Optional[str] = None
     dexscreener_api_key: Optional[str] = None
     birdeye_api_key: Optional[str] = None
+    
+    # Network/RPC configuration
+    solana_rpc_url: str = "https://api.mainnet-beta.solana.com"
+    
+    # Database configuration
+    timescaledb_host: str = "localhost"
+    timescaledb_port: int = 5432
+    timescaledb_database: str = "antbot_trading"
+    timescaledb_username: str = "antbot"
+    timescaledb_password: str = ""
+    timescaledb_pool_min_size: int = 10
+    timescaledb_pool_max_size: int = 20
+    timescaledb_ssl_mode: str = "prefer"
+    
+    # Redis configuration
+    redis_host: str = "localhost"
+    redis_port: int = 6379
+    redis_password: Optional[str] = None
+    redis_db: int = 0
+    
+    # Wallet management configuration
+    max_wallets: int = 10
+    min_wallets: int = 5
+    evolution_interval_hours: int = 24
+    retirement_threshold: float = 0.3
+    evolution_mutation_rate: float = 0.1
+    wallet_encryption_enabled: bool = True
+    wallet_password: str = ""
+    encrypted_wallet_key: str = ""
+    auto_create_wallet: bool = False
+    
+    # Process pool configuration
+    process_pool_max_workers: int = 8
+    process_pool_task_timeout: float = 30.0
+    process_pool_queue_size: int = 1000
+    process_pool_monitoring: bool = True
+    
+    # NATS message bus configuration
+    nats_servers: str = "nats://localhost:4222"
+    nats_connection_timeout: float = 10.0
+    nats_reconnect_wait: float = 2.0
+    nats_max_reconnect: int = 60
+    nats_max_message_size: int = 1048576
+    nats_enable_compression: bool = True
+    nats_compression_threshold: int = 1024
+    nats_enable_metrics: bool = True
+    nats_stats_interval: float = 30.0
+    nats_dead_letter_queue: str = "antbot.dlq"
+    nats_enable_persistence: bool = False
+    nats_stream_name: str = "ANTBOT_STREAM"
+    nats_retention_policy: str = "limits"
+    
+    # Secrets manager configuration
+    secrets_provider: str = "vault"
+    vault_url: str = "http://localhost:8200"
+    vault_token: Optional[str] = None
+    vault_mount_path: str = "secret"
+    secrets_cache_ttl: int = 3600
+    secrets_cache_size: int = 1000
+    secrets_allow_env_fallback: bool = True
+    secrets_enable_cache_encryption: bool = True
+    
+    # Social signals and monitoring
+    enable_social_signals: bool = False
+    discord_bot_token: Optional[str] = None
+    discord_channel_id: int = 0
+    
+    # High availability
+    disable_ha: bool = False
+    
+    # Component identification
+    component_id: Optional[str] = None
     
     class Config:
         use_enum_values = True
@@ -115,8 +188,9 @@ class UnifiedConfigManager:
                         os.environ[key] = value
                         config_data[key.lower()] = value
         
-        # Create config object with environment variables
+        # Create config object with ALL environment variables - SINGLE SOURCE OF TRUTH
         self.config = UnifiedConfig(
+            # Trading parameters
             trading_mode=os.getenv('TRADING_MODE', 'SIMULATION'),
             security_level=os.getenv('SECURITY_LEVEL', 'HIGH'),
             max_trade_size_sol=float(os.getenv('MAX_TRADE_SIZE_SOL', '5.0')),
@@ -127,13 +201,87 @@ class UnifiedConfigManager:
             max_daily_loss_sol=float(os.getenv('MAX_DAILY_LOSS_SOL', '10.0')),
             enable_kill_switch=os.getenv('ENABLE_KILL_SWITCH', 'true').lower() == 'true',
             emergency_stop_enabled=os.getenv('EMERGENCY_STOP_ENABLED', 'true').lower() == 'true',
+            
+            # API configuration
             helius_api_key=os.getenv('HELIUS_API_KEY', ''),
             solana_tracker_api_key=os.getenv('SOLANA_TRACKER_API_KEY', ''),
             jupiter_api_key=os.getenv('JUPITER_API_KEY', ''),
             raydium_api_key=os.getenv('RAYDIUM_API_KEY', ''),
             quicknode_rpc_url=os.getenv('QUICKNODE_RPC_URL'),
             dexscreener_api_key=os.getenv('DEXSCREENER_API_KEY'),
-            birdeye_api_key=os.getenv('BIRDEYE_API_KEY')
+            birdeye_api_key=os.getenv('BIRDEYE_API_KEY'),
+            
+            # Network/RPC configuration
+            solana_rpc_url=os.getenv('SOLANA_RPC_URL', 'https://api.mainnet-beta.solana.com'),
+            
+            # Database configuration
+            timescaledb_host=os.getenv('TIMESCALEDB_HOST', 'localhost'),
+            timescaledb_port=int(os.getenv('TIMESCALEDB_PORT', '5432')),
+            timescaledb_database=os.getenv('TIMESCALEDB_DATABASE', 'antbot_trading'),
+            timescaledb_username=os.getenv('TIMESCALEDB_USERNAME', 'antbot'),
+            timescaledb_password=os.getenv('TIMESCALEDB_PASSWORD', ''),
+            timescaledb_pool_min_size=int(os.getenv('TIMESCALEDB_POOL_MIN_SIZE', '10')),
+            timescaledb_pool_max_size=int(os.getenv('TIMESCALEDB_POOL_MAX_SIZE', '20')),
+            timescaledb_ssl_mode=os.getenv('TIMESCALEDB_SSL_MODE', 'prefer'),
+            
+            # Redis configuration
+            redis_host=os.getenv('REDIS_HOST', 'localhost'),
+            redis_port=int(os.getenv('REDIS_PORT', '6379')),
+            redis_password=os.getenv('REDIS_PASSWORD'),
+            redis_db=int(os.getenv('REDIS_DB', '0')),
+            
+            # Wallet management configuration
+            max_wallets=int(os.getenv('MAX_WALLETS', '10')),
+            min_wallets=int(os.getenv('MIN_WALLETS', '5')),
+            evolution_interval_hours=int(os.getenv('EVOLUTION_INTERVAL_HOURS', '24')),
+            retirement_threshold=float(os.getenv('RETIREMENT_THRESHOLD', '0.3')),
+            evolution_mutation_rate=float(os.getenv('EVOLUTION_MUTATION_RATE', '0.1')),
+            wallet_encryption_enabled=os.getenv('WALLET_ENCRYPTION_ENABLED', 'true').lower() == 'true',
+            wallet_password=os.getenv('WALLET_PASSWORD', ''),
+            encrypted_wallet_key=os.getenv('ENCRYPTED_WALLET_KEY', ''),
+            auto_create_wallet=os.getenv('AUTO_CREATE_WALLET', 'false').lower() == 'true',
+            
+            # Process pool configuration
+            process_pool_max_workers=int(os.getenv('PROCESS_POOL_MAX_WORKERS', str(multiprocessing.cpu_count()))),
+            process_pool_task_timeout=float(os.getenv('PROCESS_POOL_TASK_TIMEOUT', '30.0')),
+            process_pool_queue_size=int(os.getenv('PROCESS_POOL_QUEUE_SIZE', '1000')),
+            process_pool_monitoring=os.getenv('PROCESS_POOL_MONITORING', 'true').lower() == 'true',
+            
+            # NATS message bus configuration
+            nats_servers=os.getenv('NATS_SERVERS', 'nats://localhost:4222'),
+            nats_connection_timeout=float(os.getenv('NATS_CONNECTION_TIMEOUT', '10.0')),
+            nats_reconnect_wait=float(os.getenv('NATS_RECONNECT_WAIT', '2.0')),
+            nats_max_reconnect=int(os.getenv('NATS_MAX_RECONNECT', '60')),
+            nats_max_message_size=int(os.getenv('NATS_MAX_MESSAGE_SIZE', '1048576')),
+            nats_enable_compression=os.getenv('NATS_ENABLE_COMPRESSION', 'true').lower() == 'true',
+            nats_compression_threshold=int(os.getenv('NATS_COMPRESSION_THRESHOLD', '1024')),
+            nats_enable_metrics=os.getenv('NATS_ENABLE_METRICS', 'true').lower() == 'true',
+            nats_stats_interval=float(os.getenv('NATS_STATS_INTERVAL', '30.0')),
+            nats_dead_letter_queue=os.getenv('NATS_DEAD_LETTER_QUEUE', 'antbot.dlq'),
+            nats_enable_persistence=os.getenv('NATS_ENABLE_PERSISTENCE', 'false').lower() == 'true',
+            nats_stream_name=os.getenv('NATS_STREAM_NAME', 'ANTBOT_STREAM'),
+            nats_retention_policy=os.getenv('NATS_RETENTION_POLICY', 'limits'),
+            
+            # Secrets manager configuration
+            secrets_provider=os.getenv('SECRETS_PROVIDER', 'vault'),
+            vault_url=os.getenv('VAULT_URL', 'http://localhost:8200'),
+            vault_token=os.getenv('VAULT_TOKEN'),
+            vault_mount_path=os.getenv('VAULT_MOUNT_PATH', 'secret'),
+            secrets_cache_ttl=int(os.getenv('SECRETS_CACHE_TTL', '3600')),
+            secrets_cache_size=int(os.getenv('SECRETS_CACHE_SIZE', '1000')),
+            secrets_allow_env_fallback=os.getenv('SECRETS_ALLOW_ENV_FALLBACK', 'true').lower() == 'true',
+            secrets_enable_cache_encryption=os.getenv('SECRETS_ENABLE_CACHE_ENCRYPTION', 'true').lower() == 'true',
+            
+            # Social signals and monitoring
+            enable_social_signals=os.getenv('ENABLE_SOCIAL_SIGNALS', 'false').lower() == 'true',
+            discord_bot_token=os.getenv('DISCORD_BOT_TOKEN'),
+            discord_channel_id=int(os.getenv('DISCORD_CHANNEL_ID', '0')),
+            
+            # High availability
+            disable_ha=os.getenv('DISABLE_HA', 'false').lower() == 'true',
+            
+            # Component identification
+            component_id=os.getenv('COMPONENT_ID')
         )
         self._config_loaded = True
     
@@ -185,8 +333,9 @@ class UnifiedConfigManager:
             dexscreener_key = os.getenv('DEXSCREENER_API_KEY')
             birdeye_key = os.getenv('BIRDEYE_API_KEY')
         
-        # Create config object
+        # Create config object with ALL environment variables - SINGLE SOURCE OF TRUTH
         self.config = UnifiedConfig(
+            # Trading parameters
             trading_mode=os.getenv('TRADING_MODE', 'SIMULATION'),
             security_level=os.getenv('SECURITY_LEVEL', 'HIGH'),
             max_trade_size_sol=float(os.getenv('MAX_TRADE_SIZE_SOL', '5.0')),
@@ -197,13 +346,87 @@ class UnifiedConfigManager:
             max_daily_loss_sol=float(os.getenv('MAX_DAILY_LOSS_SOL', '10.0')),
             enable_kill_switch=os.getenv('ENABLE_KILL_SWITCH', 'true').lower() == 'true',
             emergency_stop_enabled=os.getenv('EMERGENCY_STOP_ENABLED', 'true').lower() == 'true',
+            
+            # API configuration (from secrets manager)
             helius_api_key=helius_key,
             solana_tracker_api_key=solana_tracker_key,
             jupiter_api_key=jupiter_key,
             raydium_api_key=raydium_key,
             quicknode_rpc_url=quicknode_url,
             dexscreener_api_key=dexscreener_key,
-            birdeye_api_key=birdeye_key
+            birdeye_api_key=birdeye_key,
+            
+            # Network/RPC configuration
+            solana_rpc_url=os.getenv('SOLANA_RPC_URL', 'https://api.mainnet-beta.solana.com'),
+            
+            # Database configuration
+            timescaledb_host=os.getenv('TIMESCALEDB_HOST', 'localhost'),
+            timescaledb_port=int(os.getenv('TIMESCALEDB_PORT', '5432')),
+            timescaledb_database=os.getenv('TIMESCALEDB_DATABASE', 'antbot_trading'),
+            timescaledb_username=os.getenv('TIMESCALEDB_USERNAME', 'antbot'),
+            timescaledb_password=os.getenv('TIMESCALEDB_PASSWORD', ''),
+            timescaledb_pool_min_size=int(os.getenv('TIMESCALEDB_POOL_MIN_SIZE', '10')),
+            timescaledb_pool_max_size=int(os.getenv('TIMESCALEDB_POOL_MAX_SIZE', '20')),
+            timescaledb_ssl_mode=os.getenv('TIMESCALEDB_SSL_MODE', 'prefer'),
+            
+            # Redis configuration
+            redis_host=os.getenv('REDIS_HOST', 'localhost'),
+            redis_port=int(os.getenv('REDIS_PORT', '6379')),
+            redis_password=os.getenv('REDIS_PASSWORD'),
+            redis_db=int(os.getenv('REDIS_DB', '0')),
+            
+            # Wallet management configuration
+            max_wallets=int(os.getenv('MAX_WALLETS', '10')),
+            min_wallets=int(os.getenv('MIN_WALLETS', '5')),
+            evolution_interval_hours=int(os.getenv('EVOLUTION_INTERVAL_HOURS', '24')),
+            retirement_threshold=float(os.getenv('RETIREMENT_THRESHOLD', '0.3')),
+            evolution_mutation_rate=float(os.getenv('EVOLUTION_MUTATION_RATE', '0.1')),
+            wallet_encryption_enabled=os.getenv('WALLET_ENCRYPTION_ENABLED', 'true').lower() == 'true',
+            wallet_password=os.getenv('WALLET_PASSWORD', ''),
+            encrypted_wallet_key=os.getenv('ENCRYPTED_WALLET_KEY', ''),
+            auto_create_wallet=os.getenv('AUTO_CREATE_WALLET', 'false').lower() == 'true',
+            
+            # Process pool configuration
+            process_pool_max_workers=int(os.getenv('PROCESS_POOL_MAX_WORKERS', str(multiprocessing.cpu_count()))),
+            process_pool_task_timeout=float(os.getenv('PROCESS_POOL_TASK_TIMEOUT', '30.0')),
+            process_pool_queue_size=int(os.getenv('PROCESS_POOL_QUEUE_SIZE', '1000')),
+            process_pool_monitoring=os.getenv('PROCESS_POOL_MONITORING', 'true').lower() == 'true',
+            
+            # NATS message bus configuration
+            nats_servers=os.getenv('NATS_SERVERS', 'nats://localhost:4222'),
+            nats_connection_timeout=float(os.getenv('NATS_CONNECTION_TIMEOUT', '10.0')),
+            nats_reconnect_wait=float(os.getenv('NATS_RECONNECT_WAIT', '2.0')),
+            nats_max_reconnect=int(os.getenv('NATS_MAX_RECONNECT', '60')),
+            nats_max_message_size=int(os.getenv('NATS_MAX_MESSAGE_SIZE', '1048576')),
+            nats_enable_compression=os.getenv('NATS_ENABLE_COMPRESSION', 'true').lower() == 'true',
+            nats_compression_threshold=int(os.getenv('NATS_COMPRESSION_THRESHOLD', '1024')),
+            nats_enable_metrics=os.getenv('NATS_ENABLE_METRICS', 'true').lower() == 'true',
+            nats_stats_interval=float(os.getenv('NATS_STATS_INTERVAL', '30.0')),
+            nats_dead_letter_queue=os.getenv('NATS_DEAD_LETTER_QUEUE', 'antbot.dlq'),
+            nats_enable_persistence=os.getenv('NATS_ENABLE_PERSISTENCE', 'false').lower() == 'true',
+            nats_stream_name=os.getenv('NATS_STREAM_NAME', 'ANTBOT_STREAM'),
+            nats_retention_policy=os.getenv('NATS_RETENTION_POLICY', 'limits'),
+            
+            # Secrets manager configuration
+            secrets_provider=os.getenv('SECRETS_PROVIDER', 'vault'),
+            vault_url=os.getenv('VAULT_URL', 'http://localhost:8200'),
+            vault_token=os.getenv('VAULT_TOKEN'),
+            vault_mount_path=os.getenv('VAULT_MOUNT_PATH', 'secret'),
+            secrets_cache_ttl=int(os.getenv('SECRETS_CACHE_TTL', '3600')),
+            secrets_cache_size=int(os.getenv('SECRETS_CACHE_SIZE', '1000')),
+            secrets_allow_env_fallback=os.getenv('SECRETS_ALLOW_ENV_FALLBACK', 'true').lower() == 'true',
+            secrets_enable_cache_encryption=os.getenv('SECRETS_ENABLE_CACHE_ENCRYPTION', 'true').lower() == 'true',
+            
+            # Social signals and monitoring
+            enable_social_signals=os.getenv('ENABLE_SOCIAL_SIGNALS', 'false').lower() == 'true',
+            discord_bot_token=os.getenv('DISCORD_BOT_TOKEN'),
+            discord_channel_id=int(os.getenv('DISCORD_CHANNEL_ID', '0')),
+            
+            # High availability
+            disable_ha=os.getenv('DISABLE_HA', 'false').lower() == 'true',
+            
+            # Component identification
+            component_id=os.getenv('COMPONENT_ID')
         )
         self._config_loaded = True
     
@@ -361,21 +584,65 @@ def mask_sensitive_value(value: str, mask_char: str = '*', visible_chars: int = 
     
     return value[:visible_chars] + mask_char * (len(value) - visible_chars)
 
+def get_redis_config() -> Dict[str, any]:
+    """Get Redis configuration - CANONICAL ACCESS THROUGH UNIFIED CONFIG"""
+    config = get_trading_config()
+    return {
+        'host': config.redis_host,
+        'port': config.redis_port,
+        'password': config.redis_password,
+        'db': config.redis_db
+    }
+
+def get_api_config() -> Dict[str, str]:
+    """Get API configuration - CANONICAL ACCESS THROUGH UNIFIED CONFIG"""
+    config = get_trading_config()
+    return {
+        'birdeye_api_key': config.birdeye_api_key or '',
+        'jupiter_api_key': config.jupiter_api_key or '',
+        'helius_api_key': config.helius_api_key or '',
+        'dexscreener_api_key': config.dexscreener_api_key or '',
+        'solana_tracker_api_key': config.solana_tracker_api_key or '',
+        'raydium_api_key': config.raydium_api_key or ''
+    }
+
+def get_network_rpc_url() -> str:
+    """Get Solana RPC URL - CANONICAL ACCESS THROUGH UNIFIED CONFIG"""
+    config = get_trading_config()
+    return config.solana_rpc_url
+
+def get_social_signals_config() -> Dict[str, any]:
+    """Get social signals configuration - CANONICAL ACCESS THROUGH UNIFIED CONFIG"""
+    config = get_trading_config()
+    return {
+        'enable_social_signals': config.enable_social_signals,
+        'discord_bot_token': config.discord_bot_token,
+        'discord_channel_id': config.discord_channel_id
+    }
+
+def get_ha_config() -> Dict[str, any]:
+    """Get high availability configuration - CANONICAL ACCESS THROUGH UNIFIED CONFIG"""
+    config = get_trading_config()
+    return {
+        'disable_ha': config.disable_ha
+    }
+
 def get_config_manager() -> UnifiedConfigManager:
     """Get global config manager instance"""
     return UnifiedConfigManager()
 
 def get_wallet_config() -> Dict[str, any]:
-    """Get wallet configuration"""
+    """Get wallet configuration - CANONICAL ACCESS THROUGH UNIFIED CONFIG"""
+    config = get_trading_config()  # Force through unified config
     return {
-        'solana_rpc_url': os.getenv('SOLANA_RPC_URL', 'https://api.mainnet-beta.solana.com'),
-        'max_wallets': int(os.getenv('MAX_WALLETS', '10')),
-        'min_wallets': int(os.getenv('MIN_WALLETS', '5')),
-        'evolution_interval_hours': int(os.getenv('EVOLUTION_INTERVAL_HOURS', '24')),
-        'retirement_threshold': float(os.getenv('RETIREMENT_THRESHOLD', '0.3')),
-        'evolution_mutation_rate': float(os.getenv('EVOLUTION_MUTATION_RATE', '0.1')),
-        'wallet_encryption_enabled': os.getenv('WALLET_ENCRYPTION_ENABLED', 'true').lower() == 'true',
-        'wallet_password': os.getenv('WALLET_PASSWORD', ''),
-        'encrypted_wallet_key': os.getenv('ENCRYPTED_WALLET_KEY', ''),
-        'auto_create_wallet': os.getenv('AUTO_CREATE_WALLET', 'false').lower() == 'true'
+        'solana_rpc_url': config.solana_rpc_url,
+        'max_wallets': config.max_wallets,
+        'min_wallets': config.min_wallets,
+        'evolution_interval_hours': config.evolution_interval_hours,
+        'retirement_threshold': config.retirement_threshold,
+        'evolution_mutation_rate': config.evolution_mutation_rate,
+        'wallet_encryption_enabled': config.wallet_encryption_enabled,
+        'wallet_password': config.wallet_password,
+        'encrypted_wallet_key': config.encrypted_wallet_key,
+        'auto_create_wallet': config.auto_create_wallet
     } 

@@ -742,12 +742,15 @@ _process_pool_manager: Optional[ProcessPoolManager] = None
 
 
 def get_process_pool_config() -> Dict[str, Any]:
-    """Get process pool configuration from environment"""
+    """Get process pool configuration - CANONICAL ACCESS THROUGH UNIFIED CONFIG"""
+    from worker_ant_v1.core.unified_config import get_trading_config
+    config = get_trading_config()  # Force through unified config
+    
     return {
-        'max_workers': int(os.getenv('PROCESS_POOL_MAX_WORKERS', multiprocessing.cpu_count())),
-        'task_timeout': float(os.getenv('PROCESS_POOL_TASK_TIMEOUT', '30.0')),
-        'queue_size': int(os.getenv('PROCESS_POOL_QUEUE_SIZE', '1000')),
-        'enable_monitoring': os.getenv('PROCESS_POOL_MONITORING', 'true').lower() == 'true'
+        'max_workers': config.process_pool_max_workers,
+        'task_timeout': config.process_pool_task_timeout,
+        'queue_size': config.process_pool_queue_size,
+        'enable_monitoring': config.process_pool_monitoring
     }
 
 

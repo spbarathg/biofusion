@@ -191,10 +191,12 @@ class ColonyCommander:
     async def _initialize_ha(self) -> bool:
         """Initialize High Availability Redis connection"""
         try:
-            # Connect to Redis
-            redis_host = os.getenv('REDIS_HOST', 'localhost')
-            redis_port = int(os.getenv('REDIS_PORT', '6379'))
-            redis_password = os.getenv('REDIS_PASSWORD')
+            # Redis configuration - CANONICAL ACCESS THROUGH UNIFIED CONFIG
+            from worker_ant_v1.core.unified_config import get_redis_config
+            redis_config = get_redis_config()
+            redis_host = redis_config['host']
+            redis_port = redis_config['port']
+            redis_password = redis_config['password']
             
             self.redis_client = redis.Redis(
                 host=redis_host,

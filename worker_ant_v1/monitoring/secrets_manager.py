@@ -641,16 +641,19 @@ _secrets_manager: Optional[SecretsManager] = None
 
 
 def get_secrets_config() -> SecretsConfig:
-    """Get secrets configuration from environment"""
+    """Get secrets configuration - CANONICAL ACCESS THROUGH UNIFIED CONFIG"""
+    from worker_ant_v1.core.unified_config import get_trading_config
+    config = get_trading_config()  # Force through unified config
+    
     return SecretsConfig(
-        provider=SecretProvider(os.getenv("SECRETS_PROVIDER", "vault")),
-        vault_url=os.getenv("VAULT_URL", "http://localhost:8200"),
-        vault_token=os.getenv("VAULT_TOKEN"),
-        vault_mount_path=os.getenv("VAULT_MOUNT_PATH", "secret"),
-        cache_ttl_seconds=int(os.getenv("SECRETS_CACHE_TTL", "3600")),
-        max_cache_size=int(os.getenv("SECRETS_CACHE_SIZE", "1000")),
-        allow_env_fallback=os.getenv("SECRETS_ALLOW_ENV_FALLBACK", "true").lower() == "true",
-        enable_encryption=os.getenv("SECRETS_ENABLE_CACHE_ENCRYPTION", "true").lower() == "true"
+        provider=SecretProvider(config.secrets_provider),
+        vault_url=config.vault_url,
+        vault_token=config.vault_token,
+        vault_mount_path=config.vault_mount_path,
+        cache_ttl_seconds=config.secrets_cache_ttl,
+        max_cache_size=config.secrets_cache_size,
+        allow_env_fallback=config.secrets_allow_env_fallback,
+        enable_encryption=config.secrets_enable_cache_encryption
     )
 
 
