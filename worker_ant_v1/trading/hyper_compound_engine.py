@@ -118,6 +118,10 @@ class HyperCompoundEngine:
         self.config = CompoundConfig()
         self.metrics = CompoundMetrics()
         
+        # Kelly Criterion configuration
+        self.kelly_fraction = 0.25  # Use 25% of full Kelly for safety
+        self.cached_win_loss_ratio = 1.5  # Default win/loss ratio, updated nightly
+        
         # System state
         self.current_phase = GrowthPhase.CALIBRATION
         self.compounding_active = False
@@ -352,23 +356,146 @@ class HyperCompoundEngine:
         except Exception as e:
             self.logger.error(f"Error executing compound cycle: {e}")
     
-    def get_trade_size_for_phase(self) -> float:
-        """Get appropriate trade size based on current phase"""
+    async def calculate_optimal_position_size(self, win_probability: float, current_capital: float = None) -> float:
+        """
+        Kelly Criterion Position Sizing - Growth Maximizer Stage 3
+        
+        Calculates optimal position size using Kelly Criterion:
+        f* = p - ((1 - p) / b)
+        where p = win probability, b = win/loss ratio
+        
+        Args:
+            win_probability: Output from SwarmDecisionEngine (Stage 2)
+            current_capital: Available capital (if None, uses metrics)
+            
+        Returns:
+            float: Optimal position size in SOL
+        """
         try:
             if self.current_phase == GrowthPhase.CALIBRATION:
-                # Fixed size during calibration
+                # Fixed size during calibration - no Kelly sizing yet
+                return self.config.calibration_fixed_size_sol
+            
+            # Get current capital
+            if current_capital is None:
+                current_capital = self.metrics.current_capital
+            
+            if current_capital <= 0:
+                self.logger.error("❌ No capital available for Kelly sizing")
+                return 0.0
+            
+            # Ensure win probability is in valid range
+            win_probability = max(0.01, min(0.99, win_probability))
+            
+            # Get win/loss ratio (updated nightly by evolution system)
+            win_loss_ratio = self.cached_win_loss_ratio
+            
+            # Calculate Kelly fraction: f* = p - ((1 - p) / b)
+            kelly_fraction_full = win_probability - ((1 - win_probability) / win_loss_ratio)
+            
+            # Apply safety factor (fractional Kelly)
+            kelly_fraction_safe = kelly_fraction_full * self.kelly_fraction
+            
+            # Calculate position size
+            position_size = kelly_fraction_safe * current_capital
+            
+            # Apply position sizing caps based on phase
+            max_position_pct = self._get_max_position_percentage()
+            max_position_size = current_capital * max_position_pct
+            
+            # Cap position size
+            position_size = max(0.0, min(position_size, max_position_size))
+            
+            self.logger.info(f"📈 Kelly sizing: p={win_probability:.3f}, b={win_loss_ratio:.2f}, "
+                           f"Kelly={kelly_fraction_full:.3f}, Safe={kelly_fraction_safe:.3f}, "
+                           f"Size={position_size:.4f} SOL")
+            
+            return position_size
+            
+        except Exception as e:
+            self.logger.error(f"❌ Kelly Criterion calculation failed: {e}")
+            # Fallback to conservative sizing
+            return min(0.01, (current_capital or self.metrics.current_capital) * 0.02)
+    
+    def _get_max_position_percentage(self) -> float:
+        """Get maximum position percentage based on current growth phase"""
+        if self.current_phase == GrowthPhase.CALIBRATION:
+            return 0.01  # 1% max during calibration
+        elif self.current_phase == GrowthPhase.BOOTSTRAP:
+            return self.config.max_position_scale  # 45% max in bootstrap
+        elif self.current_phase == GrowthPhase.MOMENTUM:
+            return 0.35  # 35% max in momentum
+        elif self.current_phase == GrowthPhase.ACCELERATION:
+            return 0.25  # 25% max in acceleration
+        else:  # MASTERY
+            return 0.15  # 15% max in mastery
+    
+    async def update_win_loss_ratio(self, database_connection) -> bool:
+        """
+        Update cached win/loss ratio from historical performance
+        Called nightly by evolution system
+        
+        Args:
+            database_connection: TimescaleDB connection
+            
+        Returns:
+            bool: Success status
+        """
+        try:
+            self.logger.info("📊 Updating win/loss ratio for Kelly Criterion...")
+            
+            # Query successful and failed trades from last 30 days
+            end_date = datetime.now()
+            start_date = end_date - timedelta(days=30)
+            
+            query = """
+                SELECT 
+                    AVG(CASE WHEN success = true THEN profit_loss_sol ELSE 0 END) as avg_win,
+                    AVG(CASE WHEN success = false THEN ABS(profit_loss_sol) ELSE 0 END) as avg_loss,
+                    COUNT(CASE WHEN success = true THEN 1 END) as win_count,
+                    COUNT(CASE WHEN success = false THEN 1 END) as loss_count
+                FROM trades 
+                WHERE timestamp >= $1 AND timestamp <= $2 
+                AND trade_type = 'BUY'
+                AND profit_loss_sol IS NOT NULL
+            """
+            
+            row = await database_connection.fetchrow(query, start_date, end_date)
+            
+            if row and row['avg_win'] and row['avg_loss'] and row['avg_loss'] > 0:
+                new_ratio = row['avg_win'] / row['avg_loss']
+                # Apply bounds to prevent extreme ratios
+                new_ratio = max(0.5, min(5.0, new_ratio))
+                
+                self.cached_win_loss_ratio = new_ratio
+                
+                self.logger.info(f"✅ Win/Loss ratio updated: {new_ratio:.2f} "
+                               f"(Avg win: {row['avg_win']:.4f}, Avg loss: {row['avg_loss']:.4f}, "
+                               f"Wins: {row['win_count']}, Losses: {row['loss_count']})")
+                return True
+            else:
+                self.logger.warning("⚠️ Insufficient data to update win/loss ratio")
+                return False
+                
+        except Exception as e:
+            self.logger.error(f"Error updating win/loss ratio: {e}")
+            return False
+    
+    def get_trade_size_for_phase(self) -> float:
+        """
+        Legacy function - maintained for backward compatibility
+        Use calculate_optimal_position_size() for Kelly Criterion sizing
+        """
+        try:
+            if self.current_phase == GrowthPhase.CALIBRATION:
                 return self.config.calibration_fixed_size_sol
             else:
-                # Percentage-based sizing for other phases
-                if self.wallet_manager:
-                    # This would integrate with wallet manager to get appropriate sizing
-                    # For now, return a default
-                    return 0.01  # Placeholder
-                return 0.01
+                # For backward compatibility, return conservative sizing
+                return min(0.01, self.metrics.current_capital * 0.02)
                 
         except Exception as e:
             self.logger.error(f"Error getting trade size: {e}")
-            return self.config.calibration_fixed_size_sol  # Safe fallback
+            return self.config.calibration_fixed_size_sol
     
     async def _calculate_compound_amount(self, total_profit: float) -> float:
         """Calculate how much profit to reinvest"""

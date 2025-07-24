@@ -92,6 +92,9 @@ class TradeRecord:
     volume_24h_usd: Optional[float] = None
     price_change_24h_percent: Optional[float] = None
     
+    # AI Signal Snapshot for Naive Bayes Training
+    signal_snapshot: Optional[Dict[str, Any]] = None  # Stores {'sentiment': 0.8, 'rug_risk': 0.1, ...}
+    
     # Metadata
     metadata: Optional[Dict[str, Any]] = None
 
@@ -254,6 +257,7 @@ class TimescaleDBManager:
                     volume_24h_usd DOUBLE PRECISION,
                     price_change_24h_percent DOUBLE PRECISION,
                     metadata JSONB,
+                    signal_snapshot JSONB,
                     PRIMARY KEY (timestamp, trade_id)
                 );
             """)
@@ -466,7 +470,8 @@ class TimescaleDBManager:
                         trade.market_cap_usd,
                         trade.volume_24h_usd,
                         trade.price_change_24h_percent,
-                        json.dumps(trade.metadata) if trade.metadata else None
+                        json.dumps(trade.metadata) if trade.metadata else None,
+                        json.dumps(trade.signal_snapshot) if trade.signal_snapshot else None
                     ))
                 
                 # Batch insert
@@ -478,8 +483,8 @@ class TimescaleDBManager:
                         gas_cost_sol, rpc_cost_sol, api_cost_sol, profit_loss_sol,
                         profit_loss_percent, hold_time_seconds, tx_signature_hash,
                         retry_count, exit_reason, error_message, market_cap_usd,
-                        volume_24h_usd, price_change_24h_percent, metadata
-                    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28)
+                        volume_24h_usd, price_change_24h_percent, metadata, signal_snapshot
+                    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29)
                 """, data)
                 
                 self.logger.debug(f"✅ Flushed {len(batch)} trades to TimescaleDB")

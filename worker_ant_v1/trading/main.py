@@ -27,6 +27,11 @@ from worker_ant_v1.trading.market_scanner import get_market_scanner
 from worker_ant_v1.utils.logger import get_logger
 from worker_ant_v1.utils.constants import SentimentDecision as SentimentDecisionEnum
 
+# Three-Stage Decision Pipeline Imports
+from worker_ant_v1.trading.devils_advocate_synapse import DevilsAdvocateSynapse
+from worker_ant_v1.core.swarm_decision_engine import SwarmDecisionEngine
+from worker_ant_v1.trading.hyper_compound_engine import HyperCompoundEngine
+
 
 class HyperIntelligentTradingSwarm:
     """Hyper-intelligent trading swarm that orchestrates all systems."""
@@ -234,6 +239,11 @@ class MemecoinTradingBot:
         self.sentiment_ai = None
         self.market_scanner = None
         self.kill_switch = None
+        
+        # Three-Stage Decision Pipeline Components
+        self.devils_advocate = None  # Stage 1: Survival Filter (WCCA)
+        self.swarm_decision_engine = None  # Stage 2: Win-Rate Engine (Naive Bayes)
+        self.hyper_compound_engine = None  # Stage 3: Growth Maximizer (Kelly Criterion)
 
         # Trading state
         self.trading_active = False
@@ -262,6 +272,11 @@ class MemecoinTradingBot:
             "sentiment_threshold": 0.3,  # Minimum sentiment for buying
             "compounding_enabled": True,
             "aggressive_mode": True,
+            
+            # Three-Stage Pipeline Configuration
+            "acceptable_rel_threshold": 0.1,  # WCCA: Max acceptable R-EL in SOL
+            "hunt_threshold": 0.6,  # Naive Bayes: Min win probability to hunt
+            "kelly_fraction": 0.25,  # Kelly Criterion: Fraction of full Kelly to use
         }
 
         # Statistics
@@ -300,6 +315,20 @@ class MemecoinTradingBot:
             # Initialize kill switch
             self.kill_switch = EnhancedKillSwitch()
             await self.kill_switch.initialize()
+            
+            # Initialize Three-Stage Decision Pipeline
+            self.devils_advocate = DevilsAdvocateSynapse()  # Stage 1: WCCA Survival Filter
+            await self.devils_advocate.initialize()
+            
+            self.swarm_decision_engine = SwarmDecisionEngine()  # Stage 2: Naive Bayes Win-Rate Engine
+            
+            self.hyper_compound_engine = HyperCompoundEngine()  # Stage 3: Kelly Criterion Growth Maximizer
+            await self.hyper_compound_engine.initialize()
+            
+            # Connect components for optimal integration
+            self.hyper_compound_engine.trading_engine = self.trading_engine
+            self.hyper_compound_engine.wallet_manager = self.wallet_manager
+            self.hyper_compound_engine.vault_system = self.vault_system
 
             # Set up signal handlers
             signal.signal(signal.SIGINT, self._signal_handler)
@@ -347,9 +376,16 @@ class MemecoinTradingBot:
                 await asyncio.sleep(10)
 
     async def _process_opportunity(self, opportunity: Dict[str, Any]):
-        """Process a trading opportunity"""
+        """
+        Process trading opportunity through Three-Stage Decision Pipeline
+        
+        Stage 1: Survival Filter (WCCA) - Risk-Adjusted Expected Loss veto
+        Stage 2: Win-Rate Engine (Naive Bayes) - Probabilistic win assessment  
+        Stage 3: Growth Maximizer (Kelly Criterion) - Optimal position sizing
+        """
         try:
             token_address = opportunity['token_address']
+            token_symbol = opportunity.get('token_symbol', 'Unknown')
 
             # Check if we already have a position
             if token_address in self.active_positions:
@@ -359,42 +395,141 @@ class MemecoinTradingBot:
             if not self._can_open_position():
                 return
 
-            # Validate opportunity with sentiment AI
-            market_data = {
-                "symbol": opportunity["token_symbol"],
-                "price": 0.0,  # Will be fetched
-                "volume": opportunity["volume_24h_sol"],
-                "liquidity": opportunity["liquidity_sol"],
-                "price_change_24h": 0.0,
-                "price_change_1h": 0.0,
-                "holder_count": 0,
-                "age_hours": 0,
+            self.logger.info(f"🔍 Three-stage analysis for {token_symbol}")
+            
+            # Prepare comprehensive trade parameters
+            trade_params = {
+                'token_address': token_address,
+                'token_symbol': token_symbol,
+                'amount': self._get_initial_position_estimate(),  # Initial estimate for R-EL calculation
+                'token_age_hours': opportunity.get('age_hours', 24),
+                'liquidity_concentration': opportunity.get('liquidity_concentration', 0.5),
+                'dev_holdings_percent': opportunity.get('dev_holdings_percent', 0.0),
+                'contract_verified': opportunity.get('contract_verified', True),
+                'has_transfer_restrictions': opportunity.get('has_transfer_restrictions', False),
+                'sell_buy_ratio': opportunity.get('sell_buy_ratio', 1.0),
+                'has_blacklist_function': opportunity.get('has_blacklist_function', False),
+                'volume_24h_sol': opportunity.get('volume_24h_sol', 0),
+                'market_cap_usd': opportunity.get('market_cap_usd', 0),
             }
-
-            sentiment_decision = await self.sentiment_ai.analyze_and_decide(
-                token_address, market_data
+            
+            # ═══════════════════════════════════════════════════════════
+            # STAGE 1: SURVIVAL FILTER (WCCA) - VETO CATASTROPHIC RISKS
+            # ═══════════════════════════════════════════════════════════
+            
+            wcca_result = await self.devils_advocate.conduct_pre_mortem_analysis(trade_params)
+            
+            if wcca_result.get('veto', False):
+                self.logger.warning(f"🚫 STAGE 1 VETO: {token_symbol} | {wcca_result.get('reason', 'Unknown')}")
+                return  # Hard stop - trade vetoed
+            
+            self.logger.info(f"✅ STAGE 1 CLEAR: {token_symbol} | R-EL: {wcca_result.get('max_rel', 0):.4f} SOL")
+            
+            # ═══════════════════════════════════════════════════════════
+            # STAGE 2: WIN-RATE ENGINE (NAIVE BAYES) - PROBABILITY CALC
+            # ═══════════════════════════════════════════════════════════
+            
+            # Gather comprehensive market data for Naive Bayes analysis
+            market_data = await self._gather_market_data(opportunity)
+            
+            # Calculate win probability using Naive Bayes
+            win_probability = await self.swarm_decision_engine.analyze_opportunity(
+                token_address, market_data, narrative_weight=1.0
+            )
+            
+            # Check if win probability meets hunt threshold
+            hunt_threshold = self.trading_config["hunt_threshold"]
+            if win_probability < hunt_threshold:
+                self.logger.info(f"⏸️ STAGE 2 SKIP: {token_symbol} | Win prob {win_probability:.3f} < {hunt_threshold}")
+                return  # Don't hunt low-probability trades
+            
+            self.logger.info(f"✅ STAGE 2 HUNT: {token_symbol} | Win prob: {win_probability:.3f}")
+            
+            # ═══════════════════════════════════════════════════════════
+            # STAGE 3: GROWTH MAXIMIZER (KELLY CRITERION) - POSITION SIZE
+            # ═══════════════════════════════════════════════════════════
+            
+            # Calculate optimal position size using Kelly Criterion
+            optimal_position_size = await self.hyper_compound_engine.calculate_optimal_position_size(
+                win_probability=win_probability,
+                current_capital=self.current_capital
+            )
+            
+            if optimal_position_size <= 0:
+                self.logger.warning(f"⏸️ STAGE 3 SKIP: {token_symbol} | Optimal size: {optimal_position_size:.4f} SOL")
+                return  # No position recommended
+            
+            self.logger.info(f"✅ STAGE 3 SIZE: {token_symbol} | Kelly optimal: {optimal_position_size:.4f} SOL")
+            
+            # ═══════════════════════════════════════════════════════════
+            # EXECUTION: ALL STAGES PASSED - EXECUTE TRADE
+            # ═══════════════════════════════════════════════════════════
+            
+            await self._execute_optimized_trade(
+                opportunity=opportunity,
+                position_size=optimal_position_size,
+                win_probability=win_probability,
+                wcca_result=wcca_result,
+                market_data=market_data
             )
 
-            # Only proceed if sentiment is strong enough
-            if (
-                sentiment_decision.decision == SentimentDecisionEnum.BUY.value
-                and sentiment_decision.sentiment_score >= self.trading_config["sentiment_threshold"]
-                and sentiment_decision.confidence >= 0.6
-            ):
-
-                await self._open_position(opportunity, sentiment_decision)
-
         except Exception as e:
-            self.logger.error(f"Error processing opportunity: {e}")
+            self.logger.error(f"❌ Three-stage pipeline error for {opportunity.get('token_symbol', 'Unknown')}: {e}")
+    
+    async def _gather_market_data(self, opportunity: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Gather comprehensive market data for Naive Bayes analysis
+        Consolidates data from various AI ants and market sources
+        """
+        try:
+            token_address = opportunity['token_address']
+            
+            # Base market data from opportunity
+            market_data = {
+                'current_price': opportunity.get('price', 0.0),
+                'volume_24h_sol': opportunity.get('volume_24h_sol', 0),
+                'market_cap_usd': opportunity.get('market_cap_usd', 0),
+                'liquidity_sol': opportunity.get('liquidity_sol', 0),
+                'price_change_24h': opportunity.get('price_change_24h_percent', 0),
+                'age_hours': opportunity.get('age_hours', 24),
+            }
+            
+            # Get sentiment analysis from AI
+            if self.sentiment_ai:
+                sentiment_result = await self.sentiment_ai.analyze_and_decide(token_address, market_data)
+                market_data['sentiment_score'] = sentiment_result.sentiment_score
+                market_data['social_buzz'] = sentiment_result.confidence
+            
+            # Add technical indicators
+            market_data['volume_momentum'] = 1.0 if market_data['volume_24h_sol'] > 1000 else 0.5
+            market_data['price_momentum'] = 1.0 if market_data['price_change_24h'] > 0 else 0.3
+            market_data['liquidity_health'] = 1.0 if market_data['liquidity_sol'] > 500 else 0.5
+            
+            # Calculate additional signals
+            market_data['rug_risk_score'] = opportunity.get('rug_risk_score', 0.3)
+            market_data['narrative_strength'] = opportunity.get('narrative_strength', 0.5)
+            market_data['whale_activity'] = opportunity.get('whale_activity', 0.5)
+            
+            # RSI and breakout signals (placeholder - would be calculated from price data)
+            market_data['rsi'] = 45  # Placeholder
+            market_data['volume_change_24h'] = 1.5  # Placeholder
+            market_data['price_breakout_signal'] = 0.7  # Placeholder
+            
+            return market_data
+            
+        except Exception as e:
+            self.logger.error(f"Error gathering market data: {e}")
+            return {}
+    
+    def _get_initial_position_estimate(self) -> float:
+        """Get initial position size estimate for R-EL calculation in Stage 1"""
+        return min(0.1, self.current_capital * 0.05)  # Conservative 5% estimate
 
-    async def _open_position(self, opportunity: Dict[str, Any], sentiment_decision: Any):
-        """Open a new trading position"""
+    async def _execute_optimized_trade(self, opportunity: Dict[str, Any], position_size: float, win_probability: float, wcca_result: Dict[str, Any], market_data: Dict[str, Any]):
+        """Execute the trade based on optimized parameters."""
         try:
             token_address = opportunity['token_address']
             token_symbol = opportunity['token_symbol']
-
-            # Calculate position size
-            position_size = self._calculate_position_size(opportunity, sentiment_decision)
 
             # Get best wallet for this trade
             wallet = await self.wallet_manager.get_best_wallet(
@@ -416,11 +551,32 @@ class MemecoinTradingBot:
                 "order_type": "buy",
                 "metadata": {
                     "opportunity": opportunity,
-                    "sentiment_decision": {
-                        "sentiment_score": sentiment_decision.sentiment_score,
-                        "confidence": sentiment_decision.confidence,
-                        "expected_profit": sentiment_decision.expected_profit,
-                    },
+                    "win_probability": win_probability,
+                    "wcca_result": wcca_result,
+                    "market_data": market_data,
+                    "signal_snapshot": {
+                        "timestamp": datetime.now().isoformat(),
+                        "token_address": token_address,
+                        "token_symbol": token_symbol,
+                        "position_size": position_size,
+                        "win_probability": win_probability,
+                        "wcca_max_rel": wcca_result.get('max_rel', 0),
+                        "market_data_price": market_data.get('current_price', 0),
+                        "market_data_volume": market_data.get('volume_24h_sol', 0),
+                        "market_data_liquidity": market_data.get('liquidity_sol', 0),
+                        "market_data_price_change": market_data.get('price_change_24h', 0),
+                        "market_data_sentiment_score": market_data.get('sentiment_score', 0),
+                        "market_data_social_buzz": market_data.get('social_buzz', 0),
+                        "market_data_volume_momentum": market_data.get('volume_momentum', 0),
+                        "market_data_price_momentum": market_data.get('price_momentum', 0),
+                        "market_data_liquidity_health": market_data.get('liquidity_health', 0),
+                        "market_data_rug_risk": market_data.get('rug_risk_score', 0),
+                        "market_data_narrative_strength": market_data.get('narrative_strength', 0),
+                        "market_data_whale_activity": market_data.get('whale_activity', 0),
+                        "market_data_rsi": market_data.get('rsi', 0),
+                        "market_data_volume_change": market_data.get('volume_change_24h', 0),
+                        "market_data_price_breakout": market_data.get('price_breakout_signal', 0),
+                    }
                 },
             }
 
@@ -435,10 +591,10 @@ class MemecoinTradingBot:
                     "amount_sol": position_size,
                     "entry_price": 0.0,  # Will be updated
                     "entry_time": datetime.now(),
-                    "sentiment_score": sentiment_decision.sentiment_score,
-                    "expected_profit": sentiment_decision.expected_profit,
+                    "win_probability": win_probability,
+                    "wcca_result": wcca_result,
+                    "market_data": market_data,
                     "transaction_signature": result.transaction_signature,
-                    "opportunity": opportunity,
                 }
 
                 self.active_positions[token_address] = position
@@ -460,7 +616,7 @@ class MemecoinTradingBot:
                 self.logger.error(f"Failed to open position for {token_symbol}: {result.error_message}")
 
         except Exception as e:
-            self.logger.error(f"Error opening position: {e}")
+            self.logger.error(f"Error executing optimized trade: {e}")
 
     def _calculate_position_size(self, opportunity: Dict[str, Any], sentiment_decision: Any) -> float:
         """Calculate position size based on opportunity and sentiment.

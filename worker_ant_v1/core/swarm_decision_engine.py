@@ -11,6 +11,7 @@ from typing import Dict, List, Optional, Any, Tuple
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 import numpy as np
+import json # Added for Naive Bayes analysis
 
 from worker_ant_v1.utils.logger import setup_logger
 
@@ -79,38 +80,165 @@ class SwarmDecisionEngine:
         token_address: str, 
         market_data: Dict[str, Any],
         narrative_weight: float = 1.0
-    ) -> SwarmConsensus:
+    ) -> float:
         """
-        Analyze trading opportunity with narrative intelligence weighting
+        Win-Rate Engine: Naive Bayes Probability Calculator
+        
+        Calculates the precise probability of trade success using historical signal patterns.
+        Uses Naive Bayes formula: P(Win | Signals) ∝ P(Win) * Π P(Signal_i | Win)
         
         Args:
             token_address: Token contract address
             market_data: Current market data for the token
-            narrative_weight: Narrative strength multiplier (0.0 to 2.0)
+            narrative_weight: Narrative strength multiplier (legacy parameter)
+            
+        Returns:
+            float: Win probability (0.0 to 1.0)
         """
         try:
-            self.logger.debug(f"🔍 Analyzing opportunity for {token_address} with narrative weight {narrative_weight:.2f}")
+            self.logger.debug(f"🧠 Naive Bayes analysis for {token_address}")
             
-            # Gather signals from multiple sources
-            signals = await self._gather_signals(token_address, market_data)
+            # Load cached signal probabilities
+            signal_probabilities = await self._load_signal_probabilities()
+            if not signal_probabilities:
+                self.logger.warning("⚠️ No signal probabilities available, using default")
+                return 0.5  # Default 50% probability
             
-            # Apply narrative weighting to signal confidence
-            weighted_signals = self._apply_narrative_weighting(signals, narrative_weight)
+            # Gather current signals from all AI ants
+            current_signals = await self._gather_current_signals(token_address, market_data)
+            if not current_signals:
+                self.logger.warning("⚠️ No current signals available")
+                return 0.5
+                
+            # Get base probabilities
+            base_probs = signal_probabilities.get('base_probabilities', {'p_win': 0.5, 'p_loss': 0.5})
+            p_win_base = base_probs['p_win']
+            p_loss_base = base_probs['p_loss']
             
-            # Calculate consensus
-            consensus = await self._calculate_swarm_consensus(weighted_signals, narrative_weight)
+            # Calculate Naive Bayes likelihoods
+            likelihood_win = p_win_base
+            likelihood_loss = p_loss_base
             
-            # Apply anti-fragile decision filters
-            final_consensus = await self._apply_anti_fragile_filters(consensus, market_data)
+            signal_conditionals = signal_probabilities.get('signal_conditionals', {})
             
-            self.logger.debug(f"📊 Analysis complete: {final_consensus.recommended_action} "
-                            f"(confidence: {final_consensus.consensus_confidence:.2f})")
+            # Apply Naive Bayes for each active signal
+            active_signals_count = 0
+            for signal_name, signal_value in current_signals.items():
+                if signal_name in signal_conditionals and self._signal_is_positive(signal_value):
+                    signal_data = signal_conditionals[signal_name]
+                    
+                    # Get conditional probabilities
+                    p_signal_given_win = signal_data.get('p_signal_given_win', 0.5)
+                    p_signal_given_loss = signal_data.get('p_signal_given_loss', 0.5)
+                    confidence = signal_data.get('confidence', 0.5)
+                    
+                    # Only use signals with reasonable confidence
+                    if confidence > 0.3:
+                        likelihood_win *= p_signal_given_win
+                        likelihood_loss *= p_signal_given_loss
+                        active_signals_count += 1
+                        
+                        self.logger.debug(f"📊 {signal_name}: P(S|W)={p_signal_given_win:.3f}, P(S|L)={p_signal_given_loss:.3f}")
             
-            return final_consensus
+            # Normalize to get final probability
+            total_likelihood = likelihood_win + likelihood_loss
+            if total_likelihood > 0:
+                final_win_probability = likelihood_win / total_likelihood
+            else:
+                final_win_probability = 0.5  # Default if no valid signals
+            
+            # Apply smoothing to prevent extreme probabilities
+            final_win_probability = max(0.05, min(0.95, final_win_probability))
+            
+            self.logger.info(f"✅ Naive Bayes result for {token_address}: {final_win_probability:.3f} "
+                           f"({active_signals_count} signals analyzed)")
+            
+            return final_win_probability
             
         except Exception as e:
-            self.logger.error(f"❌ Opportunity analysis failed for {token_address}: {e}")
-            return self._create_safe_consensus("hold", 0.0, narrative_weight)
+            self.logger.error(f"❌ Naive Bayes analysis failed for {token_address}: {e}")
+            return 0.5  # Safe default
+    
+    async def _load_signal_probabilities(self) -> Optional[Dict[str, Any]]:
+        """
+        Load cached signal probabilities from Redis or JSON file
+        
+        Returns:
+            Dict containing signal probabilities or None if unavailable
+        """
+        try:
+            # Try Redis first (fastest)
+            try:
+                import redis.asyncio as redis
+                redis_client = redis.from_url("redis://localhost:6379", decode_responses=True)
+                cached_data = await redis_client.get("signal_probabilities")
+                await redis_client.close()
+                
+                if cached_data:
+                    return json.loads(cached_data)
+            except Exception:
+                pass  # Fall back to file
+            
+            # Fall back to JSON file
+            import os
+            if os.path.exists("data/signal_probabilities.json"):
+                with open("data/signal_probabilities.json", "r") as f:
+                    return json.load(f)
+            
+            return None
+            
+        except Exception as e:
+            self.logger.error(f"Error loading signal probabilities: {e}")
+            return None
+    
+    async def _gather_current_signals(self, token_address: str, market_data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Gather current signals from all AI ants for Naive Bayes analysis
+        
+        Args:
+            token_address: Token address being analyzed
+            market_data: Current market data
+            
+        Returns:
+            Dict of current signal values
+        """
+        try:
+            signals = {}
+            
+            # Extract signals from market_data (populated by various AI ants)
+            signals['sentiment_score'] = market_data.get('sentiment_score', 0.5)
+            signals['rug_risk_score'] = market_data.get('rug_risk_score', 0.5)
+            signals['narrative_strength'] = market_data.get('narrative_strength', 0.5)
+            signals['volume_momentum'] = market_data.get('volume_momentum', 0.5)
+            signals['price_momentum'] = market_data.get('price_momentum', 0.5)
+            signals['social_buzz'] = market_data.get('social_buzz', 0.5)
+            signals['whale_activity'] = market_data.get('whale_activity', 0.5)
+            signals['liquidity_health'] = market_data.get('liquidity_health', 0.5)
+            
+            # Technical indicators
+            signals['rsi_signal'] = 1.0 if market_data.get('rsi', 50) < 30 else 0.0  # Oversold
+            signals['volume_spike'] = 1.0 if market_data.get('volume_change_24h', 0) > 2.0 else 0.0
+            signals['price_breakout'] = market_data.get('price_breakout_signal', 0.0)
+            
+            return signals
+            
+        except Exception as e:
+            self.logger.error(f"Error gathering current signals: {e}")
+            return {}
+    
+    def _signal_is_positive(self, signal_value: Any) -> bool:
+        """
+        Determine if a signal value should be considered 'positive'
+        Same logic as in NightlyEvolutionSystem for consistency
+        """
+        if isinstance(signal_value, (int, float)):
+            return signal_value > 0.5
+        elif isinstance(signal_value, bool):
+            return signal_value
+        elif isinstance(signal_value, str):
+            return signal_value.lower() in ['true', 'positive', 'bullish', 'buy']
+        else:
+            return False
     
     async def _gather_signals(self, token_address: str, market_data: Dict[str, Any]) -> List[OpportunitySignal]:
         """Gather signals from multiple analysis sources"""

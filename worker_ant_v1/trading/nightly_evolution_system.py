@@ -807,6 +807,155 @@ class NightlyEvolutionSystem:
         except Exception as e:
             self.logger.warning(f"Failed to archive wallet {wallet_id}: {e}")
     
+    async def update_signal_probabilities(self, database_connection) -> Dict[str, Any]:
+        """
+        Update signal probabilities for Naive Bayes win-rate calculation
+        
+        Analyzes historical trades to calculate:
+        - P(Signal | Win): Probability of signal occurring in winning trades
+        - P(Signal | Loss): Probability of signal occurring in losing trades
+        
+        Args:
+            database_connection: TimescaleDB connection for querying trades
+            
+        Returns:
+            Dict containing calculated probabilities and metadata
+        """
+        try:
+            self.logger.info("📊 Starting signal probability analysis for Naive Bayes...")
+            
+            # Query trades from the past 30 days with signal snapshots
+            end_date = datetime.now()
+            start_date = end_date - timedelta(days=30)
+            
+            query = """
+                SELECT success, signal_snapshot 
+                FROM trades 
+                WHERE timestamp >= $1 AND timestamp <= $2 
+                AND signal_snapshot IS NOT NULL
+                AND trade_type = 'BUY'
+            """
+            
+            rows = await database_connection.fetch(query, start_date, end_date)
+            
+            if len(rows) < 50:  # Need minimum data for meaningful statistics
+                self.logger.warning(f"Insufficient trade data ({len(rows)} trades) for signal probability analysis")
+                return {"error": "insufficient_data", "trade_count": len(rows)}
+            
+            # Separate winning and losing trades
+            winning_trades = []
+            losing_trades = []
+            
+            for row in rows:
+                if row['signal_snapshot']:
+                    signals = json.loads(row['signal_snapshot']) if isinstance(row['signal_snapshot'], str) else row['signal_snapshot']
+                    if row['success']:
+                        winning_trades.append(signals)
+                    else:
+                        losing_trades.append(signals)
+            
+            win_count = len(winning_trades)
+            loss_count = len(losing_trades)
+            total_count = win_count + loss_count
+            
+            self.logger.info(f"📈 Analyzing {total_count} trades: {win_count} wins, {loss_count} losses")
+            
+            # Calculate base probabilities
+            p_win = win_count / total_count if total_count > 0 else 0.5
+            p_loss = loss_count / total_count if total_count > 0 else 0.5
+            
+            # Extract all unique signal types
+            all_signals = set()
+            for trade in winning_trades + losing_trades:
+                all_signals.update(trade.keys())
+            
+            signal_probabilities = {
+                'base_probabilities': {'p_win': p_win, 'p_loss': p_loss},
+                'signal_conditionals': {},
+                'metadata': {
+                    'calculation_date': datetime.now().isoformat(),
+                    'total_trades': total_count,
+                    'winning_trades': win_count,
+                    'losing_trades': loss_count,
+                    'analysis_period_days': 30
+                }
+            }
+            
+            # Calculate conditional probabilities for each signal
+            for signal_name in all_signals:
+                try:
+                    # Count signal occurrences in wins and losses
+                    signal_in_wins = 0
+                    signal_in_losses = 0
+                    
+                    for trade in winning_trades:
+                        if signal_name in trade and self._signal_is_positive(trade[signal_name]):
+                            signal_in_wins += 1
+                    
+                    for trade in losing_trades:
+                        if signal_name in trade and self._signal_is_positive(trade[signal_name]):
+                            signal_in_losses += 1
+                    
+                    # Calculate P(Signal | Win) and P(Signal | Loss)
+                    p_signal_given_win = signal_in_wins / win_count if win_count > 0 else 0
+                    p_signal_given_loss = signal_in_losses / loss_count if loss_count > 0 else 0
+                    
+                    signal_probabilities['signal_conditionals'][signal_name] = {
+                        'p_signal_given_win': p_signal_given_win,
+                        'p_signal_given_loss': p_signal_given_loss,
+                        'signal_win_count': signal_in_wins,
+                        'signal_loss_count': signal_in_losses,
+                        'confidence': min(signal_in_wins + signal_in_losses, 100) / 100  # Confidence based on sample size
+                    }
+                    
+                    self.logger.debug(f"📊 {signal_name}: P(S|W)={p_signal_given_win:.3f}, P(S|L)={p_signal_given_loss:.3f}")
+                    
+                except Exception as e:
+                    self.logger.error(f"Error calculating probabilities for signal {signal_name}: {e}")
+                    continue
+            
+            # Save to JSON file for fast access
+            import os
+            os.makedirs("data", exist_ok=True)
+            
+            with open("data/signal_probabilities.json", "w") as f:
+                json.dump(signal_probabilities, f, indent=2)
+            
+            # Also cache in Redis if available
+            try:
+                import redis.asyncio as redis
+                redis_client = redis.from_url("redis://localhost:6379", decode_responses=True)
+                await redis_client.set("signal_probabilities", json.dumps(signal_probabilities), ex=86400)  # 24 hour expiry
+                await redis_client.close()
+            except Exception as e:
+                self.logger.debug(f"Redis caching unavailable: {e}")
+            
+            self.logger.info(f"✅ Signal probabilities updated: {len(signal_probabilities['signal_conditionals'])} signals analyzed")
+            return signal_probabilities
+            
+        except Exception as e:
+            self.logger.error(f"Error in signal probability analysis: {e}")
+            return {"error": str(e)}
+    
+    def _signal_is_positive(self, signal_value: Any) -> bool:
+        """
+        Determine if a signal value should be considered 'positive' for analysis
+        
+        Args:
+            signal_value: The signal value to evaluate
+            
+        Returns:
+            bool: True if signal is considered positive
+        """
+        if isinstance(signal_value, (int, float)):
+            return signal_value > 0.5  # Threshold for numerical signals
+        elif isinstance(signal_value, bool):
+            return signal_value
+        elif isinstance(signal_value, str):
+            return signal_value.lower() in ['true', 'positive', 'bullish', 'buy']
+        else:
+            return False
+    
     def get_evolution_summary(self) -> Dict[str, Any]:
         """Get summary of evolution system status"""
         

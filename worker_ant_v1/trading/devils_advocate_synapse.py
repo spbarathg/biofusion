@@ -90,6 +90,9 @@ class DevilsAdvocateSynapse:
     def __init__(self):
         self.logger = setup_logger("DevilsAdvocateSynapse")
         
+        # WCCA (Worst Case Constraint Analysis) Configuration
+        self.acceptable_rel_threshold = 0.1  # Acceptable Risk-Adjusted Expected Loss (e.g., 0.1 SOL)
+        
         # Failure pattern database
         self.failure_patterns: Dict[FailurePattern, Dict[str, Any]] = {}
         self.historical_failures: List[Dict[str, Any]] = []
@@ -121,83 +124,192 @@ class DevilsAdvocateSynapse:
         
         self.logger.info("✅ Devil's Advocate Synapse active - Pre-mortem analysis armed")
     
-    async def conduct_pre_mortem_analysis(self, trade_params: Dict[str, Any]) -> PreMortemAnalysis:
-        """Conduct comprehensive pre-mortem analysis of a trade"""
+    async def conduct_pre_mortem_analysis(self, trade_params: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        WCCA Survival Filter - Risk-Adjusted Expected Loss Analysis
+        
+        Implements non-negotiable veto system using R-EL calculation:
+        R_EL = P(Loss) * |Position_Size|
+        
+        Returns:
+            {"veto": True/False, "reason": str (if veto)}
+        """
         start_time = datetime.now()
-        trade_id = f"analysis_{int(start_time.timestamp())}_{trade_params.get('token_address', 'unknown')[:8]}"
         
         try:
-            self.total_analyses += 1
-            
             # Extract trade information
             token_address = trade_params.get('token_address', '')
-            amount_sol = trade_params.get('amount', 0.0)
-            wallet_id = trade_params.get('wallet_id', '')
+            position_size_sol = abs(float(trade_params.get('amount', 0.0)))
             
-            # Analyze failure scenarios
-            failure_scenarios = await self._analyze_failure_scenarios(trade_params)
+            self.logger.debug(f"🔍 WCCA analyzing R-EL for {token_address[:8]} | Position: {position_size_sol:.4f} SOL")
             
-            # Calculate overall risk metrics
-            overall_failure_probability = self._calculate_overall_failure_probability(failure_scenarios)
-            max_potential_loss = self._calculate_max_potential_loss(failure_scenarios, amount_sol)
-            confidence_score = self._calculate_analysis_confidence(failure_scenarios)
+            # Calculate Risk-Adjusted Expected Loss for catastrophic failure patterns
+            catastrophic_patterns = [FailurePattern.RUG_PULL, FailurePattern.HONEYPOT]
+            max_rel = 0.0
+            worst_pattern = None
             
-            # Determine veto recommendation
-            veto_recommended, veto_reasons = self._determine_veto_recommendation(failure_scenarios, overall_failure_probability)
+            for pattern in catastrophic_patterns:
+                # Get failure probability from specialized modules
+                if pattern == FailurePattern.RUG_PULL:
+                    failure_probability = await self._get_rug_pull_probability(trade_params)
+                elif pattern == FailurePattern.HONEYPOT:
+                    failure_probability = await self._get_honeypot_probability(trade_params)
+                else:
+                    failure_probability = 0.0
+                
+                # Calculate R-EL: P(Loss) * |Position_Size|
+                rel = failure_probability * position_size_sol
+                
+                if rel > max_rel:
+                    max_rel = rel
+                    worst_pattern = pattern
+                
+                self.logger.debug(f"📊 {pattern.value} R-EL: {rel:.4f} SOL (P={failure_probability:.3f})")
             
-            # Generate risk mitigation suggestions
-            risk_mitigation_suggestions = self._generate_mitigation_suggestions(failure_scenarios)
+            # VETO DECISION: If any R-EL exceeds threshold
+            if max_rel > self.acceptable_rel_threshold:
+                veto_reason = f"{worst_pattern.value.upper()} R-EL of {max_rel:.4f} SOL exceeds threshold of {self.acceptable_rel_threshold} SOL"
+                
+                self.logger.warning(f"🚫 WCCA VETO | {token_address[:8]} | {veto_reason}")
+                
+                return {
+                    "veto": True,
+                    "reason": veto_reason,
+                    "rel_calculated": max_rel,
+                    "threshold": self.acceptable_rel_threshold,
+                    "worst_pattern": worst_pattern.value
+                }
             
-            # Calculate analysis duration
+            # CLEAR DECISION: All R-EL within acceptable limits
             analysis_duration = (datetime.now() - start_time).total_seconds() * 1000
+            self.logger.info(f"✅ WCCA CLEAR | {token_address[:8]} | Max R-EL: {max_rel:.4f} SOL | Duration: {analysis_duration:.1f}ms")
             
-            # Create analysis result
-            analysis = PreMortemAnalysis(
-                trade_id=trade_id,
-                token_address=token_address,
-                analyzed_at=start_time,
-                failure_scenarios=failure_scenarios,
-                overall_failure_probability=overall_failure_probability,
-                max_potential_loss=max_potential_loss,
-                confidence_score=confidence_score,
-                veto_recommended=veto_recommended,
-                veto_reasons=veto_reasons,
-                risk_mitigation_suggestions=risk_mitigation_suggestions,
-                analysis_duration_ms=int(analysis_duration),
-                patterns_analyzed=len(self.failure_patterns),
-                historical_matches=self._count_historical_matches(token_address)
-            )
-            
-            # Log analysis result
-            if veto_recommended:
-                self.vetoes_issued += 1
-                self.logger.warning(f"🚫 TRADE VETO ISSUED | Token: {token_address[:8]} | "
-                                  f"Failure Probability: {overall_failure_probability:.2%} | "
-                                  f"Reasons: {[r.value for r in veto_reasons]}")
-            else:
-                self.logger.info(f"✅ Trade cleared pre-mortem | Token: {token_address[:8]} | "
-                               f"Risk Score: {overall_failure_probability:.2%}")
-            
-            return analysis
+            return {
+                "veto": False,
+                "max_rel": max_rel,
+                "analysis_duration_ms": analysis_duration
+            }
             
         except Exception as e:
-            self.logger.error(f"Error in pre-mortem analysis: {e}")
-            # Return safe default (veto)
-            return PreMortemAnalysis(
-                trade_id=trade_id,
-                token_address=trade_params.get('token_address', ''),
-                analyzed_at=start_time,
-                failure_scenarios=[],
-                overall_failure_probability=1.0,  # Assume failure if analysis fails
-                max_potential_loss=trade_params.get('amount', 0.0),
-                confidence_score=0.0,
-                veto_recommended=True,
-                veto_reasons=[VetoReason.TECHNICAL_RED_FLAGS],
-                risk_mitigation_suggestions=["Analysis system failure - abort trade"],
-                analysis_duration_ms=int((datetime.now() - start_time).total_seconds() * 1000),
-                patterns_analyzed=0,
-                historical_matches=0
-            )
+            self.logger.error(f"❌ WCCA analysis error: {e}")
+            # FAIL-SAFE: Veto on analysis failure
+            return {
+                "veto": True,
+                "reason": f"WCCA analysis system failure: {str(e)}"
+                         }
+    
+    async def _get_rug_pull_probability(self, trade_params: Dict[str, Any]) -> float:
+        """
+        Calculate rug pull probability from specialized rug detection modules
+        
+        Args:
+            trade_params: Trade parameters containing token info
+            
+        Returns:
+            float: Probability of rug pull (0.0 to 1.0)
+        """
+        try:
+            token_address = trade_params.get('token_address', '')
+            
+            # Initialize probability factors
+            probability_factors = []
+            
+            # Check if token is in known rug database
+            if token_address in self.shadow_memory.get('known_rugs', []):
+                probability_factors.append(0.95)  # 95% if known rug
+                
+            # Token age factor
+            token_age_hours = trade_params.get('token_age_hours', 24)
+            if token_age_hours < 1:
+                probability_factors.append(0.8)   # 80% for <1 hour old
+            elif token_age_hours < 6:
+                probability_factors.append(0.6)   # 60% for <6 hours old
+            elif token_age_hours < 24:
+                probability_factors.append(0.4)   # 40% for <24 hours old
+            else:
+                probability_factors.append(0.1)   # 10% baseline for older tokens
+                
+            # Liquidity concentration factor
+            liquidity_concentration = trade_params.get('liquidity_concentration', 0.5)
+            if liquidity_concentration > 0.8:
+                probability_factors.append(0.7)   # 70% for high concentration
+            elif liquidity_concentration > 0.6:
+                probability_factors.append(0.5)   # 50% for medium concentration
+                
+            # Dev holdings factor
+            dev_holdings_percent = trade_params.get('dev_holdings_percent', 0.0)
+            if dev_holdings_percent > 50:
+                probability_factors.append(0.8)   # 80% if dev holds >50%
+            elif dev_holdings_percent > 20:
+                probability_factors.append(0.6)   # 60% if dev holds >20%
+                
+            # Enhanced rug detector score (if available)
+            rug_detector_score = trade_params.get('rug_detector_score', None)
+            if rug_detector_score is not None:
+                probability_factors.append(float(rug_detector_score))
+            
+            # Calculate final probability using geometric mean to avoid over-amplification
+            if probability_factors:
+                # Use max of individual factors rather than multiplication to avoid near-zero results
+                final_probability = max(probability_factors)
+            else:
+                final_probability = 0.2  # Default 20% baseline risk
+                
+            return min(0.99, final_probability)  # Cap at 99%
+            
+        except Exception as e:
+            self.logger.error(f"Error calculating rug pull probability: {e}")
+            return 0.5  # Default to moderate risk on error
+    
+    async def _get_honeypot_probability(self, trade_params: Dict[str, Any]) -> float:
+        """
+        Calculate honeypot probability
+        
+        Args:
+            trade_params: Trade parameters containing token info
+            
+        Returns:
+            float: Probability of honeypot (0.0 to 1.0)
+        """
+        try:
+            token_address = trade_params.get('token_address', '')
+            
+            # Initialize probability factors
+            probability_factors = []
+            
+            # Check contract verification status
+            is_verified = trade_params.get('contract_verified', True)
+            if not is_verified:
+                probability_factors.append(0.7)  # 70% if unverified
+                
+            # Check for suspicious contract patterns
+            has_transfer_restrictions = trade_params.get('has_transfer_restrictions', False)
+            if has_transfer_restrictions:
+                probability_factors.append(0.8)  # 80% if transfer restrictions
+                
+            # Check sell/buy ratio anomalies
+            sell_buy_ratio = trade_params.get('sell_buy_ratio', 1.0)
+            if sell_buy_ratio < 0.1:  # Very few sells compared to buys
+                probability_factors.append(0.9)  # 90% honeypot probability
+            elif sell_buy_ratio < 0.3:
+                probability_factors.append(0.6)  # 60% honeypot probability
+                
+            # Check for blacklist functionality
+            has_blacklist = trade_params.get('has_blacklist_function', False)
+            if has_blacklist:
+                probability_factors.append(0.7)  # 70% if blacklist function exists
+                
+            # Calculate final probability
+            if probability_factors:
+                final_probability = max(probability_factors)
+            else:
+                final_probability = 0.1  # Default 10% baseline risk
+                
+            return min(0.99, final_probability)  # Cap at 99%
+            
+        except Exception as e:
+            self.logger.error(f"Error calculating honeypot probability: {e}")
+            return 0.3  # Default to moderate risk on error
     
     async def _analyze_failure_scenarios(self, trade_params: Dict[str, Any]) -> List[FailureScenario]:
         """Analyze all possible failure scenarios for the trade"""
