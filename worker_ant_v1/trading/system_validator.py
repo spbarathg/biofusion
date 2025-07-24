@@ -365,8 +365,6 @@ class UnifiedSystemValidator:
             "worker_ant_v1.core.unified_config",
             "worker_ant_v1.core.wallet_manager",
             "worker_ant_v1.core.unified_trading_engine",
-            "worker_ant_v1.trading.order_buyer",
-            "worker_ant_v1.trading.order_seller",
             "worker_ant_v1.intelligence.token_intelligence_system",
             "worker_ant_v1.safety.enhanced_rug_detector",
             "worker_ant_v1.utils.market_data_fetcher",

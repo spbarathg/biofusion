@@ -38,7 +38,7 @@ Each functional domain has **one and only one** canonical module. Creating dupli
 
 #### **Trading Operations** (`worker_ant_v1/trading/`)
 - **Market Scanning**: `market_scanner.py` - Opportunity detection
-- **Order Execution**: `order_buyer.py`, `order_seller.py` - Trade execution
+- **Unified Trading Engine**: `unified_trading_engine.py` - **CANONICAL** trade execution
 - **Strategy Classes**: `main.py`, `hyper_compound_squad.py` - **NON-EXECUTABLE** classes only
 
 ---
