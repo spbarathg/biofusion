@@ -86,14 +86,16 @@ python entry_points/run_bot.py --strategy colony --mode production
 - **Mathematical Impact**: None - organizational abstraction only
 
 ### **STEP 4: PRUNE NON-CORE AI AGENTS**
-**Status: 📋 PLANNED**
+**Status: ✅ COMPLETED**
 
-**Files to Remove/Disable:**
+**Files Archived to `_legacy_ml/`:**
 
 #### **4.1 Complex ML Architectures**
-- `worker_ant_v1/trading/prediction_engine.py` (1,183 lines) - Keep simplified version only
-- `worker_ant_v1/trading/oracle_ant.py` - Remove transformer-based predictions  
-- `worker_ant_v1/trading/network_ant.py` - Remove graph neural network
+- `worker_ant_v1/trading/process_pool_manager.py` (763+ lines) - **ARCHIVED** Multi-process ML inference
+- `worker_ant_v1/trading/hunter_ant.py` (485+ lines) - **ARCHIVED** PPO reinforcement learning
+- All `ml_architectures/` components - **ARCHIVED** Transformer-based predictions removed
+
+**Architectural Impact**: System now follows pure lean mathematical core approach
 - `worker_ant_v1/trading/marl_hunter_ant.py` - Remove multi-agent RL
 
 #### **4.2 Narrative/Social Intelligence**

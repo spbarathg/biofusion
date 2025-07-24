@@ -11,7 +11,7 @@ Intelligence and analysis systems including:
 
 # SentimentAnalyzer removed - using canonical SentimentFirstAI instead
 from worker_ant_v1.intelligence.technical_analyzer import TechnicalAnalyzer, TechnicalSignal, TechnicalAnalysis
-# PredictionEngine removed - using simplified mathematical core instead
+# Complex ML components removed - using lean mathematical core instead
 from worker_ant_v1.intelligence.sentiment_first_ai import SentimentFirstAI, SentimentDecision
 from worker_ant_v1.intelligence.caller_intelligence import AdvancedCallerIntelligence
 # ProductionMemoryManager removed - memory management integrated into core systems

@@ -36,7 +36,7 @@ from worker_ant_v1.intelligence.sentiment_first_ai import SentimentFirstAI
 from worker_ant_v1.intelligence.caller_intelligence import AdvancedCallerIntelligence
 from worker_ant_v1.intelligence.technical_analyzer import TechnicalAnalyzer
 from worker_ant_v1.intelligence.narrative_ant import NarrativeAnt, NarrativeCategory
-from worker_ant_v1.trading.ml_architectures.prediction_engine import PredictionEngine
+# PredictionEngine removed - using lean mathematical core instead
 from worker_ant_v1.intelligence.sentiment_first_ai import SentimentFirstAI
 from worker_ant_v1.core.wallet_manager import UnifiedWalletManager
 from worker_ant_v1.safety.vault_wallet_system import VaultWalletSystem
@@ -424,7 +424,7 @@ class ColonyCommander:
         self.caller_intelligence = AdvancedCallerIntelligence()
         self.technical_analyzer = TechnicalAnalyzer()
         self.narrative_ant = NarrativeAnt()  # Strategic narrative intelligence
-        self.ml_predictor = PredictionEngine()
+        # ML predictor removed - using lean mathematical core in simplified bot
         self.sentiment_ai = SentimentFirstAI()
         
         # Initialize validation components

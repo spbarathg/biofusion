@@ -803,7 +803,7 @@ class EnhancedMetricsCollector:
         try:
             # Get real AI metrics from the sentiment analyzer and ML predictor
             from worker_ant_v1.intelligence.sentiment_first_ai import SentimentFirstAI
-            from worker_ant_v1.trading.ml_architectures.prediction_engine import PredictionEngine
+            # PredictionEngine removed - using lean mathematical core instead
             
             # Sentiment AI metrics
             try:
@@ -843,7 +843,7 @@ class EnhancedMetricsCollector:
             
             # ML Predictor metrics
             try:
-                ml_predictor = PredictionEngine()
+                # ML predictor removed - using lean mathematical core instead
                 await ml_predictor.initialize()
                 if hasattr(ml_predictor, 'get_model_metrics'):
                     ml_metrics = ml_predictor.get_model_metrics()

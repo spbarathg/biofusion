@@ -18,10 +18,10 @@ This manifesto establishes the inviolable architectural rules that maintain our 
 Each functional domain has **one and only one** canonical module. Creating duplicates is strictly forbidden.
 
 #### **Core Systems** (`worker_ant_v1/core/`)
-- **Configuration**: `unified_config.py` - All system configuration
-- **Database**: `database.py` - All database operations  
-- **Wallet Management**: `wallet_manager.py` - All wallet operations
-- **Trading Engine**: `unified_trading_engine.py` - Core trading logic
+- **Configuration**: `unified_config.py` - **CANONICAL** All system configuration
+- **Database**: `database.py` - **CANONICAL** All database operations  
+- **Wallet Management**: `wallet_manager.py` - **CANONICAL** All wallet operations
+- **Trading Engine**: `unified_trading_engine.py` - **CANONICAL** Core trading logic
 - **API Keys**: `configure_api_keys.py` - **CANONICAL** API configuration
 
 #### **Intelligence Systems** (`worker_ant_v1/intelligence/`)
@@ -38,8 +38,9 @@ Each functional domain has **one and only one** canonical module. Creating dupli
 
 #### **Trading Operations** (`worker_ant_v1/trading/`)
 - **Market Scanning**: `market_scanner.py` - Opportunity detection
-- **Unified Trading Engine**: `unified_trading_engine.py` - **CANONICAL** trade execution
-- **Strategy Classes**: `main.py`, `hyper_compound_squad.py` - **NON-EXECUTABLE** classes only
+- **Simplified Trading Bot**: `simplified_trading_bot.py` - **CANONICAL** lean mathematical core
+- **Colony Commander**: `colony_commander.py` - High-availability orchestration using simplified core
+- **Legacy Archive**: `_legacy_ml/` - **ARCHIVED** Complex ML components (DO NOT USE)
 
 ---
 

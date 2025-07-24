@@ -1,14 +1,14 @@
 """
-SMART APE TRADING BOT - UNIFIED LAUNCHER
-======================================
+ANTBOT - LEAN MATHEMATICAL TRADING SYSTEM LAUNCHER
+=================================================
 
 Single entry point for all bot operations.
-Choose your deployment mode, strategy, and let the bot handle the rest.
+Choose your deployment mode and strategy.
 
 Usage:
-  python run_bot.py --mode production --strategy hyper_intelligent
-  python run_bot.py --mode production --strategy hyper_compound
-  python run_bot.py --mode simulation --strategy hyper_compound
+  python run_bot.py --mode production --strategy simplified
+  python run_bot.py --mode simulation --strategy simplified
+  python run_bot.py --mode production --strategy colony
   python run_bot.py --mode test
 """
 
@@ -22,8 +22,7 @@ sys.path.append(str(Path(__file__).parent.parent))
 
 from tests.bulletproof_testing_suite import BulletproofTestingSuite
 from worker_ant_v1.trading.system_validator import validate_production_config_sync
-from worker_ant_v1.trading.main import HyperIntelligentTradingSwarm
-# HyperCompoundSwarm removed - using SimplifiedTradingBot instead
+# Complex ML strategies removed - using only lean mathematical core
 from worker_ant_v1.trading.simplified_trading_bot import SimplifiedTradingBot
 from entry_points.colony_commander import ColonyCommander
 
@@ -37,12 +36,12 @@ class BotLauncher:
         self.strategy = None
         self.capital = 10.0
 
-    async def launch(self, mode: str, strategy: str = "hyper_intelligent", capital: float = 10.0) -> int:
+    async def launch(self, mode: str, strategy: str = "simplified", capital: float = 10.0) -> int:
         """Launch bot in specified mode with selected strategy.
 
         Args:
             mode: The operation mode (production, simulation, test)
-            strategy: The trading strategy (hyper_intelligent, hyper_compound)
+            strategy: The trading strategy (simplified, colony)
             capital: Initial capital in SOL
 
         Returns:
@@ -110,10 +109,6 @@ class BotLauncher:
         """
         if self.strategy == "simplified":
             return SimplifiedTradingBot()
-        elif self.strategy == "hyper_intelligent":
-            return HyperIntelligentTradingSwarm(initial_capital=self.capital)
-        elif self.strategy == "hyper_compound":
-            return HyperCompoundSwarm()
         elif self.strategy == "colony":
             # Determine HA mode based on mode and environment - CANONICAL ACCESS THROUGH UNIFIED CONFIG
             from worker_ant_v1.core.unified_config import get_ha_config
@@ -121,7 +116,7 @@ class BotLauncher:
             enable_ha = self.mode in ["production", "live"] and not ha_config['disable_ha']
             return ColonyCommander(enable_ha=enable_ha)
         else:
-            raise ValueError(f"Unknown strategy: {self.strategy}")
+            raise ValueError(f"Unknown strategy: {self.strategy}. Available strategies: 'simplified', 'colony'")
 
     async def _launch_production(self) -> int:
         """Launch full production system.
@@ -263,7 +258,7 @@ def main():
 
     parser.add_argument(
         "--strategy",
-        choices=["simplified", "hyper_intelligent", "hyper_compound", "colony"],
+        choices=["simplified", "colony"],
         default="simplified",
         help="Trading strategy (default: simplified)",
     )

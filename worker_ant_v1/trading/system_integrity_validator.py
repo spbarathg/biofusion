@@ -32,7 +32,7 @@ from worker_ant_v1.safety.kill_switch import EnhancedKillSwitch
 from worker_ant_v1.safety.alert_system import BattlefieldAlertSystem, AlertPriority
 from worker_ant_v1.core.wallet_manager import UnifiedWalletManager
 from worker_ant_v1.core.swarm_decision_engine import SwarmDecisionEngine
-from worker_ant_v1.trading.ml_architectures.prediction_engine import PredictionEngine
+# PredictionEngine removed - using lean mathematical core instead
 
 
 class ValidationStatus(Enum):
@@ -128,7 +128,7 @@ class SystemIntegrityValidator:
         self.kill_switch: Optional[EnhancedKillSwitch] = None
         self.wallet_manager: Optional[UnifiedWalletManager] = None
         self.swarm_engine: Optional[SwarmDecisionEngine] = None
-        self.prediction_engine: Optional[PredictionEngine] = None
+        # Prediction engine removed - using lean mathematical core instead
         self.alert_system: Optional[BattlefieldAlertSystem] = None
         
         # Performance tracking
