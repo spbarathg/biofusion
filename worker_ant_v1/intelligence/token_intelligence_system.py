@@ -91,6 +91,10 @@ class TokenIntelligenceSystem:
         self.analysis_history: Dict[str, List[TokenAnalysis]] = {}
         self.pattern_database: Dict[str, List[Dict[str, Any]]] = {}
         
+        # Race condition protection
+        self._cache_lock = asyncio.Lock()
+        self._history_lock = asyncio.Lock()
+        
         # Configuration
         self.config = {
             'cache_ttl_minutes': 15,
@@ -147,16 +151,17 @@ class TokenIntelligenceSystem:
             analysis = await self._perform_comprehensive_analysis(token_address, token_metrics)
             
             # Cache the analysis
-            self._cache_analysis(token_address, analysis)
+            await self._cache_analysis(token_address, analysis)
             
-            # Store in history
-            if token_address not in self.analysis_history:
-                self.analysis_history[token_address] = []
-            self.analysis_history[token_address].append(analysis)
-            
-            # Keep only last 50 analyses per token
-            if len(self.analysis_history[token_address]) > 50:
-                self.analysis_history[token_address] = self.analysis_history[token_address][-50:]
+            # Store in history - RACE CONDITION PROTECTED
+            async with self._history_lock:
+                if token_address not in self.analysis_history:
+                    self.analysis_history[token_address] = []
+                self.analysis_history[token_address].append(analysis)
+                
+                # Keep only last 50 analyses per token
+                if len(self.analysis_history[token_address]) > 50:
+                    self.analysis_history[token_address] = self.analysis_history[token_address][-50:]
             
             return analysis
             
@@ -658,17 +663,18 @@ class TokenIntelligenceSystem:
             self.logger.error(f"Error getting cached analysis: {e}")
             return None
     
-    def _cache_analysis(self, token_address: str, analysis: TokenAnalysis):
-        """Cache analysis result"""
+    async def _cache_analysis(self, token_address: str, analysis: TokenAnalysis):
+        """Cache analysis result - RACE CONDITION PROTECTED"""
         try:
-            self.token_cache[token_address] = analysis
-            
-            # Limit cache size
-            if len(self.token_cache) > 1000:
-                # Remove oldest entries
-                oldest_key = min(self.token_cache.keys(), 
-                               key=lambda k: self.token_cache[k].timestamp)
-                del self.token_cache[oldest_key]
+            async with self._cache_lock:
+                self.token_cache[token_address] = analysis
+                
+                # Limit cache size
+                if len(self.token_cache) > 1000:
+                    # Remove oldest entries
+                    oldest_key = min(self.token_cache.keys(), 
+                                   key=lambda k: self.token_cache[k].timestamp)
+                    del self.token_cache[oldest_key]
                 
         except Exception as e:
             self.logger.error(f"Error caching analysis: {e}")

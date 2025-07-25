@@ -121,8 +121,11 @@ class VaultAllocation:
 class VaultWalletSystem:
     """Manages secure vault wallets for profit protection"""
     
-    def __init__(self):
+    def __init__(self, kill_switch=None):
         self.logger = setup_logger("VaultWalletSystem")
+        
+        # Safety systems
+        self.kill_switch = kill_switch
         
         # Vault storage
         self.vaults: Dict[str, VaultWallet] = {}
@@ -637,6 +640,11 @@ class VaultWalletSystem:
     
     async def deposit_profits(self, amount: float) -> bool:
         """Deposit profits to vault system - simplified interface"""
+        # CRITICAL SAFETY CHECK: Kill switch verification
+        if self.kill_switch and self.kill_switch.is_triggered:
+            self.logger.critical("Kill switch is active. Aborting call to deposit_profits.")
+            return False
+            
         try:
             # Use daily vault for profit deposits
             vault_id = "vault_daily"
@@ -654,6 +662,11 @@ class VaultWalletSystem:
     
     async def _deposit_to_vault(self, vault_id: str, amount: float, source_wallet: str):
         """Deposit funds to a vault"""
+        # CRITICAL SAFETY CHECK: Kill switch verification
+        if self.kill_switch and self.kill_switch.is_triggered:
+            self.logger.critical("Kill switch is active. Aborting call to _deposit_to_vault.")
+            return
+            
         try:
             vault = self.vaults[vault_id]
             

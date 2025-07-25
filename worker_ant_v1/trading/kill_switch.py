@@ -135,7 +135,3 @@ class EnhancedKillSwitch:
     async def shutdown(self):
         """Shutdown kill switch"""
         self.logger.info("🛑 Kill switch shutdown")
-    
-    def is_triggered(self) -> bool:
-        """Check if kill switch is triggered"""
-        return self.is_triggered 

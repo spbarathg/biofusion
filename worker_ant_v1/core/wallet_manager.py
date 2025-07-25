@@ -141,9 +141,12 @@ class TradingWallet:
 class UnifiedWalletManager:
     """Production-ready wallet manager with real Solana integration"""
     
-    def __init__(self):
+    def __init__(self, kill_switch=None):
         self.logger = get_logger(__name__)
         self.config = get_wallet_config()
+        
+        # Safety systems
+        self.kill_switch = kill_switch
         
         # Solana RPC client
         self.rpc_client = AsyncClient(self.config.get('solana_rpc_url', 'https://api.mainnet-beta.solana.com'))
@@ -517,8 +520,9 @@ class UnifiedWalletManager:
     def _calculate_wallet_fitness(self, wallet: TradingWallet, requirements: Dict[str, Any]) -> float:
         """Calculate wallet fitness for a specific trade"""
         try:
-            # Base score from performance
-            performance_score = wallet.performance.win_rate * 0.4 + wallet.performance.sharpe_ratio * 0.3
+            # Base score from performance - PROTECTED AGAINST DIVISION BY ZERO
+            win_rate = wallet.performance.win_rate if wallet.performance.total_trades > 0 else 0.0
+            performance_score = win_rate * 0.4 + wallet.performance.sharpe_ratio * 0.3
             
             # Behavior match score
             required_behavior = requirements.get('behavior', None)
@@ -530,10 +534,11 @@ class UnifiedWalletManager:
             required_aggression = requirements.get('aggression', 0.5)
             aggression_match = 1.0 - abs(wallet.genetics.aggression - required_aggression)
             
-            # Risk tolerance match
+            # Risk tolerance match - FIXED MATHEMATICAL ERROR
             risk_level = requirements.get('risk_level', 'medium')
             risk_scores = {'low': 0.3, 'medium': 0.5, 'high': 0.8}
-            risk_match = 1.0 - abs(wallet.genetics.aggression - risk_scores.get(risk_level, 0.5))
+            target_risk_tolerance = risk_scores.get(risk_level, 0.5)
+            risk_match = 1.0 - abs(wallet.genetics.risk_tolerance - target_risk_tolerance)
             
             # Calculate final score
             final_score = (
@@ -551,6 +556,11 @@ class UnifiedWalletManager:
 
     async def update_wallet_performance(self, wallet_id: str, trade_result: Dict[str, Any]):
         """Update wallet performance after a trade"""
+        # CRITICAL SAFETY CHECK: Kill switch verification
+        if self.kill_switch and self.kill_switch.is_triggered:
+            self.logger.critical("Kill switch is active. Aborting call to update_wallet_performance.")
+            return
+            
         try:
             if wallet_id not in self.wallets:
                 return

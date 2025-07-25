@@ -49,8 +49,11 @@ class SwarmDecisionEngine:
     narrative weighting to determine optimal trading decisions.
     """
     
-    def __init__(self):
+    def __init__(self, kill_switch=None):
         self.logger = setup_logger("SwarmDecisionEngine")
+        
+        # Safety systems
+        self.kill_switch = kill_switch
         
         # Signal processing configuration
         self.confidence_threshold = 0.6
@@ -95,6 +98,11 @@ class SwarmDecisionEngine:
         Returns:
             float: Win probability (0.0 to 1.0)
         """
+        # CRITICAL SAFETY CHECK: Kill switch verification
+        if self.kill_switch and self.kill_switch.is_triggered:
+            self.logger.critical("Kill switch is active. Aborting call to analyze_opportunity.")
+            return 0.0
+            
         try:
             self.logger.debug(f"🧠 Naive Bayes analysis for {token_address}")
             
@@ -444,22 +452,41 @@ class SwarmDecisionEngine:
             return self._create_safe_consensus("hold", 0.0, narrative_weight)
         
         try:
-            # Aggregate signals by type
-            signal_votes = {'buy': 0, 'sell': 0, 'hold': 0}
-            weighted_confidence = {'buy': 0, 'sell': 0, 'hold': 0}
+            # CRITICAL: TRUE CONSENSUS LOGIC - ALL SOURCES MUST AGREE FOR BUY
+            # Categorize signals by source
+            technical_signals = [s for s in signals if s.metadata.get('source') == 'technical_analysis']
+            sentiment_signals = [s for s in signals if s.metadata.get('source') == 'sentiment_analysis']
+            narrative_signals = [s for s in signals if s.metadata.get('source') == 'narrative_analysis']
+            security_signals = [s for s in signals if s.metadata.get('source') == 'security_analysis']
             
-            for signal in signals:
-                weight = self.signal_weights.get(signal.metadata.get('source', ''), 0.25)
-                signal_votes[signal.signal_type] += weight
-                weighted_confidence[signal.signal_type] += signal.confidence * weight
+            # Check for unanimous BUY consensus across ALL critical sources
+            consensus_action = "hold"  # Default to safe hold
+            consensus_confidence = 0.0
             
-            # Determine consensus action
-            consensus_action = max(signal_votes, key=signal_votes.get)
+            # Require ALL sources to have BUY signals for a BUY recommendation
+            technical_buy = any(s.signal_type == 'buy' and s.confidence >= self.confidence_threshold for s in technical_signals)
+            sentiment_buy = any(s.signal_type == 'buy' and s.confidence >= self.confidence_threshold for s in sentiment_signals)
+            narrative_buy = any(s.signal_type == 'buy' and s.confidence >= self.confidence_threshold for s in narrative_signals)
+            security_buy = any(s.signal_type == 'buy' and s.confidence >= self.confidence_threshold for s in security_signals)
             
-            # Calculate consensus confidence
-            total_votes = sum(signal_votes.values())
-            action_confidence = weighted_confidence[consensus_action] / max(signal_votes[consensus_action], 0.1)
-            consensus_confidence = action_confidence * (signal_votes[consensus_action] / total_votes)
+            # TRUE AND CONDITION: ALL must be true for BUY
+            if technical_buy and sentiment_buy and narrative_buy and security_buy:
+                consensus_action = "buy"
+                # Calculate minimum confidence across sources (weakest link determines overall confidence)
+                all_confidences = [s.confidence for s in signals if s.signal_type == 'buy']
+                consensus_confidence = min(all_confidences) if all_confidences else 0.0
+            
+            # Check for ANY sell signal (any source can trigger sell)
+            elif any(s.signal_type == 'sell' and s.confidence >= self.confidence_threshold for s in signals):
+                consensus_action = "sell"
+                sell_confidences = [s.confidence for s in signals if s.signal_type == 'sell']
+                consensus_confidence = max(sell_confidences) if sell_confidences else 0.0
+            
+            # Default: hold with average confidence
+            else:
+                consensus_action = "hold"
+                all_confidences = [s.confidence for s in signals]
+                consensus_confidence = np.mean(all_confidences) if all_confidences else 0.0
             
             # Calculate risk assessment
             risk_scores = [s.risk_level for s in signals]

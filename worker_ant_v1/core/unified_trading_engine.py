@@ -494,6 +494,13 @@ class UnifiedTradingEngine:
             # Update metrics
             self._update_trading_metrics(order, result)
             
+            # CRITICAL: Process profits for successful sell orders
+            if result['success'] and order.order_type == OrderType.SELL:
+                profit_sol = result.get('profit_sol', 0.0)
+                if profit_sol > 0:
+                    # MANDATORY: Send profits to vault system with transaction safety
+                    await self._process_profit_to_vault(profit_sol, order.order_id)
+            
             if result['success']:
                 self.logger.info(f"✅ Order {order.order_id} completed successfully")
             else:
@@ -523,9 +530,11 @@ class UnifiedTradingEngine:
             # Get wallet keypair
             wallet_keypair = await self.wallet_manager.get_wallet_keypair(order.wallet_id)
             if not wallet_keypair:
+                error_msg = f"CRITICAL FAILURE: Could not retrieve keypair for wallet {order.wallet_id}. Aborting trade."
+                self.logger.critical(error_msg)
                 return {
                     'success': False,
-                    'error_message': f'Failed to get keypair for wallet {order.wallet_id}'
+                    'error_message': error_msg
                 }
             
             # Execute real trade via Jupiter
@@ -1014,6 +1023,42 @@ class UnifiedTradingEngine:
         else:
             self.trading_active = False
             self.logger.info("❌ Trading disabled")
+
+    async def _process_profit_to_vault(self, profit_sol: float, order_id: str):
+        """Process profit to vault system with transaction safety"""
+        try:
+            from decimal import Decimal
+            
+            # Use Decimal for precise currency calculations
+            profit_decimal = Decimal(str(profit_sol))
+            
+            # Ensure we have vault system reference
+            if not self.vault_system:
+                self.logger.error("CRITICAL: Vault system not available for profit processing")
+                return
+            
+            # Process profit with retry mechanism
+            max_retries = 3
+            for attempt in range(max_retries):
+                try:
+                    success = await self.vault_system.deposit_profits(float(profit_decimal))
+                    if success:
+                        self.logger.info(f"💰 PROFIT SECURED: {profit_decimal} SOL deposited to vault for order {order_id}")
+                        return
+                    else:
+                        self.logger.warning(f"Vault deposit failed for order {order_id}, attempt {attempt + 1}")
+                except Exception as e:
+                    self.logger.error(f"Vault deposit error for order {order_id}, attempt {attempt + 1}: {e}")
+                
+                # Wait before retry
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(1.0)
+            
+            # If all retries failed, this is critical
+            self.logger.critical(f"CRITICAL FAILURE: Could not secure profit {profit_decimal} SOL for order {order_id}")
+            
+        except Exception as e:
+            self.logger.critical(f"CRITICAL ERROR in profit processing for order {order_id}: {e}")
 
 # Global instance
 _trading_engine = None

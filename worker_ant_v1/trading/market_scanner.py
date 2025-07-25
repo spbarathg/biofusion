@@ -137,9 +137,9 @@ class RealMarketScanner:
             if token_data.holder_count < min_holders:
                 return False
                 
-            # Price impact filter (simplified)
+            # Price impact filter (simplified) - PROTECTED AGAINST DIVISION BY ZERO
             if token_data.volume_24h > 0 and token_data.liquidity > 0:
-                volume_liquidity_ratio = token_data.volume_24h / token_data.liquidity
+                volume_liquidity_ratio = token_data.volume_24h / max(token_data.liquidity, 0.001)
                 if volume_liquidity_ratio > 10:  # High volume relative to liquidity
                     return False
                 
