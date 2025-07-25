@@ -262,11 +262,57 @@ class SimplifiedTradingBot:
             
             wcca_result = await self.devils_advocate.conduct_pre_mortem_analysis(trade_params)
             
+            # ═══════════════════════════════════════════════════════════
+            # ENHANCED WCCA RESULT ANALYSIS - Full pattern breakdown
+            # ═══════════════════════════════════════════════════════════
+            
             if wcca_result.get('veto', False):
-                self.logger.warning(f"🚫 STAGE 1 WCCA VETO: {token_symbol} | {wcca_result.get('reason', 'Unknown')}")
+                # Enhanced veto logging with pattern details
+                worst_pattern = wcca_result.get('worst_pattern', 'Unknown')
+                rel_calculated = wcca_result.get('rel_calculated', 0.0)
+                patterns_analyzed = wcca_result.get('patterns_analyzed', 0)
+                
+                self.logger.warning(f"🚫 STAGE 1 WCCA VETO: {token_symbol}")
+                self.logger.warning(f"   └─ Worst Pattern: {worst_pattern}")
+                self.logger.warning(f"   └─ R-EL: {rel_calculated:.4f} SOL (Threshold: {wcca_result.get('threshold', 0.0):.4f})")
+                self.logger.warning(f"   └─ Patterns Analyzed: {patterns_analyzed}")
+                self.logger.warning(f"   └─ Reason: {wcca_result.get('reason', 'Unknown')}")
+                
+                # Log R-EL breakdown for analysis
+                rel_breakdown = wcca_result.get('rel_breakdown', {})
+                if rel_breakdown:
+                    self.logger.debug("📊 R-EL Pattern Breakdown:")
+                    for pattern, rel_value in sorted(rel_breakdown.items(), key=lambda x: x[1], reverse=True):
+                        if rel_value > 0.001:  # Only log significant risks
+                            self.logger.debug(f"   └─ {pattern}: {rel_value:.4f} SOL")
+                
+                # Store veto data for future ML training
+                self._record_wcca_veto(token_address, wcca_result, trade_params)
                 return
             
-            self.logger.info(f"✅ STAGE 1 CLEAR: {token_symbol} | Max R-EL: {wcca_result.get('max_rel', 0):.4f} SOL")
+            # Enhanced clear logging with pattern insights
+            max_rel = wcca_result.get('max_rel', 0.0)
+            patterns_analyzed = wcca_result.get('patterns_analyzed', 0)
+            rel_breakdown = wcca_result.get('rel_breakdown', {})
+            
+            self.logger.info(f"✅ STAGE 1 CLEAR: {token_symbol}")
+            self.logger.info(f"   └─ Max R-EL: {max_rel:.4f} SOL")
+            self.logger.info(f"   └─ Patterns Analyzed: {patterns_analyzed}")
+            
+            # Log top risk patterns for insight
+            if rel_breakdown:
+                top_risks = sorted(rel_breakdown.items(), key=lambda x: x[1], reverse=True)[:3]
+                risk_summary = " | ".join([f"{pattern}: {value:.3f}" for pattern, value in top_risks if value > 0.001])
+                if risk_summary:
+                    self.logger.debug(f"   └─ Top Risks: {risk_summary}")
+            
+            # Store WCCA analysis for position tracking
+            wcca_analysis_summary = {
+                'max_rel': max_rel,
+                'patterns_analyzed': patterns_analyzed,
+                'worst_pattern': rel_breakdown and max(rel_breakdown, key=rel_breakdown.get),
+                'analysis_duration_ms': wcca_result.get('analysis_duration_ms', 0)
+            }
             
             # ═══════════════════════════════════════════════════════════
             # STAGE 2: WIN-RATE ENGINE - NAIVE BAYES PROBABILITY
@@ -308,35 +354,102 @@ class SimplifiedTradingBot:
                 opportunity=opportunity,
                 position_size=optimal_position_size,
                 win_probability=win_probability,
-                entry_signals=market_data  # Store signals for learning
+                entry_signals=market_data,  # Store signals for learning
+                wcca_analysis=wcca_analysis_summary  # Store WCCA insights
             )
             
         except Exception as e:
             self.logger.error(f"❌ Pipeline error for {opportunity.get('token_symbol', 'Unknown')}: {e}")
     
     async def _gather_market_signals(self, opportunity: Dict[str, Any]) -> Dict[str, Any]:
-        """Gather market signals for Naive Bayes analysis"""
+        """
+        Gather market signals for Naive Bayes analysis with logical purity.
+        All signals sourced from canonical analyzer modules for consistency.
+        """
         try:
             token_address = opportunity['token_address']
             
-            # Get sentiment analysis
+            # ═══════════════════════════════════════════════════════════
+            # CANONICAL SIGNAL SOURCES - All from dedicated analyzers
+            # ═══════════════════════════════════════════════════════════
+            
+            # Get sentiment analysis from SentimentFirstAI
             sentiment_result = await self.sentiment_ai.analyze_sentiment(token_address)
             
-            # Get technical analysis  
+            # Get technical analysis from TechnicalAnalyzer
             technical_result = await self.technical_analyzer.analyze_token(token_address)
             
-            # Compile signals
-            signals = {
-                'sentiment_score': sentiment_result.sentiment_score if sentiment_result else 0.5,
-                'confidence': sentiment_result.confidence if sentiment_result else 0.5,
-                'social_buzz': sentiment_result.social_buzz_score if sentiment_result else 0.5,
-                'volume_momentum': opportunity.get('volume_change_24h', 1.0),
-                'price_momentum': opportunity.get('price_change_24h', 0.0),
-                'liquidity_health': 1.0 - opportunity.get('liquidity_concentration', 0.5),
-                'rsi_oversold': 1.0 if technical_result and getattr(technical_result, 'rsi', 50) < 30 else 0.0,
-                'volume_spike': 1.0 if opportunity.get('volume_change_24h', 1.0) > 2.0 else 0.0
-            }
+            # Get market data from MarketDataFetcher (not pre-processed opportunity)
+            try:
+                from worker_ant_v1.utils.market_data_fetcher import MarketDataFetcher
+                market_fetcher = MarketDataFetcher()
+                fresh_market_data = await market_fetcher.get_token_data(token_address)
+            except Exception as e:
+                self.logger.warning(f"Failed to get fresh market data, using fallback: {e}")
+                fresh_market_data = None
             
+            # Get liquidity analysis from enhanced rug detector
+            liquidity_analysis = None
+            if hasattr(self, 'rug_detector'):
+                try:
+                    liquidity_analysis = await self.rug_detector.analyze_liquidity_health(token_address)
+                except Exception as e:
+                    self.logger.debug(f"Liquidity analysis unavailable: {e}")
+            
+            # ═══════════════════════════════════════════════════════════
+            # COMPILE SIGNALS - All from canonical sources
+            # ═══════════════════════════════════════════════════════════
+            
+            signals = {}
+            
+            # Sentiment signals
+            if sentiment_result:
+                signals['sentiment_score'] = sentiment_result.sentiment_score
+                signals['confidence'] = sentiment_result.confidence
+                signals['social_buzz'] = sentiment_result.social_buzz_score
+            else:
+                signals['sentiment_score'] = 0.5
+                signals['confidence'] = 0.5
+                signals['social_buzz'] = 0.5
+            
+            # Technical analysis signals
+            if technical_result:
+                signals['rsi_oversold'] = 1.0 if getattr(technical_result, 'rsi', 50) < 30 else 0.0
+                signals['rsi_overbought'] = 1.0 if getattr(technical_result, 'rsi', 50) > 70 else 0.0
+                signals['volume_momentum'] = getattr(technical_result, 'volume_change_24h', 1.0)
+                signals['price_momentum'] = getattr(technical_result, 'price_change_24h', 0.0)
+                signals['technical_strength'] = getattr(technical_result, 'overall_score', 0.5)
+            else:
+                # Fallback to fresh market data if technical analysis unavailable
+                if fresh_market_data:
+                    signals['volume_momentum'] = fresh_market_data.get('volume_change_24h', 1.0)
+                    signals['price_momentum'] = fresh_market_data.get('price_change_24h', 0.0)
+                else:
+                    signals['volume_momentum'] = 1.0
+                    signals['price_momentum'] = 0.0
+                
+                signals['rsi_oversold'] = 0.0
+                signals['rsi_overbought'] = 0.0
+                signals['technical_strength'] = 0.5
+            
+            # Liquidity and market structure signals
+            if liquidity_analysis:
+                signals['liquidity_health'] = liquidity_analysis.get('health_score', 0.5)
+                signals['liquidity_concentration_risk'] = liquidity_analysis.get('concentration_risk', 0.5)
+            elif fresh_market_data:
+                # Calculate from fresh data
+                liquidity_concentration = fresh_market_data.get('liquidity_concentration', 0.5)
+                signals['liquidity_health'] = 1.0 - liquidity_concentration
+                signals['liquidity_concentration_risk'] = liquidity_concentration
+            else:
+                signals['liquidity_health'] = 0.5
+                signals['liquidity_concentration_risk'] = 0.5
+            
+            # Derived momentum signals
+            signals['volume_spike'] = 1.0 if signals['volume_momentum'] > 2.0 else 0.0
+            signals['strong_momentum'] = 1.0 if (signals['price_momentum'] > 0.1 and signals['volume_momentum'] > 1.5) else 0.0
+            
+            self.logger.debug(f"📊 Gathered {len(signals)} canonical signals for {token_address[:8]}")
             return signals
             
         except Exception as e:
@@ -541,6 +654,51 @@ class SimplifiedTradingBot:
         except Exception as e:
             self.logger.error(f"Error recording signal outcome: {e}")
     
+    def _record_wcca_veto(self, token_address: str, wcca_result: Dict[str, Any], trade_params: Dict[str, Any]):
+        """Record WCCA veto data for future pattern analysis and ML training"""
+        try:
+            veto_record = {
+                'timestamp': datetime.now(),
+                'token_address': token_address,
+                'veto_reason': wcca_result.get('reason', 'Unknown'),
+                'worst_pattern': wcca_result.get('worst_pattern', 'Unknown'),
+                'rel_calculated': wcca_result.get('rel_calculated', 0.0),
+                'threshold': wcca_result.get('threshold', 0.0),
+                'patterns_analyzed': wcca_result.get('patterns_analyzed', 0),
+                'rel_breakdown': wcca_result.get('rel_breakdown', {}),
+                'trade_params': {
+                    'amount': trade_params.get('amount', 0.0),
+                    'token_age_hours': trade_params.get('token_age_hours', 0),
+                    'dev_holdings_percent': trade_params.get('dev_holdings_percent', 0.0),
+                    'liquidity_concentration': trade_params.get('liquidity_concentration', 0.0),
+                }
+            }
+            
+            # Store in memory for analysis (could be persisted to database)
+            if not hasattr(self, 'wcca_veto_history'):
+                self.wcca_veto_history = []
+            
+            self.wcca_veto_history.append(veto_record)
+            
+            # Keep only recent history (last 500 vetoes)
+            if len(self.wcca_veto_history) > 500:
+                self.wcca_veto_history = self.wcca_veto_history[-500:]
+            
+            # Log analytics insight
+            if len(self.wcca_veto_history) > 10:
+                recent_vetoes = self.wcca_veto_history[-10:]
+                common_patterns = {}
+                for record in recent_vetoes:
+                    pattern = record['worst_pattern']
+                    common_patterns[pattern] = common_patterns.get(pattern, 0) + 1
+                
+                most_common = max(common_patterns.items(), key=lambda x: x[1])
+                if most_common[1] >= 3:  # If pattern appears 3+ times in last 10 vetoes
+                    self.logger.info(f"📈 WCCA Pattern Alert: {most_common[0]} pattern dominant ({most_common[1]}/10 recent vetoes)")
+            
+        except Exception as e:
+            self.logger.error(f"Error recording WCCA veto: {e}")
+    
     def _calculate_kelly_position_size(self, win_probability: float, current_capital: float) -> float:
         """
         Kelly Criterion position sizing calculation
@@ -579,8 +737,8 @@ class SimplifiedTradingBot:
             self.logger.error(f"Error in Kelly Criterion calculation: {e}")
             return current_capital * 0.01  # Conservative fallback
     
-    async def _execute_trade(self, opportunity: Dict[str, Any], position_size: float, win_probability: float, entry_signals: Dict[str, Any] = None):
-        """Execute trade with simplified, direct execution"""
+    async def _execute_trade(self, opportunity: Dict[str, Any], position_size: float, win_probability: float, entry_signals: Dict[str, Any] = None, wcca_analysis: Dict[str, Any] = None):
+        """Execute trade with simplified, direct execution and enhanced tracking"""
         try:
             token_address = opportunity['token_address']
             token_symbol = opportunity.get('token_symbol', 'Unknown')
@@ -593,7 +751,7 @@ class SimplifiedTradingBot:
             )
             
             if result.get('success', False):
-                # Track position with entry signals for learning
+                # Track position with entry signals and WCCA analysis for learning
                 position = {
                     'token_address': token_address,
                     'token_symbol': token_symbol,
@@ -604,7 +762,8 @@ class SimplifiedTradingBot:
                     'stop_loss_price': result.get('execution_price', 0) * (1 - self.config.stop_loss_percent),
                     'target_profit': result.get('execution_price', 0) * 1.15,  # 15% target
                     'max_hold_until': datetime.now() + timedelta(hours=self.config.max_hold_time_hours),
-                    'entry_signals': entry_signals or {}  # Store for learning
+                    'entry_signals': entry_signals or {},  # Store for learning
+                    'wcca_analysis': wcca_analysis or {}  # Store WCCA insights
                 }
                 
                 self.active_positions[token_address] = position

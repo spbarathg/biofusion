@@ -142,6 +142,12 @@ class ProductionSolanaClient:
             'rpc_switch_count': 0
         }
         
+        # Periodic health monitoring and re-evaluation
+        self.health_check_interval = 300  # 5 minutes
+        self.last_health_check = datetime.now()
+        self.health_check_task: Optional[asyncio.Task] = None
+        self.auto_rebalance_enabled = True
+        
         self._initialize_endpoints()
     
     def _initialize_endpoints(self):
@@ -213,6 +219,11 @@ class ProductionSolanaClient:
             healthy_endpoints = [ep for ep in self.rpc_endpoints if ep.is_healthy]
             if not healthy_endpoints:
                 raise RuntimeError("No healthy RPC endpoints available")
+            
+            # Start periodic health monitoring and re-evaluation
+            if self.auto_rebalance_enabled:
+                self.health_check_task = asyncio.create_task(self._periodic_health_monitor())
+                self.logger.info("🔄 Started periodic RPC health monitoring and re-evaluation")
             
             self.logger.info(f"✅ {len(healthy_endpoints)}/{len(self.rpc_endpoints)} RPC endpoints healthy")
             return True
@@ -497,12 +508,127 @@ class ProductionSolanaClient:
         
         self.logger.info("🔽 Shutting down Solana connections...")
         
+        # Cancel periodic health monitoring
+        if self.health_check_task and not self.health_check_task.done():
+            self.health_check_task.cancel()
+            try:
+                await self.health_check_task
+            except asyncio.CancelledError:
+                pass
         
         for client in self.clients.values():
             try:
                 await client.close()
             except Exception as e:
                 self.logger.debug(f"Error closing client: {e}")
+    
+    async def _periodic_health_monitor(self):
+        """Periodic health monitoring and endpoint re-evaluation"""
+        self.logger.info(f"🔄 Starting periodic RPC health monitoring (interval: {self.health_check_interval}s)")
+        
+        while True:
+            try:
+                await asyncio.sleep(self.health_check_interval)
+                
+                # Perform health checks on all endpoints
+                await self._health_check_all_endpoints()
+                
+                # Re-evaluate and potentially switch to higher-priority endpoint
+                await self._reevaluate_endpoint_priority()
+                
+                self.last_health_check = datetime.now()
+                
+            except asyncio.CancelledError:
+                self.logger.info("🛑 Periodic health monitoring cancelled")
+                break
+            except Exception as e:
+                self.logger.error(f"❌ Error in periodic health monitoring: {e}")
+                # Continue monitoring despite errors
+                await asyncio.sleep(60)  # Wait 1 minute before retrying
+    
+    async def _reevaluate_endpoint_priority(self):
+        """Re-evaluate endpoint priority and switch to higher-priority healthy endpoints"""
+        try:
+            current_endpoint = self.rpc_endpoints[self.current_endpoint_index]
+            
+            # Find the highest-priority healthy endpoint
+            healthy_endpoints = [ep for ep in self.rpc_endpoints if ep.is_healthy]
+            if not healthy_endpoints:
+                self.logger.warning("⚠️ No healthy endpoints available during re-evaluation")
+                return
+            
+            # Sort by priority (lower number = higher priority)
+            healthy_endpoints.sort(key=lambda ep: ep.priority)
+            best_endpoint = healthy_endpoints[0]
+            
+            # Check if we should switch to a higher-priority endpoint
+            if (best_endpoint.priority < current_endpoint.priority or 
+                not current_endpoint.is_healthy):
+                
+                # Find the index of the best endpoint
+                for i, endpoint in enumerate(self.rpc_endpoints):
+                    if endpoint.name == best_endpoint.name:
+                        if i != self.current_endpoint_index:
+                            self.logger.info(
+                                f"🔄 Switching to higher-priority RPC: {best_endpoint.name} "
+                                f"(Priority {best_endpoint.priority}) from {current_endpoint.name} "
+                                f"(Priority {current_endpoint.priority})"
+                            )
+                            self.current_endpoint_index = i
+                            self.performance_metrics['rpc_switch_count'] += 1
+                            
+                            # Log performance comparison
+                            self.logger.debug(
+                                f"   └─ {best_endpoint.name}: {best_endpoint.avg_response_time_ms:.1f}ms avg | "
+                                f"Success: {best_endpoint.success_rate_24h:.1f}%"
+                            )
+                        break
+            
+            # Log current status for monitoring
+            active_endpoint = self.rpc_endpoints[self.current_endpoint_index]
+            self.logger.debug(
+                f"📊 RPC Status: Using {active_endpoint.name} | "
+                f"Health: {len(healthy_endpoints)}/{len(self.rpc_endpoints)} | "
+                f"Switches: {self.performance_metrics['rpc_switch_count']}"
+            )
+            
+        except Exception as e:
+            self.logger.error(f"❌ Error during endpoint re-evaluation: {e}")
+    
+    def get_rpc_health_status(self) -> Dict[str, Any]:
+        """Get comprehensive RPC health status for monitoring"""
+        healthy_count = len([ep for ep in self.rpc_endpoints if ep.is_healthy])
+        current_endpoint = self.rpc_endpoints[self.current_endpoint_index]
+        
+        return {
+            'current_endpoint': {
+                'name': current_endpoint.name,
+                'url': current_endpoint.url,
+                'priority': current_endpoint.priority,
+                'is_healthy': current_endpoint.is_healthy,
+                'avg_response_time_ms': current_endpoint.avg_response_time_ms,
+                'consecutive_failures': current_endpoint.consecutive_failures
+            },
+            'overall_health': {
+                'healthy_endpoints': healthy_count,
+                'total_endpoints': len(self.rpc_endpoints),
+                'health_percentage': (healthy_count / len(self.rpc_endpoints)) * 100,
+                'last_health_check': self.last_health_check.isoformat(),
+                'auto_rebalance_enabled': self.auto_rebalance_enabled
+            },
+            'performance_metrics': self.performance_metrics.copy(),
+            'endpoints': [
+                {
+                    'name': ep.name,
+                    'priority': ep.priority,
+                    'is_healthy': ep.is_healthy,
+                    'avg_response_time_ms': ep.avg_response_time_ms,
+                    'consecutive_failures': ep.consecutive_failures,
+                    'success_rate_24h': ep.success_rate_24h
+                }
+                for ep in self.rpc_endpoints
+            ]
+        }
         
         self.clients.clear()
         self.logger.info("✅ Solana connections closed")

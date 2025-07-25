@@ -24,13 +24,16 @@ RUN apt-get update && apt-get install -y \
 # Create app directory
 WORKDIR /app
 
-# Copy project configuration for better Docker caching
+# Copy ONLY dependency files first for optimal Docker layer caching
 COPY pyproject.toml .
+COPY setup.py ./setup.py 2>/dev/null || true
 
 # Create virtual environment and install dependencies
+# This layer will be cached unless pyproject.toml changes
 RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
-RUN pip install --no-cache-dir -e .
+RUN pip install --upgrade pip setuptools wheel && \
+    pip install --no-cache-dir -e .
 
 # Second stage for smaller final image
 FROM python:3.11-slim
@@ -53,7 +56,12 @@ RUN apt-get update && apt-get install -y \
 # Create app directory
 WORKDIR /app
 
-# Copy application code
+# Copy dependency files first (for consistency with build stage)
+COPY pyproject.toml .
+COPY setup.py ./setup.py 2>/dev/null || true
+
+# Copy application code AFTER virtual environment is ready
+# This separation ensures dependency layer caching works optimally
 COPY . .
 
 # Create necessary directories with secure permissions

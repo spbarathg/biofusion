@@ -99,12 +99,17 @@ class ColonyCommander:
         self.leadership_state = LeadershipState.CANDIDATE
         self.redis_client: Optional[redis.Redis] = None
         
-        # HA Constants
+        # HA Constants with fencing tokens
         self.LEADER_LOCK_KEY = "antbot:colony:leader"
+        self.GENERATION_COUNTER_KEY = "antbot:colony:generation"
         self.HEARTBEAT_KEY = "antbot:colony:heartbeat"
         self.LEADER_TTL = 30  # Leader lock TTL in seconds
         self.HEARTBEAT_INTERVAL = 10  # Heartbeat interval in seconds
         self.ELECTION_TIMEOUT = 15  # Election timeout in seconds
+        
+        # Fencing token to prevent split-brain scenarios
+        self.current_generation = 0
+        self.leader_generation = 0
         
         # Colony state
         self.state = ColonyState.INITIALIZING
@@ -247,12 +252,16 @@ class ColonyCommander:
                 await asyncio.sleep(10)  # Back off on error
     
     async def _attempt_leader_election(self):
-        """Attempt to become the leader"""
+        """Attempt to become the leader with fencing token protection"""
         try:
-            # Try to acquire the leader lock
+            # Increment generation counter atomically
+            new_generation = await self.redis_client.incr(self.GENERATION_COUNTER_KEY)
+            
+            # Try to acquire the leader lock with generation token
             leader_info = {
                 'instance_id': self.instance_id,
                 'hostname': self.hostname,
+                'generation': new_generation,
                 'elected_at': datetime.now().isoformat(),
                 'heartbeat': datetime.now().isoformat()
             }
@@ -266,11 +275,13 @@ class ColonyCommander:
             )
             
             if acquired:
+                self.current_generation = new_generation
+                self.leader_generation = new_generation
                 self.leadership_state = LeadershipState.LEADER
-                self.logger.info(f"🏆 Became colony leader (ID: {self.instance_id})")
+                self.logger.info(f"🏆 Became colony leader (ID: {self.instance_id}, Gen: {new_generation})")
                 await self._become_active_leader()
             else:
-                # Check if current leader is alive
+                # Check if current leader is alive and valid
                 await self._check_current_leader()
                 
         except Exception as e:
@@ -278,25 +289,60 @@ class ColonyCommander:
             self.leadership_state = LeadershipState.FAILED
     
     async def _maintain_leadership(self):
-        """Maintain leadership by updating heartbeat"""
+        """Maintain leadership by updating heartbeat with generation validation"""
         try:
-            # Update heartbeat
+            # First verify we still have the correct generation
+            current_leader_data = await self.redis_client.get(self.LEADER_LOCK_KEY)
+            if current_leader_data:
+                current_leader_info = json.loads(current_leader_data)
+                current_leader_generation = current_leader_info.get('generation', 0)
+                
+                # Check if someone else became leader with a higher generation
+                if current_leader_generation > self.current_generation:
+                    self.logger.warning(f"⚠️ Lost leadership - higher generation detected ({current_leader_generation} > {self.current_generation})")
+                    self.leadership_state = LeadershipState.CANDIDATE
+                    await self._become_standby()
+                    return
+                
+                # Check if we're still the leader with our generation
+                if (current_leader_info.get('instance_id') != self.instance_id or 
+                    current_leader_generation != self.current_generation):
+                    self.logger.warning("⚠️ Lost leadership - different leader or generation")
+                    self.leadership_state = LeadershipState.CANDIDATE
+                    await self._become_standby()
+                    return
+            
+            # Update heartbeat with our generation token
             leader_info = {
                 'instance_id': self.instance_id,
                 'hostname': self.hostname,
+                'generation': self.current_generation,
                 'elected_at': self.start_time.isoformat() if self.start_time else datetime.now().isoformat(),
                 'heartbeat': datetime.now().isoformat()
             }
             
-            # Extend the lock
-            updated = await self.redis_client.set(
-                self.LEADER_LOCK_KEY,
-                json.dumps(leader_info),
-                ex=self.LEADER_TTL
+            # Extend the lock only if we're still the leader
+            script = """
+            local current = redis.call('GET', KEYS[1])
+            if current then
+                local data = cjson.decode(current)
+                if data.instance_id == ARGV[2] and data.generation == tonumber(ARGV[3]) then
+                    return redis.call('SET', KEYS[1], ARGV[1], 'EX', ARGV[4])
+                else
+                    return false
+                end
+            else
+                return false
+            end
+            """
+            
+            updated = await self.redis_client.eval(
+                script, 1, self.LEADER_LOCK_KEY,
+                json.dumps(leader_info), self.instance_id, str(self.current_generation), str(self.LEADER_TTL)
             )
             
             if not updated:
-                self.logger.warning("⚠️ Lost leadership - failed to update lock")
+                self.logger.warning("⚠️ Lost leadership - failed to update lock or generation mismatch")
                 self.leadership_state = LeadershipState.CANDIDATE
                 await self._become_standby()
             
@@ -320,7 +366,7 @@ class ColonyCommander:
             self.leadership_state = LeadershipState.CANDIDATE
     
     async def _check_current_leader(self):
-        """Check if current leader is alive"""
+        """Check if current leader is alive and validate generation"""
         try:
             leader_data = await self.redis_client.get(self.LEADER_LOCK_KEY)
             
@@ -331,18 +377,44 @@ class ColonyCommander:
             
             leader_info = json.loads(leader_data)
             leader_heartbeat = datetime.fromisoformat(leader_info['heartbeat'])
+            leader_generation = leader_info.get('generation', 0)
             current_time = datetime.now()
+            
+            # Update our knowledge of the current leader generation
+            if leader_generation > self.leader_generation:
+                self.leader_generation = leader_generation
             
             # Check if heartbeat is stale
             if (current_time - leader_heartbeat).total_seconds() > self.LEADER_TTL * 2:
-                self.logger.warning("⚠️ Leader heartbeat stale - starting new election")
-                # Try to delete stale lock
-                await self.redis_client.delete(self.LEADER_LOCK_KEY)
+                self.logger.warning(f"⚠️ Leader heartbeat stale (Gen: {leader_generation}) - starting new election")
+                # Try to delete stale lock with generation check
+                script = """
+                local current = redis.call('GET', KEYS[1])
+                if current then
+                    local data = cjson.decode(current)
+                    if data.generation == tonumber(ARGV[1]) then
+                        return redis.call('DEL', KEYS[1])
+                    else
+                        return 0
+                    end
+                else
+                    return 0
+                end
+                """
+                deleted = await self.redis_client.eval(script, 1, self.LEADER_LOCK_KEY, str(leader_generation))
+                if deleted:
+                    self.logger.info(f"🗑️ Deleted stale leader lock (Gen: {leader_generation})")
+                
                 self.leadership_state = LeadershipState.CANDIDATE
             else:
-                # Leader is alive
+                # Leader is alive - check if it's us or someone else
                 if leader_info['instance_id'] != self.instance_id:
                     self.leadership_state = LeadershipState.FOLLOWER
+                elif leader_generation > self.current_generation:
+                    # We're behind - become follower
+                    self.logger.warning(f"⚠️ Detected higher generation leader ({leader_generation} > {self.current_generation})")
+                    self.leadership_state = LeadershipState.FOLLOWER
+                    self.current_generation = leader_generation
                     
         except Exception as e:
             self.logger.error(f"❌ Failed to check leader: {e}")
@@ -407,6 +479,32 @@ class ColonyCommander:
         """Check if this instance is the current leader"""
         return self.leadership_state == LeadershipState.LEADER and self.state == ColonyState.ACTIVE
     
+    async def validate_leadership_command(self) -> bool:
+        """Validate that this instance can issue leadership commands (fencing check)"""
+        if not self.enable_ha:
+            return True  # No HA - always valid
+        
+        if self.leadership_state != LeadershipState.LEADER:
+            return False
+        
+        try:
+            # Check if we're still the leader with the correct generation
+            leader_data = await self.redis_client.get(self.LEADER_LOCK_KEY)
+            if not leader_data:
+                return False
+            
+            leader_info = json.loads(leader_data)
+            return (leader_info.get('instance_id') == self.instance_id and 
+                    leader_info.get('generation', 0) == self.current_generation)
+                    
+        except Exception as e:
+            self.logger.error(f"❌ Failed to validate leadership: {e}")
+            return False
+    
+    def get_current_generation(self) -> int:
+        """Get current generation token for command validation"""
+        return self.current_generation
+    
     def get_ha_status(self) -> Dict[str, Any]:
         """Get HA status information"""
         return {
@@ -415,6 +513,8 @@ class ColonyCommander:
             'leadership_state': self.leadership_state.value,
             'colony_state': self.state.value,
             'is_leader': self.is_leader(),
+            'current_generation': self.current_generation,
+            'leader_generation': self.leader_generation,
             'ha_enabled': self.enable_ha,
             'running': self.running,
             'active_swarms': len(self.swarms),
@@ -618,7 +718,12 @@ class ColonyCommander:
     async def _rebalance_colony_capital(self):
         """Rebalance capital across swarms based on performance"""
         try:
-            self.logger.info("⚖️ Starting colony capital rebalancing...")
+            # Validate leadership before executing critical operation
+            if not await self.validate_leadership_command():
+                self.logger.warning("⚠️ Cannot rebalance - leadership validation failed")
+                return
+            
+            self.logger.info(f"⚖️ Starting colony capital rebalancing (Gen: {self.current_generation})...")
             self.state = ColonyState.REBALANCING
             
             # Calculate performance rankings
@@ -853,14 +958,15 @@ class ColonyCommander:
             # HA cleanup
             if self.enable_ha and self.redis_client:
                 try:
-                    # Release leader lock if we hold it
+                    # Release leader lock if we hold it with generation validation
                     if self.leadership_state == LeadershipState.LEADER:
                         leader_data = await self.redis_client.get(self.LEADER_LOCK_KEY)
                         if leader_data:
                             leader_info = json.loads(leader_data)
-                            if leader_info.get('instance_id') == self.instance_id:
+                            if (leader_info.get('instance_id') == self.instance_id and 
+                                leader_info.get('generation', 0) == self.current_generation):
                                 await self.redis_client.delete(self.LEADER_LOCK_KEY)
-                                self.logger.info("🔓 Released leader lock")
+                                self.logger.info(f"🔓 Released leader lock (Gen: {self.current_generation})")
                     
                     # Cancel HA tasks
                     for task in self._ha_tasks:
