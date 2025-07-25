@@ -129,7 +129,7 @@ class BotLauncher:
         # CRITICAL: Run pre-flight validation before any system initialization
         print("🔍 Running pre-flight system validation...")
         try:
-            from worker_ant_v1.core.system_validator import get_system_validator
+            from worker_ant_v1.trading.system_validator import get_system_validator
             validator = await get_system_validator()
             validation_result = await validator.run_full_validation()
             

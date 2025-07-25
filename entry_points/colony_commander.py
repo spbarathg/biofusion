@@ -119,8 +119,8 @@ class ColonyCommander:
         # Master vault system
         self.master_vault = None
         
-        # Strategic Narrative Intelligence
-        self.narrative_ant: Optional[NarrativeAnt] = None
+        # Strategic Narrative Intelligence - DISABLED (NarrativeAnt not implemented)
+        # self.narrative_ant: Optional[NarrativeAnt] = None
         self.dominant_narratives: Dict[str, float] = {}
         
         # Configuration
@@ -157,10 +157,10 @@ class ColonyCommander:
             # Initialize master vault
             self.master_vault = await get_vault_system()
             
-            # Initialize strategic narrative intelligence
-            self.narrative_ant = NarrativeAnt()
-            await self.narrative_ant.initialize()
-            self.logger.info("🧠 Narrative intelligence online - Colony cultural awareness enabled")
+            # Initialize strategic narrative intelligence - DISABLED (NarrativeAnt not implemented)
+            # self.narrative_ant = NarrativeAnt()
+            # await self.narrative_ant.initialize()
+            self.logger.info("🧠 Narrative intelligence disabled - Using simplified approach")
             
             # Load swarm configurations
             await self._load_swarm_configurations()
@@ -766,42 +766,16 @@ class ColonyCommander:
                 await swarm.set_blitzscaling_mode(self.blitzscaling_active)
     
     async def _update_narrative_direction(self):
-        """Query NarrativeAnt for dominant narratives and direct swarms accordingly"""
+        """Query NarrativeAnt for dominant narratives and direct swarms accordingly - DISABLED"""
         try:
-            if not self.narrative_ant:
-                return
+            # NarrativeAnt not implemented - using simplified approach
+            # if not self.narrative_ant:
+            #     return
             
-            # Get current capital allocation recommendations from NarrativeAnt
-            allocation_recommendations = await self.narrative_ant.get_capital_allocation_recommendations()
+            # Simplified fallback: clear dominant narratives
+            self.dominant_narratives = {}
             
-            if not allocation_recommendations:
-                return
-            
-            # Update dominant narratives tracking
-            self.dominant_narratives = {
-                category: data['allocation_percentage'] 
-                for category, data in allocation_recommendations.items()
-                if data['allocation_percentage'] > 0.1  # Only track narratives with >10% allocation
-            }
-            
-            # Sort narratives by allocation strength
-            sorted_narratives = sorted(
-                self.dominant_narratives.items(), 
-                key=lambda x: x[1], 
-                reverse=True
-            )
-            
-            if sorted_narratives:
-                # Log dominant narrative changes
-                top_narratives = sorted_narratives[:3]  # Top 3 narratives
-                narrative_summary = ", ".join([
-                    f"{cat.value}: {weight:.1%}" 
-                    for cat, weight in top_narratives
-                ])
-                self.logger.info(f"🧠 Dominant narratives: {narrative_summary}")
-                
-                # Direct swarms to prioritize these narratives
-                await self._direct_swarms_to_narratives(sorted_narratives)
+            self.logger.debug("🧠 Narrative direction update skipped - NarrativeAnt not implemented")
             
         except Exception as e:
             self.logger.error(f"❌ Error updating narrative direction: {e}")
@@ -838,12 +812,10 @@ class ColonyCommander:
             'running': self.running,
             'start_time': self.start_time.isoformat() if self.start_time else None,
             'narrative_intelligence': {
-                'narrative_ant_active': self.narrative_ant is not None,
-                'dominant_narratives': {
-                    cat.value: weight for cat, weight in self.dominant_narratives.items()
-                } if self.dominant_narratives else {},
-                'narrative_count': len(self.dominant_narratives),
-                'cultural_awareness_enabled': True
+                'narrative_ant_active': False,  # NarrativeAnt not implemented
+                'dominant_narratives': {},  # Simplified approach
+                'narrative_count': 0,
+                'cultural_awareness_enabled': False
             },
             'metrics': {
                 'total_capital': self.metrics.total_capital,
@@ -947,64 +919,6 @@ class ColonyCommander:
         return self.get_colony_status()
 
 
-# Legacy main function for backwards compatibility (not used by run_bot.py)
-async def main():
-    """Main entry point for the colony commander with HA support"""
-    parser = argparse.ArgumentParser(description="Trading Colony Commander with HA")
-    
-    parser.add_argument(
-        "--mode",
-        choices=["production", "simulation", "test"],
-        default="simulation",
-        help="Colony operation mode (default: simulation)"
-    )
-    
-    parser.add_argument(
-        "--ha",
-        action="store_true",
-        help="Enable High Availability mode with Redis leader election"
-    )
-    
-    parser.add_argument(
-        "--single",
-        action="store_true", 
-        help="Force single instance mode (disable HA)"
-    )
-    
-    args = parser.parse_args()
-    
-    # Determine HA mode
-    enable_ha = args.ha and not args.single
-    if args.mode in ["production"] and not args.single:
-        enable_ha = True  # Enable HA by default in production
-    
-    # Display startup information
-    print("\n🏛️ TRADING COLONY COMMANDER")
-    print("=" * 50)
-    print(f"Mode: {args.mode.upper()}")
-    print(f"HA Mode: {'ENABLED' if enable_ha else 'DISABLED'}")
-    if enable_ha:
-        print("Redis: Leader election enabled")
-    print("=" * 50)
-    
-    # Create and run colony
-    colony = ColonyCommander(enable_ha=enable_ha)
-    
-    try:
-        if await colony.initialize_colony():
-            await colony.run_colony()
-        else:
-            print("❌ Colony initialization failed")
-            sys.exit(1)
-    except KeyboardInterrupt:
-        print("\n🛑 Colony shutdown requested")
-        await colony.shutdown()
-    except Exception as e:
-        print(f"❌ Colony error: {e}")
-        await colony.emergency_shutdown()
-        sys.exit(1)
-
-
-if __name__ == "__main__":
-    import argparse
-    asyncio.run(main()) 
+# NOTE: Entry point execution removed to comply with Entry Point Doctrine
+# All execution must go through entry_points/run_bot.py --strategy colony
+# This maintains the Single Entry Point Rule as defined in CONTRIBUTING.md 

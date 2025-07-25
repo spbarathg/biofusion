@@ -39,6 +39,20 @@ python entry_points/run_bot.py --mode simulation --strategy simplified
 python entry_points/run_bot.py --mode production --strategy colony
 ```
 
+### **Configuration Setup**
+
+1. **For Simple Trading** (recommended for beginners):
+   ```bash
+   cp config/simplified.env.template .env.production
+   ```
+
+2. **For Full System** (HA, monitoring, advanced features):
+   ```bash
+   cp config/env.template .env.production
+   ```
+
+3. **Edit your .env.production file** with your API keys and settings
+
 ---
 
 ## 📁 **Core Architecture**
@@ -48,6 +62,11 @@ python entry_points/run_bot.py --mode production --strategy colony
 - **Trading Engine**: `worker_ant_v1/core/unified_trading_engine.py` - Order execution
 - **Mathematical Core**: `worker_ant_v1/trading/simplified_trading_bot.py` - Decision pipeline
 - **Risk Filter**: `worker_ant_v1/trading/devils_advocate_synapse.py` - WCCA survival analysis
+
+### **Entry Point Doctrine**
+- **ONLY** executable entry point: `entry_points/run_bot.py`
+- All operations go through the unified launcher
+- No direct execution of modules in `worker_ant_v1/`
 
 ### **Archived Components**
 - **Legacy ML**: `worker_ant_v1/trading/_legacy_ml/` - Complex ML components (archived for reference)

@@ -216,6 +216,10 @@ async def main():
     return 0 if success else 1
 
 
-if __name__ == "__main__":
-    import asyncio
-    exit_code = asyncio.run(main()) 
+# Entry point doctrine: No main execution blocks outside entry_points/
+# To run tests, use: python entry_points/run_bot.py --mode test
+# NOTE: Test execution through pytest only
+# All test execution must use: pytest tests/simplified_bot_tests.py
+# This maintains Entry Point Doctrine compliance
+#     import asyncio
+#     exit_code = asyncio.run(main()) 

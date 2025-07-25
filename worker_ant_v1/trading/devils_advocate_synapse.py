@@ -16,7 +16,6 @@ from typing import Dict, List, Optional, Tuple, Any, Set
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from enum import Enum
-import logging
 
 from worker_ant_v1.utils.logger import setup_logger
 

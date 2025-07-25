@@ -24,13 +24,13 @@ RUN apt-get update && apt-get install -y \
 # Create app directory
 WORKDIR /app
 
-# Copy requirements first for better Docker caching
-COPY config/requirements.txt .
+# Copy project configuration for better Docker caching
+COPY pyproject.toml .
 
 # Create virtual environment and install dependencies
 RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -e .
 
 # Second stage for smaller final image
 FROM python:3.11-slim
@@ -70,12 +70,17 @@ RUN groupadd -r trader && useradd -r -g trader -s /sbin/nologin -M trader \
 # Switch to non-root user
 USER trader
 
-# Improved health check that works with unified launcher
+# Robust health check that validates system components
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
     CMD python -c "import sys, os; sys.path.append('.'); \
-    from worker_ant_v1.core.unified_config import get_config_manager; \
-    config = get_config_manager(); \
-    print('Bot healthy') if config else exit(1)"
+    try: \
+        from worker_ant_v1.trading.system_validator import validate_production_config_sync; \
+        from worker_ant_v1.safety.kill_switch import EnhancedKillSwitch; \
+        kill_switch = EnhancedKillSwitch(); \
+        if kill_switch.is_triggered: exit(1); \
+        if validate_production_config_sync(): print('System healthy'); \
+        else: exit(1); \
+    except Exception as e: print(f'Health check failed: {e}'); exit(1)"
 
 # Security: Drop capabilities and set read-only root filesystem
 RUN echo "Dropping capabilities and setting read-only filesystem"
