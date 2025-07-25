@@ -12,10 +12,9 @@ from typing import Dict, List, Optional, Any, Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from enum import Enum
-import logging
 import traceback
 
-from worker_ant_v1.utils.logger import setup_logger
+from worker_ant_v1.utils.logger import get_logger
 
 
 class ComponentHealth(Enum):
@@ -63,7 +62,7 @@ class EnterpriseErrorHandler:
     """Enterprise-grade error handling with circuit breaker and recovery strategies"""
     
     def __init__(self):
-        self.logger = setup_logger("EnterpriseErrorHandler")
+        self.logger = get_logger("EnterpriseErrorHandler")
         
         # Component tracking
         self.component_metrics: Dict[str, ErrorMetrics] = {}

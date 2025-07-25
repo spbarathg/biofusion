@@ -13,13 +13,12 @@ import base64
 from typing import Dict, List, Optional, Any
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-import logging
 import os
 import numpy as np
 
-from worker_ant_v1.utils.logger import setup_logger
+from worker_ant_v1.utils.logger import get_logger
 
-logger = setup_logger(__name__)
+logger = get_logger(__name__)
 
 @dataclass
 class LiquidityAnalysis:
@@ -69,7 +68,7 @@ class LiquidityAnalyzer:
     """Analyzes liquidity patterns and risks"""
     
     def __init__(self):
-        self.logger = setup_logger("LiquidityAnalyzer")
+        self.logger = get_logger("LiquidityAnalyzer")
         self.session = None
         # API configuration - CANONICAL ACCESS THROUGH UNIFIED CONFIG
         from worker_ant_v1.core.unified_config import get_api_config
@@ -311,7 +310,7 @@ class OwnershipAnalyzer:
     """Analyzes token ownership patterns and risks"""
     
     def __init__(self):
-        self.logger = setup_logger("OwnershipAnalyzer")
+        self.logger = get_logger("OwnershipAnalyzer")
         self.session = None
         # API configuration - CANONICAL ACCESS THROUGH UNIFIED CONFIG
         from worker_ant_v1.core.unified_config import get_api_config
@@ -495,7 +494,7 @@ class CodeAnalyzer:
     """Analyzes smart contract code for suspicious patterns"""
     
     def __init__(self):
-        self.logger = setup_logger("CodeAnalyzer")
+        self.logger = get_logger("CodeAnalyzer")
         self.session = None
     
     async def analyze(self, token_address: str) -> Dict[str, Dict]:
@@ -666,7 +665,7 @@ class TradingAnalyzer:
     """Analyzes trading patterns and detects manipulation"""
     
     def __init__(self):
-        self.logger = setup_logger("TradingAnalyzer")
+        self.logger = get_logger("TradingAnalyzer")
         self.session = None
         self.birdeye_api_key = os.getenv('BIRDEYE_API_KEY')
     

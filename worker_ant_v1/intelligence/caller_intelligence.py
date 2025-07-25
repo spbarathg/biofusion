@@ -28,7 +28,7 @@ from worker_ant_v1.core.database import (
     get_database_manager, 
     CallerProfile as DBCallerProfile
 )
-from worker_ant_v1.utils.logger import setup_logger
+from worker_ant_v1.utils.logger import get_logger
 
 class Platform(Enum):
     TELEGRAM = "telegram"
@@ -167,7 +167,7 @@ class AdvancedCallerIntelligence:
     """Advanced caller intelligence with TimescaleDB integration"""
     
     def __init__(self):
-        self.logger = setup_logger("AdvancedCallerIntelligence")
+        self.logger = get_logger("AdvancedCallerIntelligence")
         
         # TimescaleDB manager
         self.db_manager = None

@@ -9,6 +9,10 @@ import multiprocessing
 
 from worker_ant_v1.monitoring.secrets_manager import get_secrets_manager
 
+class BotMode(Enum):
+    SIMPLIFIED = "SIMPLIFIED"
+    ADVANCED = "ADVANCED"
+
 class TradingMode(Enum):
     LIVE = "LIVE"
     SIMULATION = "SIMULATION"
@@ -21,14 +25,30 @@ class SecurityLevel(Enum):
 class UnifiedConfig(BaseModel):
     """Core configuration for the trading system - SINGLE SOURCE OF TRUTH"""
     
-    # Trading parameters
+    # Core system configuration
+    bot_mode: BotMode = BotMode.SIMPLIFIED
     trading_mode: TradingMode
     security_level: SecurityLevel
+    
+    # Capital and position sizing
+    initial_capital_sol: float = 1.5
     max_trade_size_sol: float
     min_trade_size_sol: float
     max_slippage_percent: float
     profit_target_percent: float
     stop_loss_percent: float
+    
+    # Three-Stage Mathematical Core Configuration
+    acceptable_rel_threshold: float = 0.1  # Stage 1: Survival Filter
+    hunt_threshold: float = 0.6           # Stage 2: Win-Rate Engine
+    kelly_fraction: float = 0.25          # Stage 3: Growth Maximizer
+    max_position_percent: float = 0.2
+    
+    # Trading behavior
+    max_hold_time_hours: float = 4.0
+    compound_rate: float = 0.8
+    compound_threshold_sol: float = 0.2
+    scan_interval_seconds: int = 30
     
     # Safety settings
     enable_kill_switch: bool = True
@@ -166,7 +186,15 @@ class UnifiedConfigManager:
     def _load_config_sync_fallback(self):
         """Synchronous fallback configuration loading"""
         if not self.config_file.exists():
-            if self.template_file.exists():
+            # Check for unified template
+            unified_template = self.config_dir / "unified.env.template"
+            if unified_template.exists():
+                raise FileNotFoundError(
+                    f"Configuration file not found: {self.config_file}\n"
+                    f"Please copy {unified_template} to {self.config_file} "
+                    "and fill in your API keys and settings."
+                )
+            elif self.template_file.exists():
                 raise FileNotFoundError(
                     f"Configuration file not found: {self.config_file}\n"
                     f"Please copy {self.template_file} to {self.config_file} "
@@ -175,7 +203,7 @@ class UnifiedConfigManager:
             else:
                 raise FileNotFoundError(
                     f"Neither configuration file {self.config_file} "
-                    f"nor template {self.template_file} found."
+                    f"nor template found."
                 )
         
         # Load environment variables
@@ -190,15 +218,33 @@ class UnifiedConfigManager:
         
         # Create config object with ALL environment variables - SINGLE SOURCE OF TRUTH
         self.config = UnifiedConfig(
-            # Trading parameters
+            # Core system configuration
+            bot_mode=os.getenv('BOT_MODE', 'SIMPLIFIED'),
             trading_mode=os.getenv('TRADING_MODE', 'SIMULATION'),
             security_level=os.getenv('SECURITY_LEVEL', 'HIGH'),
-            max_trade_size_sol=float(os.getenv('MAX_TRADE_SIZE_SOL', '5.0')),
-            min_trade_size_sol=float(os.getenv('MIN_TRADE_SIZE_SOL', '0.1')),
-            max_slippage_percent=float(os.getenv('MAX_SLIPPAGE_PERCENT', '1.0')),
-            profit_target_percent=float(os.getenv('PROFIT_TARGET_PERCENT', '2.5')),
-            stop_loss_percent=float(os.getenv('STOP_LOSS_PERCENT', '1.0')),
-            max_daily_loss_sol=float(os.getenv('MAX_DAILY_LOSS_SOL', '10.0')),
+            
+            # Capital and position sizing
+            initial_capital_sol=float(os.getenv('INITIAL_CAPITAL_SOL', '1.5')),
+            max_trade_size_sol=float(os.getenv('MAX_TRADE_SIZE_SOL', '0.5')),
+            min_trade_size_sol=float(os.getenv('MIN_TRADE_SIZE_SOL', '0.01')),
+            max_slippage_percent=float(os.getenv('MAX_SLIPPAGE_PERCENT', '5.0')),
+            profit_target_percent=float(os.getenv('PROFIT_TARGET_PERCENT', '15.0')),
+            stop_loss_percent=float(os.getenv('STOP_LOSS_PERCENT', '5.0')),
+            
+            # Three-Stage Mathematical Core Configuration
+            acceptable_rel_threshold=float(os.getenv('ACCEPTABLE_REL_THRESHOLD', '0.1')),
+            hunt_threshold=float(os.getenv('HUNT_THRESHOLD', '0.6')),
+            kelly_fraction=float(os.getenv('KELLY_FRACTION', '0.25')),
+            max_position_percent=float(os.getenv('MAX_POSITION_PERCENT', '0.2')),
+            
+            # Trading behavior
+            max_hold_time_hours=float(os.getenv('MAX_HOLD_TIME_HOURS', '4.0')),
+            compound_rate=float(os.getenv('COMPOUND_RATE', '0.8')),
+            compound_threshold_sol=float(os.getenv('COMPOUND_THRESHOLD_SOL', '0.2')),
+            scan_interval_seconds=int(os.getenv('SCAN_INTERVAL_SECONDS', '30')),
+            
+            # Safety settings
+            max_daily_loss_sol=float(os.getenv('MAX_DAILY_LOSS_SOL', '1.0')),
             enable_kill_switch=os.getenv('ENABLE_KILL_SWITCH', 'true').lower() == 'true',
             emergency_stop_enabled=os.getenv('EMERGENCY_STOP_ENABLED', 'true').lower() == 'true',
             
@@ -335,15 +381,33 @@ class UnifiedConfigManager:
         
         # Create config object with ALL environment variables - SINGLE SOURCE OF TRUTH
         self.config = UnifiedConfig(
-            # Trading parameters
+            # Core system configuration
+            bot_mode=os.getenv('BOT_MODE', 'SIMPLIFIED'),
             trading_mode=os.getenv('TRADING_MODE', 'SIMULATION'),
             security_level=os.getenv('SECURITY_LEVEL', 'HIGH'),
-            max_trade_size_sol=float(os.getenv('MAX_TRADE_SIZE_SOL', '5.0')),
-            min_trade_size_sol=float(os.getenv('MIN_TRADE_SIZE_SOL', '0.1')),
-            max_slippage_percent=float(os.getenv('MAX_SLIPPAGE_PERCENT', '1.0')),
-            profit_target_percent=float(os.getenv('PROFIT_TARGET_PERCENT', '2.5')),
-            stop_loss_percent=float(os.getenv('STOP_LOSS_PERCENT', '1.0')),
-            max_daily_loss_sol=float(os.getenv('MAX_DAILY_LOSS_SOL', '10.0')),
+            
+            # Capital and position sizing
+            initial_capital_sol=float(os.getenv('INITIAL_CAPITAL_SOL', '1.5')),
+            max_trade_size_sol=float(os.getenv('MAX_TRADE_SIZE_SOL', '0.5')),
+            min_trade_size_sol=float(os.getenv('MIN_TRADE_SIZE_SOL', '0.01')),
+            max_slippage_percent=float(os.getenv('MAX_SLIPPAGE_PERCENT', '5.0')),
+            profit_target_percent=float(os.getenv('PROFIT_TARGET_PERCENT', '15.0')),
+            stop_loss_percent=float(os.getenv('STOP_LOSS_PERCENT', '5.0')),
+            
+            # Three-Stage Mathematical Core Configuration
+            acceptable_rel_threshold=float(os.getenv('ACCEPTABLE_REL_THRESHOLD', '0.1')),
+            hunt_threshold=float(os.getenv('HUNT_THRESHOLD', '0.6')),
+            kelly_fraction=float(os.getenv('KELLY_FRACTION', '0.25')),
+            max_position_percent=float(os.getenv('MAX_POSITION_PERCENT', '0.2')),
+            
+            # Trading behavior
+            max_hold_time_hours=float(os.getenv('MAX_HOLD_TIME_HOURS', '4.0')),
+            compound_rate=float(os.getenv('COMPOUND_RATE', '0.8')),
+            compound_threshold_sol=float(os.getenv('COMPOUND_THRESHOLD_SOL', '0.2')),
+            scan_interval_seconds=int(os.getenv('SCAN_INTERVAL_SECONDS', '30')),
+            
+            # Safety settings
+            max_daily_loss_sol=float(os.getenv('MAX_DAILY_LOSS_SOL', '1.0')),
             enable_kill_switch=os.getenv('ENABLE_KILL_SWITCH', 'true').lower() == 'true',
             emergency_stop_enabled=os.getenv('EMERGENCY_STOP_ENABLED', 'true').lower() == 'true',
             

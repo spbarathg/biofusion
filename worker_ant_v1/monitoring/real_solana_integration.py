@@ -63,7 +63,7 @@ except ImportError:
         return {"signature": "mock_signature"}
 
 from worker_ant_v1.core.unified_config import get_trading_config, get_security_config, get_network_config
-from worker_ant_v1.utils.logger import setup_logger
+from worker_ant_v1.utils.logger import get_logger
 
 class TransactionStatus(Enum):
     PENDING = "pending"
@@ -118,7 +118,7 @@ class ProductionSolanaClient:
     """Production-grade Solana client with redundancy and error handling"""
     
     def __init__(self):
-        self.logger = setup_logger("ProductionSolanaClient")
+        self.logger = get_logger("ProductionSolanaClient")
         self.config = get_trading_config()
         self.network_config = get_network_config()
         

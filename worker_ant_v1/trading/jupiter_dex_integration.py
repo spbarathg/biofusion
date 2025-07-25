@@ -13,11 +13,11 @@ from dataclasses import dataclass, field
 from datetime import datetime
 import aiohttp
 
-from worker_ant_v1.utils.logger import setup_logger
+from worker_ant_v1.utils.logger import get_logger
 
 @dataclass
 class SwapQuote:
-    """Jupiter swap quote information"""
+    """Jupiter swap quote information with enhanced validation"""
     
     input_mint: str
     output_mint: str
@@ -34,8 +34,12 @@ class SwapQuote:
     swap_mode: str = "ExactIn"
     slippage_bps: int = 50  # 0.5% default slippage
     
-    
+    # Enhanced validation fields
     quote_timestamp: datetime = None
+    liquidity_score: float = 0.0  # 0-1 liquidity quality score
+    route_complexity: int = 0     # Number of hops in route
+    estimated_gas_fee: int = 0    # Estimated transaction fee
+    market_volatility: float = 0.0  # Market volatility indicator
     
     def __post_init__(self):
         if self.quote_timestamp is None:
@@ -77,7 +81,7 @@ class JupiterDEXIntegration:
     """Production Jupiter DEX integration for real Solana trading"""
     
     def __init__(self):
-        self.logger = setup_logger("JupiterDEX")
+        self.logger = get_logger("JupiterDEX")
         
         
         self.base_url = "https://quote-api.jup.ag/v6"
@@ -441,8 +445,328 @@ class JupiterDEXIntegration:
         
         stats = self.get_performance_stats()
         self.logger.info(f"📊 Final stats: {stats['successful_swaps']} successful swaps, {stats['success_rate_percent']:.1f}% success rate")
+    
+    # ============================================================================
+    # ENHANCED VALIDATION AND SLIPPAGE PROTECTION
+    # ============================================================================
+    
+    async def validate_pre_execution(self, quote: SwapQuote, user_keypair, 
+                                   max_price_impact: float = 5.0,
+                                   max_route_hops: int = 3) -> Dict[str, Any]:
+        """
+        Comprehensive pre-execution validation for Jupiter swaps
         
-        self.logger.info("✅ Jupiter DEX shutdown complete")
+        Args:
+            quote: The swap quote to validate
+            user_keypair: User's keypair for validation
+            max_price_impact: Maximum acceptable price impact percentage
+            max_route_hops: Maximum number of route hops allowed
+            
+        Returns:
+            Dict with validation results and recommendations
+        """
+        try:
+            validation_result = {
+                'is_valid': True,
+                'warnings': [],
+                'errors': [],
+                'risk_score': 0.0,  # 0-1 scale
+                'recommendations': []
+            }
+            
+            # 1. Quote freshness validation
+            if not quote.is_quote_fresh(max_age_seconds=30):
+                validation_result['errors'].append('Quote is stale (>30 seconds old)')
+                validation_result['is_valid'] = False
+            
+            # 2. Price impact validation
+            if quote.price_impact_pct > max_price_impact:
+                validation_result['errors'].append(
+                    f'Price impact {quote.price_impact_pct:.2f}% exceeds maximum {max_price_impact}%'
+                )
+                validation_result['is_valid'] = False
+                validation_result['risk_score'] += 0.3
+            elif quote.price_impact_pct > max_price_impact * 0.7:
+                validation_result['warnings'].append(
+                    f'High price impact: {quote.price_impact_pct:.2f}%'
+                )
+                validation_result['risk_score'] += 0.2
+            
+            # 3. Route complexity validation
+            route_hops = len(quote.route_plan)
+            if route_hops > max_route_hops:
+                validation_result['errors'].append(
+                    f'Route too complex: {route_hops} hops (max {max_route_hops})'
+                )
+                validation_result['is_valid'] = False
+                validation_result['risk_score'] += 0.2
+            elif route_hops > 2:
+                validation_result['warnings'].append(f'Complex route with {route_hops} hops')
+                validation_result['risk_score'] += 0.1
+            
+            # 4. Slippage validation
+            if quote.slippage_bps > 300:  # 3%
+                validation_result['warnings'].append(
+                    f'High slippage tolerance: {quote.slippage_bps/100:.1f}%'
+                )
+                validation_result['risk_score'] += 0.15
+            
+            # 5. Minimum output validation
+            min_output = quote.get_minimum_output_amount()
+            output_ratio = min_output / quote.output_amount
+            if output_ratio < 0.95:  # Less than 95% of expected output
+                validation_result['warnings'].append(
+                    f'Low minimum output ratio: {output_ratio:.1%}'
+                )
+                validation_result['risk_score'] += 0.1
+            
+            # 6. Market liquidity assessment
+            liquidity_warnings = await self._assess_market_liquidity(quote)
+            validation_result['warnings'].extend(liquidity_warnings)
+            
+            # 7. Generate recommendations
+            if validation_result['risk_score'] > 0.5:
+                validation_result['recommendations'].append('Consider reducing position size')
+            if quote.price_impact_pct > 2.0:
+                validation_result['recommendations'].append('Consider splitting large order into smaller chunks')
+            if route_hops > 2:
+                validation_result['recommendations'].append('Monitor transaction closely due to route complexity')
+            
+            # 8. Final risk assessment
+            validation_result['risk_level'] = self._categorize_risk_level(validation_result['risk_score'])
+            
+            self.logger.debug(f"Pre-execution validation: Risk={validation_result['risk_level']}, "
+                            f"Score={validation_result['risk_score']:.2f}")
+            
+            return validation_result
+            
+        except Exception as e:
+            self.logger.error(f"Pre-execution validation failed: {e}")
+            return {
+                'is_valid': False,
+                'errors': [f'Validation error: {str(e)}'],
+                'warnings': [],
+                'risk_score': 1.0,
+                'risk_level': 'CRITICAL',
+                'recommendations': ['Skip this trade due to validation failure']
+            }
+    
+    async def _assess_market_liquidity(self, quote: SwapQuote) -> List[str]:
+        """Assess market liquidity and return warnings"""
+        warnings = []
+        
+        try:
+            # Check for thin liquidity indicators
+            for market_info in quote.market_infos:
+                market_label = market_info.get('label', 'Unknown')
+                
+                # Check for low liquidity markets
+                if 'low_liquidity' in market_label.lower():
+                    warnings.append(f'Low liquidity detected in {market_label}')
+                
+                # Check for new/unverified markets
+                if any(keyword in market_label.lower() for keyword in ['new', 'unverified', 'test']):
+                    warnings.append(f'Potentially risky market: {market_label}')
+            
+        except Exception as e:
+            self.logger.warning(f"Liquidity assessment failed: {e}")
+            warnings.append('Unable to assess market liquidity')
+        
+        return warnings
+    
+    def _categorize_risk_level(self, risk_score: float) -> str:
+        """Categorize risk level based on score"""
+        if risk_score <= 0.2:
+            return 'LOW'
+        elif risk_score <= 0.4:
+            return 'MEDIUM'
+        elif risk_score <= 0.7:
+            return 'HIGH'
+        else:
+            return 'CRITICAL'
+    
+    async def enhanced_execute_swap(self, 
+                                  quote: SwapQuote, 
+                                  user_keypair,
+                                  priority_fee_lamports: int = 0,
+                                  enable_validation: bool = True,
+                                  max_price_impact: float = 5.0) -> SwapResult:
+        """
+        Execute swap with comprehensive validation and slippage protection
+        
+        Args:
+            quote: The swap quote
+            user_keypair: User's keypair
+            priority_fee_lamports: Priority fee for faster execution
+            enable_validation: Whether to perform pre-execution validation
+            max_price_impact: Maximum acceptable price impact
+            
+        Returns:
+            SwapResult with enhanced error handling
+        """
+        try:
+            # Pre-execution validation
+            if enable_validation:
+                validation = await self.validate_pre_execution(
+                    quote, user_keypair, max_price_impact
+                )
+                
+                if not validation['is_valid']:
+                    return SwapResult(
+                        success=False,
+                        error_message=f"Pre-execution validation failed: {'; '.join(validation['errors'])}",
+                        error_code="VALIDATION_FAILED"
+                    )
+                
+                # Log warnings
+                for warning in validation['warnings']:
+                    self.logger.warning(f"⚠️ Swap warning: {warning}")
+                
+                # Risk-based slippage adjustment
+                if validation['risk_level'] in ['HIGH', 'CRITICAL']:
+                    # Reduce slippage tolerance for high-risk swaps
+                    original_slippage = quote.slippage_bps
+                    quote.slippage_bps = min(quote.slippage_bps, 100)  # Cap at 1%
+                    
+                    if quote.slippage_bps != original_slippage:
+                        self.logger.info(f"🛡️ Reduced slippage from {original_slippage}bps to {quote.slippage_bps}bps for high-risk swap")
+            
+            # Enhanced quote freshness check
+            if not quote.is_quote_fresh(max_age_seconds=15):  # Stricter freshness for execution
+                self.logger.warning("🕐 Quote approaching staleness, refreshing...")
+                
+                # Attempt to refresh quote
+                refreshed_quote = await self.get_swap_quote(
+                    input_mint=quote.input_mint,
+                    output_mint=quote.output_mint,
+                    amount=quote.input_amount,
+                    slippage_bps=quote.slippage_bps
+                )
+                
+                if refreshed_quote:
+                    quote = refreshed_quote
+                    self.logger.info("✅ Quote refreshed successfully")
+                else:
+                    return SwapResult(
+                        success=False,
+                        error_message="Failed to refresh stale quote",
+                        error_code="QUOTE_REFRESH_FAILED"
+                    )
+            
+            # Execute the swap with enhanced monitoring
+            start_time = time.time()
+            result = await self.execute_swap(quote, user_keypair, priority_fee_lamports)
+            
+            # Post-execution validation
+            if result.success:
+                slippage_validation = self._validate_execution_slippage(quote, result)
+                if not slippage_validation['acceptable']:
+                    self.logger.warning(f"⚠️ High execution slippage detected: {slippage_validation['message']}")
+            
+            return result
+            
+        except Exception as e:
+            self.logger.error(f"Enhanced swap execution failed: {e}")
+            return SwapResult(
+                success=False,
+                error_message=str(e),
+                error_code="ENHANCED_EXECUTION_ERROR"
+            )
+    
+    def _validate_execution_slippage(self, quote: SwapQuote, result: SwapResult) -> Dict[str, Any]:
+        """Validate actual slippage against expected slippage"""
+        try:
+            expected_output = quote.output_amount
+            actual_output = result.output_amount
+            
+            if expected_output > 0:
+                slippage_pct = ((expected_output - actual_output) / expected_output) * 100
+                expected_slippage_pct = quote.slippage_bps / 100
+                
+                acceptable = slippage_pct <= expected_slippage_pct * 1.2  # Allow 20% tolerance
+                
+                return {
+                    'acceptable': acceptable,
+                    'actual_slippage_pct': slippage_pct,
+                    'expected_slippage_pct': expected_slippage_pct,
+                    'message': f'Actual: {slippage_pct:.2f}%, Expected: ≤{expected_slippage_pct:.2f}%'
+                }
+            else:
+                return {'acceptable': True, 'message': 'Cannot validate slippage'}
+                
+        except Exception as e:
+            self.logger.error(f"Slippage validation error: {e}")
+            return {'acceptable': True, 'message': f'Validation error: {e}'}
+    
+    async def get_market_conditions(self, token_mint: str) -> Dict[str, Any]:
+        """
+        Get current market conditions for better execution timing
+        
+        Args:
+            token_mint: Token mint address
+            
+        Returns:
+            Dict with market condition indicators
+        """
+        try:
+            conditions = {
+                'timestamp': datetime.now(),
+                'volatility_level': 'normal',  # low, normal, high, extreme
+                'liquidity_score': 0.5,       # 0-1 scale
+                'volume_trend': 'stable',      # increasing, stable, decreasing
+                'price_trend': 'neutral',      # bullish, neutral, bearish
+                'recommended_action': 'proceed'  # proceed, wait, skip
+            }
+            
+            # Get current price data
+            price_data = await self._get_token_price_data(token_mint)
+            if price_data:
+                # Analyze volatility
+                price_changes = price_data.get('price_changes', {})
+                hourly_change = abs(price_changes.get('1h', 0))
+                
+                if hourly_change > 10:
+                    conditions['volatility_level'] = 'extreme'
+                    conditions['recommended_action'] = 'wait'
+                elif hourly_change > 5:
+                    conditions['volatility_level'] = 'high'
+                elif hourly_change < 1:
+                    conditions['volatility_level'] = 'low'
+                
+                # Analyze trend
+                if price_changes.get('1h', 0) > 2:
+                    conditions['price_trend'] = 'bullish'
+                elif price_changes.get('1h', 0) < -2:
+                    conditions['price_trend'] = 'bearish'
+            
+            return conditions
+            
+        except Exception as e:
+            self.logger.error(f"Failed to get market conditions: {e}")
+            return {
+                'timestamp': datetime.now(),
+                'volatility_level': 'unknown',
+                'recommended_action': 'proceed',
+                'error': str(e)
+            }
+    
+    async def _get_token_price_data(self, token_mint: str) -> Optional[Dict[str, Any]]:
+        """Get token price data from Jupiter API"""
+        try:
+            url = f"{self.price_url}?ids={token_mint}&showExtraInfo=true"
+            
+            async with self.session.get(url, timeout=self.timeout) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    token_data = data.get('data', {}).get(token_mint)
+                    return token_data
+                else:
+                    self.logger.warning(f"Failed to get price data: HTTP {response.status}")
+                    return None
+                    
+        except Exception as e:
+            self.logger.error(f"Price data request failed: {e}")
+            return None
 
 
 __all__ = ['JupiterDEXIntegration', 'SwapQuote', 'SwapResult'] 

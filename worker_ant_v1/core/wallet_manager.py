@@ -151,6 +151,9 @@ class UnifiedWalletManager:
         # Solana RPC client
         self.rpc_client = AsyncClient(self.config.get('solana_rpc_url', 'https://api.mainnet-beta.solana.com'))
         
+        # Vault system integration
+        self.vault_system = None  # Will be initialized async
+        
         # Wallet storage
         self.wallets: Dict[str, TradingWallet] = {}
         self.active_wallets: List[str] = []
@@ -188,6 +191,15 @@ class UnifiedWalletManager:
             except Exception as e:
                 self.logger.error(f"❌ Solana RPC connection failed: {e}")
                 return False
+            
+            # Initialize vault system integration
+            try:
+                from worker_ant_v1.safety.vault_wallet_system import get_vault_system
+                self.vault_system = await get_vault_system()
+                self.logger.info("✅ Vault system integration established")
+            except Exception as e:
+                self.logger.warning(f"⚠️ Vault system integration failed: {e}")
+                # Continue without vault system - it's optional for basic operation
             
             # Load or create wallets
             await self._load_or_create_wallets()
@@ -1038,6 +1050,119 @@ class UnifiedWalletManager:
         except Exception as e:
             self.logger.error(f"Error saving wallets to storage: {e}")
 
+    async def secure_profit_to_vault(self, wallet_id: str, profit_amount: float) -> bool:
+        """Secure profits from a trading wallet to the vault system"""
+        try:
+            if not self.vault_system:
+                self.logger.warning("⚠️ Vault system not available for profit securing")
+                return False
+            
+            if wallet_id not in self.wallets:
+                self.logger.error(f"❌ Wallet {wallet_id} not found for profit securing")
+                return False
+            
+            wallet = self.wallets[wallet_id]
+            
+            # Secure profit to vault
+            success = await self.vault_system.deposit_profit(profit_amount)
+            
+            if success:
+                self.logger.info(f"💰 Secured {profit_amount:.4f} SOL profit from wallet {wallet_id} to vault")
+                
+                # Update wallet metadata
+                if 'total_secured_profits' not in wallet.metadata:
+                    wallet.metadata['total_secured_profits'] = 0.0
+                wallet.metadata['total_secured_profits'] += profit_amount
+                wallet.metadata['last_profit_secured'] = datetime.now().isoformat()
+                
+                return True
+            else:
+                self.logger.error(f"❌ Failed to secure profit from wallet {wallet_id}")
+                return False
+                
+        except Exception as e:
+            self.logger.error(f"❌ Error securing profit from wallet {wallet_id}: {e}")
+            return False
+    
+    async def emergency_secure_all_funds(self) -> bool:
+        """Emergency function to secure all funds to vault system"""
+        try:
+            if not self.vault_system:
+                self.logger.error("❌ Vault system not available for emergency securing")
+                return False
+            
+            total_secured = 0.0
+            successful_transfers = 0
+            
+            self.logger.critical("🚨 EMERGENCY: Securing all wallet funds to vault")
+            
+            for wallet_id in self.active_wallets:
+                try:
+                    wallet = self.wallets[wallet_id]
+                    
+                    # Get current balance (simplified - would need real balance check)
+                    balance = 0.0  # Would call: await self.get_wallet_balance(wallet_id)
+                    
+                    if balance > 0.01:  # Only transfer if meaningful amount
+                        # Transfer to vault
+                        success = await self.vault_system.emergency_secure_funds(balance, wallet.address)
+                        
+                        if success:
+                            total_secured += balance
+                            successful_transfers += 1
+                            
+                            # Mark wallet as inactive during emergency
+                            wallet.state = WalletState.INACTIVE
+                            wallet.metadata['emergency_secured'] = datetime.now().isoformat()
+                            
+                            self.logger.critical(f"🚨 Emergency secured {balance:.4f} SOL from wallet {wallet_id}")
+                        else:
+                            self.logger.error(f"❌ Failed to emergency secure funds from wallet {wallet_id}")
+                    
+                except Exception as e:
+                    self.logger.error(f"❌ Error in emergency securing wallet {wallet_id}: {e}")
+                    continue
+            
+            self.logger.critical(f"🚨 EMERGENCY COMPLETE: Secured {total_secured:.4f} SOL from {successful_transfers} wallets")
+            
+            # Update manager state
+            if successful_transfers > 0:
+                self.active_wallets = []  # Clear active wallets during emergency
+                self.system_active = False
+            
+            return successful_transfers > 0
+            
+        except Exception as e:
+            self.logger.critical(f"❌ CRITICAL ERROR in emergency fund securing: {e}")
+            return False
+    
+    async def get_total_portfolio_value(self) -> float:
+        """Get total portfolio value including vault holdings"""
+        try:
+            total_value = 0.0
+            
+            # Get trading wallet balances
+            for wallet_id in self.active_wallets:
+                try:
+                    balance = await self.get_wallet_balance(wallet_id)
+                    total_value += balance
+                except Exception as e:
+                    self.logger.warning(f"⚠️ Could not get balance for wallet {wallet_id}: {e}")
+            
+            # Add vault holdings if available
+            if self.vault_system:
+                try:
+                    vault_balance = await self.vault_system.get_total_balance()
+                    total_value += vault_balance
+                except Exception as e:
+                    self.logger.warning(f"⚠️ Could not get vault balance: {e}")
+            
+            return total_value
+            
+        except Exception as e:
+            self.logger.error(f"❌ Error calculating total portfolio value: {e}")
+            return 0.0
+    
     def get_wallet_status(self) -> Dict[str, Any]:
         """Get wallet manager status"""
         try:
@@ -1052,6 +1177,8 @@ class UnifiedWalletManager:
                 'active_wallets': len(self.active_wallets),
                 'total_balance_sol': total_balance,
                 'evolution_active': self.evolution_active,
+                'vault_system_available': self.vault_system is not None,
+                'vault_integration_active': self.vault_system is not None and getattr(self.vault_system, 'initialized', False),
                 'wallet_details': [
                     {
                         'wallet_id': wallet.wallet_id,

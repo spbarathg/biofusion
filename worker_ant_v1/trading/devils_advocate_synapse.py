@@ -1,12 +1,20 @@
 """
-DEVIL'S ADVOCATE SYNAPSE - PRE-MORTEM ANALYSIS SYSTEM
-====================================================
+DEVIL'S ADVOCATE SYNAPSE - ADVANCED WCCA RISK ASSESSMENT ENGINE
+==============================================================
 
-The Devil's Advocate Synapse conducts rapid pre-mortem analysis for every trade,
-stress-testing against known failure patterns and issuing vetoes when necessary.
+The Devil's Advocate Synapse conducts mathematical Worst Case Contingency Analysis (WCCA)
+using integrated intelligence from all specialized analysis modules to calculate
+Risk-Adjusted Expected Loss (R-EL) and issue vetoes when thresholds are exceeded.
 
 This system embodies the Colony's second-order thinking capability, asking:
 "This trade failed catastrophically. What was the most probable cause?"
+
+WCCA Mathematical Framework:
+- R-EL = P(Loss) × |Position_Size| × Impact_Severity
+- Integration with EnhancedRugDetector for rug analysis
+- Integration with SentimentFirstAI for sentiment-based risk
+- Integration with TechnicalAnalyzer for technical risk assessment
+- Bayesian probability fusion for multi-source risk assessment
 """
 
 import asyncio
@@ -16,8 +24,13 @@ from typing import Dict, List, Optional, Tuple, Any, Set
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from enum import Enum
+import math
 
-from worker_ant_v1.utils.logger import setup_logger
+from worker_ant_v1.utils.logger import get_logger
+from worker_ant_v1.intelligence.enhanced_rug_detector import get_rug_detector
+from worker_ant_v1.intelligence.sentiment_first_ai import get_sentiment_first_ai
+from worker_ant_v1.intelligence.technical_analyzer import get_technical_analyzer
+from worker_ant_v1.utils.market_data_fetcher import get_market_data_fetcher
 
 class FailurePattern(Enum):
     """Known failure patterns for trade analysis"""
@@ -84,13 +97,19 @@ class PreMortemAnalysis:
 
 
 class DevilsAdvocateSynapse:
-    """The Colony's Devil's Advocate - Pre-mortem Analysis Engine"""
+    """The Colony's Devil's Advocate - Advanced WCCA Risk Assessment Engine"""
     
     def __init__(self):
-        self.logger = setup_logger("DevilsAdvocateSynapse")
+        self.logger = get_logger("DevilsAdvocateSynapse")
         
-        # WCCA (Worst Case Constraint Analysis) Configuration
+        # WCCA (Worst Case Contingency Analysis) Configuration
         self.acceptable_rel_threshold = 0.1  # Acceptable Risk-Adjusted Expected Loss (e.g., 0.1 SOL)
+        
+        # Integrated intelligence modules
+        self.rug_detector = None
+        self.sentiment_ai = None
+        self.technical_analyzer = None
+        self.market_data_fetcher = None
         
         # Failure pattern database
         self.failure_patterns: Dict[FailurePattern, Dict[str, Any]] = {}
@@ -103,25 +122,54 @@ class DevilsAdvocateSynapse:
         self.min_liquidity_threshold = 100.0  # SOL
         self.whale_activity_threshold = 0.7
         
+        # Bayesian probability fusion weights
+        self.risk_source_weights = {
+            'rug_detector': 0.4,     # Highest weight for rug detection
+            'sentiment': 0.25,       # Sentiment analysis weight
+            'technical': 0.2,        # Technical analysis weight
+            'liquidity': 0.1,        # Liquidity analysis weight
+            'pattern_match': 0.05    # Historical pattern matching
+        }
+        
         # Performance tracking
         self.total_analyses = 0
         self.vetoes_issued = 0
         self.trades_saved = 0  # Successful vetoes that prevented losses
+        self.average_analysis_time_ms = 0.0
         
         # Initialize failure patterns
         self._initialize_failure_patterns()
     
-    async def initialize(self, shadow_memory_path: str = "shadow_memory.json"):
-        """Initialize the Devil's Advocate Synapse"""
-        self.logger.info("🕵️ Initializing Devil's Advocate Synapse...")
-        
-        # Load shadow memory of known failures
-        await self._load_shadow_memory(shadow_memory_path)
-        
-        # Start background pattern learning
-        asyncio.create_task(self._pattern_learning_loop())
-        
-        self.logger.info("✅ Devil's Advocate Synapse active - Pre-mortem analysis armed")
+    async def initialize(self, shadow_memory_path: str = "shadow_memory.json") -> bool:
+        """Initialize the Devil's Advocate Synapse with integrated intelligence modules"""
+        try:
+            self.logger.info("🕵️ Initializing Devil's Advocate Synapse...")
+            
+            # Initialize integrated intelligence modules
+            self.logger.info("🔗 Initializing integrated intelligence modules...")
+            
+            self.rug_detector = await get_rug_detector()
+            self.sentiment_ai = await get_sentiment_first_ai()
+            self.technical_analyzer = await get_technical_analyzer()
+            self.market_data_fetcher = await get_market_data_fetcher()
+            
+            self.logger.info("✅ All intelligence modules initialized successfully")
+            
+            # Load shadow memory of known failures
+            await self._load_shadow_memory(shadow_memory_path)
+            
+            # Test integrated analysis
+            await self._test_integrated_analysis()
+            
+            # Start background pattern learning
+            asyncio.create_task(self._pattern_learning_loop())
+            
+            self.logger.info("✅ Devil's Advocate Synapse active - Advanced WCCA analysis armed")
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"❌ Failed to initialize Devil's Advocate Synapse: {e}")
+            return False
     
     async def conduct_pre_mortem_analysis(self, trade_params: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -225,7 +273,7 @@ class DevilsAdvocateSynapse:
     
     async def _get_rug_pull_probability(self, trade_params: Dict[str, Any]) -> float:
         """
-        Calculate rug pull probability from specialized rug detection modules
+        Calculate rug pull probability using integrated EnhancedRugDetector
         
         Args:
             trade_params: Trade parameters containing token info
@@ -234,61 +282,50 @@ class DevilsAdvocateSynapse:
             float: Probability of rug pull (0.0 to 1.0)
         """
         try:
+            if not self.rug_detector:
+                self.logger.warning("Rug detector not initialized, using fallback analysis")
+                return await self._fallback_rug_analysis(trade_params)
+            
             token_address = trade_params.get('token_address', '')
+            token_symbol = trade_params.get('token_symbol', '')
+            token_name = trade_params.get('token_name', '')
             
-            # Initialize probability factors
-            probability_factors = []
+            # Get comprehensive rug analysis from EnhancedRugDetector
+            rug_analysis = await self.rug_detector.analyze_token(token_address, token_name, token_symbol)
             
-            # Check if token is in known rug database
-            if token_address in self.shadow_memory.get('known_rugs', []):
-                probability_factors.append(0.95)  # 95% if known rug
-                
-            # Token age factor
-            token_age_hours = trade_params.get('token_age_hours', 24)
-            if token_age_hours < 1:
-                probability_factors.append(0.8)   # 80% for <1 hour old
-            elif token_age_hours < 6:
-                probability_factors.append(0.6)   # 60% for <6 hours old
-            elif token_age_hours < 24:
-                probability_factors.append(0.4)   # 40% for <24 hours old
-            else:
-                probability_factors.append(0.1)   # 10% baseline for older tokens
-                
-            # Liquidity concentration factor
-            liquidity_concentration = trade_params.get('liquidity_concentration', 0.5)
-            if liquidity_concentration > 0.8:
-                probability_factors.append(0.7)   # 70% for high concentration
-            elif liquidity_concentration > 0.6:
-                probability_factors.append(0.5)   # 50% for medium concentration
-                
-            # Dev holdings factor
-            dev_holdings_percent = trade_params.get('dev_holdings_percent', 0.0)
-            if dev_holdings_percent > 50:
-                probability_factors.append(0.8)   # 80% if dev holds >50%
-            elif dev_holdings_percent > 20:
-                probability_factors.append(0.6)   # 60% if dev holds >20%
-                
-            # Enhanced rug detector score (if available)
-            rug_detector_score = trade_params.get('rug_detector_score', None)
-            if rug_detector_score is not None:
-                probability_factors.append(float(rug_detector_score))
+            # Convert detection level to probability
+            detection_level = rug_analysis.detection_level
+            base_probability = rug_analysis.overall_risk
             
-            # Calculate final probability using geometric mean to avoid over-amplification
-            if probability_factors:
-                # Use max of individual factors rather than multiplication to avoid near-zero results
-                final_probability = max(probability_factors)
-            else:
-                final_probability = 0.2  # Default 20% baseline risk
-                
+            # Apply confidence weighting
+            confidence_factor = rug_analysis.confidence_score
+            
+            # Specific rug type probabilities (use the highest)
+            rug_probabilities = [
+                rug_analysis.honeypot_probability,
+                rug_analysis.slow_rug_probability,
+                rug_analysis.flash_rug_probability,
+                rug_analysis.dev_exit_probability
+            ]
+            
+            max_rug_probability = max(rug_probabilities) if rug_probabilities else base_probability
+            
+            # Weighted combination of base risk and specific rug probabilities
+            final_probability = (base_probability * 0.6 + max_rug_probability * 0.4) * confidence_factor
+            
+            self.logger.debug(f"🔍 Rug analysis for {token_address[:8]}: "
+                            f"Base={base_probability:.3f}, Max={max_rug_probability:.3f}, "
+                            f"Final={final_probability:.3f}, Confidence={confidence_factor:.3f}")
+            
             return min(0.99, final_probability)  # Cap at 99%
             
         except Exception as e:
-            self.logger.error(f"Error calculating rug pull probability: {e}")
-            return 0.5  # Default to moderate risk on error
+            self.logger.error(f"Error in integrated rug pull analysis: {e}")
+            return await self._fallback_rug_analysis(trade_params)
     
     async def _get_honeypot_probability(self, trade_params: Dict[str, Any]) -> float:
         """
-        Calculate honeypot probability
+        Calculate honeypot probability using integrated EnhancedRugDetector
         
         Args:
             trade_params: Trade parameters containing token info
@@ -297,185 +334,438 @@ class DevilsAdvocateSynapse:
             float: Probability of honeypot (0.0 to 1.0)
         """
         try:
+            if not self.rug_detector:
+                self.logger.warning("Rug detector not initialized, using fallback honeypot analysis")
+                return await self._fallback_honeypot_analysis(trade_params)
+            
             token_address = trade_params.get('token_address', '')
+            token_symbol = trade_params.get('token_symbol', '')
+            token_name = trade_params.get('token_name', '')
             
-            # Initialize probability factors
-            probability_factors = []
+            # Get comprehensive rug analysis from EnhancedRugDetector
+            rug_analysis = await self.rug_detector.analyze_token(token_address, token_name, token_symbol)
             
-            # Check contract verification status
-            is_verified = trade_params.get('contract_verified', True)
-            if not is_verified:
-                probability_factors.append(0.7)  # 70% if unverified
+            # Primary honeypot probability from detector
+            honeypot_probability = rug_analysis.honeypot_probability
+            
+            # Apply confidence weighting
+            confidence_factor = rug_analysis.confidence_score
+            
+            # Cross-check with sentiment analysis for market manipulation signals
+            if self.sentiment_ai:
+                sentiment_result = await self.sentiment_ai.analyze_token_sentiment(token_address, token_symbol)
                 
-            # Check for suspicious contract patterns
-            has_transfer_restrictions = trade_params.get('has_transfer_restrictions', False)
-            if has_transfer_restrictions:
-                probability_factors.append(0.8)  # 80% if transfer restrictions
+                # High positive sentiment with honeypot indicators might indicate manipulation
+                if sentiment_result.overall_sentiment_score > 0.7 and honeypot_probability > 0.5:
+                    manipulation_factor = 1.2  # Increase probability by 20%
+                elif sentiment_result.overall_sentiment_score < 0.3 and honeypot_probability > 0.3:
+                    manipulation_factor = 1.1  # Slight increase
+                else:
+                    manipulation_factor = 1.0
                 
-            # Check sell/buy ratio anomalies
-            sell_buy_ratio = trade_params.get('sell_buy_ratio', 1.0)
-            if sell_buy_ratio < 0.1:  # Very few sells compared to buys
-                probability_factors.append(0.9)  # 90% honeypot probability
-            elif sell_buy_ratio < 0.3:
-                probability_factors.append(0.6)  # 60% honeypot probability
+                honeypot_probability *= manipulation_factor
                 
-            # Check for blacklist functionality
-            has_blacklist = trade_params.get('has_blacklist_function', False)
-            if has_blacklist:
-                probability_factors.append(0.7)  # 70% if blacklist function exists
-                
-            # Calculate final probability
-            if probability_factors:
-                final_probability = max(probability_factors)
-            else:
-                final_probability = 0.1  # Default 10% baseline risk
-                
+                self.logger.debug(f"🍯 Honeypot + Sentiment for {token_address[:8]}: "
+                                f"Base={rug_analysis.honeypot_probability:.3f}, "
+                                f"Sentiment={sentiment_result.overall_sentiment_score:.3f}, "
+                                f"Manipulation={manipulation_factor:.3f}")
+            
+            # Apply confidence factor and cap result
+            final_probability = honeypot_probability * confidence_factor
+            
+            self.logger.debug(f"🍯 Honeypot analysis for {token_address[:8]}: "
+                            f"Final={final_probability:.3f}, Confidence={confidence_factor:.3f}")
+            
             return min(0.99, final_probability)  # Cap at 99%
             
         except Exception as e:
-            self.logger.error(f"Error calculating honeypot probability: {e}")
-            return 0.3  # Default to moderate risk on error
+            self.logger.error(f"Error in integrated honeypot analysis: {e}")
+            return await self._fallback_honeypot_analysis(trade_params)
     
     async def _get_slow_rug_probability(self, trade_params: Dict[str, Any]) -> float:
-        """Calculate slow rug pull probability"""
+        """
+        Calculate slow rug pull probability using integrated EnhancedRugDetector and SentimentFirstAI
+        
+        Args:
+            trade_params: Trade parameters containing token info
+            
+        Returns:
+            float: Probability of slow rug pull (0.0 to 1.0)
+        """
         try:
-            probability_factors = []
+            if not self.rug_detector:
+                self.logger.warning("Rug detector not initialized, using fallback slow rug analysis")
+                return await self._fallback_slow_rug_analysis(trade_params)
             
-            # Check for gradual liquidity reduction patterns
-            liquidity_trend = trade_params.get('liquidity_trend_7d', 0.0)
-            if liquidity_trend < -0.2:  # 20% liquidity reduction
-                probability_factors.append(0.7)
-            elif liquidity_trend < -0.1:  # 10% liquidity reduction
-                probability_factors.append(0.4)
+            token_address = trade_params.get('token_address', '')
+            token_symbol = trade_params.get('token_symbol', '')
+            token_name = trade_params.get('token_name', '')
             
-            # Check for increasing sell pressure
-            sell_buy_ratio = trade_params.get('sell_buy_ratio', 1.0)
-            if sell_buy_ratio > 3.0:  # 3:1 sell to buy ratio
-                probability_factors.append(0.6)
-            elif sell_buy_ratio > 2.0:  # 2:1 sell to buy ratio
-                probability_factors.append(0.4)
+            # Get comprehensive rug analysis from EnhancedRugDetector
+            rug_analysis = await self.rug_detector.analyze_token(token_address, token_name, token_symbol)
             
-            # Check for dev wallet activity
-            dev_activity_suspicious = trade_params.get('dev_activity_suspicious', False)
-            if dev_activity_suspicious:
-                probability_factors.append(0.8)
+            # Primary slow rug probability from detector
+            slow_rug_probability = rug_analysis.slow_rug_probability
+            confidence_factor = rug_analysis.confidence_score
             
-            return max(probability_factors) if probability_factors else 0.1
+            # Cross-reference with sentiment analysis for deteriorating sentiment patterns
+            sentiment_modifier = 1.0
+            if self.sentiment_ai:
+                sentiment_result = await self.sentiment_ai.analyze_token_sentiment(token_address, token_symbol)
+                
+                # Declining sentiment momentum indicates potential slow rug
+                sentiment_momentum = sentiment_result.sentiment_momentum
+                community_health = sentiment_result.community_health
+                
+                # If sentiment is declining while price might be stable (slow rug pattern)
+                if sentiment_momentum < -0.3:  # Strong negative momentum
+                    sentiment_modifier = 1.3  # Increase probability by 30%
+                elif sentiment_momentum < -0.1:  # Mild negative momentum
+                    sentiment_modifier = 1.1  # Increase probability by 10%
+                
+                # Community health deterioration is a strong slow rug signal
+                if community_health < 0.3:
+                    sentiment_modifier *= 1.2  # Additional 20% increase
+                
+                self.logger.debug(f"🐌 Slow Rug + Sentiment for {token_address[:8]}: "
+                                f"Base={slow_rug_probability:.3f}, "
+                                f"Momentum={sentiment_momentum:.3f}, "
+                                f"Health={community_health:.3f}, "
+                                f"Modifier={sentiment_modifier:.3f}")
+            
+            # Apply technical analysis for trend deterioration
+            technical_modifier = 1.0
+            if self.technical_analyzer:
+                tech_analysis = await self.technical_analyzer.analyze_token(token_address, token_symbol)
+                
+                # Bearish divergence or declining volume can indicate slow rug
+                if tech_analysis.overall_trend_direction.value == "BEARISH":
+                    technical_modifier = 1.2  # 20% increase
+                elif tech_analysis.overall_trend_direction.value == "SIDEWAYS":
+                    # Sideways with declining volume might indicate slow exit
+                    if tech_analysis.overall_score < 0.4:
+                        technical_modifier = 1.1  # 10% increase
+                
+                self.logger.debug(f"🐌 Slow Rug + Technical for {token_address[:8]}: "
+                                f"Trend={tech_analysis.overall_trend_direction.value}, "
+                                f"Score={tech_analysis.overall_score:.3f}, "
+                                f"Modifier={technical_modifier:.3f}")
+            
+            # Combine all factors
+            final_probability = slow_rug_probability * confidence_factor * sentiment_modifier * technical_modifier
+            
+            self.logger.debug(f"🐌 Slow rug analysis for {token_address[:8]}: "
+                            f"Final={final_probability:.3f}, Base={slow_rug_probability:.3f}, "
+                            f"Confidence={confidence_factor:.3f}")
+            
+            return min(0.99, final_probability)  # Cap at 99%
             
         except Exception as e:
-            self.logger.error(f"Error calculating slow rug probability: {e}")
-            return 0.2
+            self.logger.error(f"Error in integrated slow rug analysis: {e}")
+            return await self._fallback_slow_rug_analysis(trade_params)
     
     async def _get_liquidity_drain_probability(self, trade_params: Dict[str, Any]) -> float:
-        """Calculate liquidity drain probability"""
+        """
+        Calculate liquidity drain probability using integrated technical analysis and market data
+        
+        Args:
+            trade_params: Trade parameters containing token info
+            
+        Returns:
+            float: Probability of liquidity drain (0.0 to 1.0)
+        """
         try:
-            probability_factors = []
+            token_address = trade_params.get('token_address', '')
+            token_symbol = trade_params.get('token_symbol', '')
             
-            # Check total liquidity vs market cap
-            total_liquidity = trade_params.get('total_liquidity_sol', 0.0)
-            market_cap_sol = trade_params.get('market_cap_sol', 0.0)
+            # Base probability from contract analysis
+            base_probability = 0.1  # Default baseline
             
-            if market_cap_sol > 0:
-                liquidity_ratio = total_liquidity / market_cap_sol
-                if liquidity_ratio < 0.01:  # Less than 1% liquidity
-                    probability_factors.append(0.9)
-                elif liquidity_ratio < 0.05:  # Less than 5% liquidity
-                    probability_factors.append(0.6)
-                elif liquidity_ratio < 0.1:  # Less than 10% liquidity
-                    probability_factors.append(0.3)
+            # Use EnhancedRugDetector for liquidity health analysis
+            if self.rug_detector:
+                rug_analysis = await self.rug_detector.analyze_token(token_address, '', token_symbol)
+                # Use the liquidity-related risk factors from the detector
+                base_probability = max(base_probability, rug_analysis.overall_risk * 0.6)  # 60% weight
             
-            # Check for large single LP positions
-            liquidity_concentration = trade_params.get('liquidity_concentration', 0.5)
-            if liquidity_concentration > 0.9:  # 90% in single LP
-                probability_factors.append(0.8)
-            elif liquidity_concentration > 0.7:  # 70% in single LP
-                probability_factors.append(0.5)
+            # Technical analysis for volume and liquidity trends
+            technical_modifier = 1.0
+            volume_decline_factor = 1.0
             
-            # Check for recent large liquidity removals
-            large_lp_removals = trade_params.get('large_lp_removals_24h', 0)
-            if large_lp_removals > 2:
-                probability_factors.append(0.7)
-            elif large_lp_removals > 0:
-                probability_factors.append(0.4)
+            if self.technical_analyzer:
+                tech_analysis = await self.technical_analyzer.analyze_token(token_address, token_symbol)
+                
+                # Volume indicators are critical for liquidity drain detection
+                volume_indicators = [ind for ind in tech_analysis.indicators if 'volume' in ind.name.lower()]
+                
+                if volume_indicators:
+                    avg_volume_score = sum(ind.value for ind in volume_indicators) / len(volume_indicators)
+                    
+                    # Declining volume indicates potential liquidity issues
+                    if avg_volume_score < 0.3:  # Very low volume
+                        volume_decline_factor = 1.5  # 50% increase
+                    elif avg_volume_score < 0.5:  # Low volume
+                        volume_decline_factor = 1.2  # 20% increase
+                
+                # Check for volatility spikes that might indicate liquidity problems
+                volatility = tech_analysis.volatility_score
+                if volatility > 0.8:  # High volatility
+                    technical_modifier = 1.3  # Often indicates thin liquidity
+                elif volatility > 0.6:  # Moderate volatility
+                    technical_modifier = 1.1
+                
+                self.logger.debug(f"💧 Liquidity + Technical for {token_address[:8]}: "
+                                f"Volume={avg_volume_score:.3f}, "
+                                f"Volatility={volatility:.3f}, "
+                                f"Modifiers=Volume:{volume_decline_factor:.3f}, Tech:{technical_modifier:.3f}")
             
-            return max(probability_factors) if probability_factors else 0.1
+            # Market data analysis for liquidity concentration
+            market_data_modifier = 1.0
+            if self.market_data_fetcher:
+                # Analyze DEX liquidity distribution and concentration
+                # This would ideally fetch real liquidity data
+                # For now, we simulate based on typical patterns
+                
+                # High-risk scenarios:
+                # 1. Single large LP provider (concentration risk)
+                # 2. Recent large LP withdrawals
+                # 3. Extremely low total liquidity relative to market cap
+                
+                # Simulate liquidity concentration analysis
+                total_liquidity = trade_params.get('total_liquidity_sol', 0.0)
+                market_cap_sol = trade_params.get('market_cap_sol', 0.0)
+                
+                if market_cap_sol > 0 and total_liquidity > 0:
+                    liquidity_ratio = total_liquidity / market_cap_sol
+                    
+                    if liquidity_ratio < 0.01:  # Less than 1% liquidity
+                        market_data_modifier = 2.0  # Double the risk
+                    elif liquidity_ratio < 0.05:  # Less than 5% liquidity
+                        market_data_modifier = 1.5  # 50% increase
+                    elif liquidity_ratio < 0.1:  # Less than 10% liquidity
+                        market_data_modifier = 1.2  # 20% increase
+                
+                self.logger.debug(f"💧 Liquidity + Market Data for {token_address[:8]}: "
+                                f"Ratio={liquidity_ratio:.4f}, "
+                                f"Modifier={market_data_modifier:.3f}")
+            
+            # Combine all factors
+            final_probability = base_probability * technical_modifier * volume_decline_factor * market_data_modifier
+            
+            self.logger.debug(f"💧 Liquidity drain analysis for {token_address[:8]}: "
+                            f"Final={final_probability:.3f}, Base={base_probability:.3f}")
+            
+            return min(0.99, final_probability)  # Cap at 99%
             
         except Exception as e:
-            self.logger.error(f"Error calculating liquidity drain probability: {e}")
-            return 0.2
+            self.logger.error(f"Error in integrated liquidity drain analysis: {e}")
+            return await self._fallback_liquidity_analysis(trade_params)
     
     async def _get_contract_exploit_probability(self, trade_params: Dict[str, Any]) -> float:
-        """Calculate contract exploit probability"""
+        """
+        Calculate contract exploit probability using integrated EnhancedRugDetector
+        
+        Args:
+            trade_params: Trade parameters containing token info
+            
+        Returns:
+            float: Probability of contract exploit (0.0 to 1.0)
+        """
         try:
-            probability_factors = []
+            if not self.rug_detector:
+                self.logger.warning("Rug detector not initialized, using fallback contract analysis")
+                return await self._fallback_contract_analysis(trade_params)
             
-            # Check if contract is verified
-            contract_verified = trade_params.get('contract_verified', True)
-            if not contract_verified:
-                probability_factors.append(0.6)
+            token_address = trade_params.get('token_address', '')
+            token_symbol = trade_params.get('token_symbol', '')
+            token_name = trade_params.get('token_name', '')
             
-            # Check for known vulnerable patterns
-            has_known_vulnerabilities = trade_params.get('has_known_vulnerabilities', False)
-            if has_known_vulnerabilities:
-                probability_factors.append(0.9)
+            # Get comprehensive rug analysis from EnhancedRugDetector
+            rug_analysis = await self.rug_detector.analyze_token(token_address, token_name, token_symbol)
             
-            # Check contract complexity vs age
-            token_age_hours = trade_params.get('token_age_hours', 24)
-            contract_complexity = trade_params.get('contract_complexity_score', 0.5)
+            # Extract contract-specific risk factors
+            contract_risk_factors = []
             
-            if token_age_hours < 6 and contract_complexity > 0.8:  # Complex new contract
-                probability_factors.append(0.7)
-            elif token_age_hours < 24 and contract_complexity > 0.9:  # Very complex contract
-                probability_factors.append(0.5)
+            # Use the detector's risk factors for contract analysis
+            for risk_factor in rug_analysis.risk_factors:
+                if any(keyword in risk_factor.description.lower() for keyword in 
+                      ['contract', 'code', 'verify', 'proxy', 'ownership', 'mint', 'burn', 'pause']):
+                    contract_risk_factors.append(risk_factor)
             
-            # Check for proxy contracts without transparency
-            is_proxy = trade_params.get('is_proxy', False)
-            is_transparent = trade_params.get('is_transparent', True)
-            if is_proxy and not is_transparent:
-                probability_factors.append(0.8)
+            # Calculate base probability from contract-specific risks
+            if contract_risk_factors:
+                # Weight high-severity contract risks more heavily
+                weighted_scores = []
+                for risk in contract_risk_factors:
+                    weight = 1.0
+                    if risk.severity.value == "HIGH":
+                        weight = 2.0
+                    elif risk.severity.value == "CRITICAL":
+                        weight = 3.0
+                    elif risk.severity.value == "LOW":
+                        weight = 0.5
+                    
+                    weighted_scores.append(risk.score * weight)
+                
+                base_probability = min(0.9, sum(weighted_scores) / len(weighted_scores))
+            else:
+                # Use overall risk as fallback
+                base_probability = rug_analysis.overall_risk * 0.7  # 70% weight for contract focus
             
-            return max(probability_factors) if probability_factors else 0.1
+            # Apply confidence factor
+            confidence_factor = rug_analysis.confidence_score
+            
+            # Cross-check with sentiment for potential social engineering attacks
+            sentiment_modifier = 1.0
+            if self.sentiment_ai:
+                sentiment_result = await self.sentiment_ai.analyze_token_sentiment(token_address, token_symbol)
+                
+                # Extremely positive sentiment around a risky contract might indicate social engineering
+                if sentiment_result.overall_sentiment_score > 0.8 and base_probability > 0.5:
+                    sentiment_modifier = 1.2  # 20% increase - potential hype-driven exploit
+                elif sentiment_result.overall_sentiment_score < 0.2:
+                    sentiment_modifier = 1.1  # 10% increase - negative sentiment might indicate known issues
+                
+                self.logger.debug(f"🔓 Contract + Sentiment for {token_address[:8]}: "
+                                f"Base={base_probability:.3f}, "
+                                f"Sentiment={sentiment_result.overall_sentiment_score:.3f}, "
+                                f"Modifier={sentiment_modifier:.3f}")
+            
+            # Final calculation
+            final_probability = base_probability * confidence_factor * sentiment_modifier
+            
+            self.logger.debug(f"🔓 Contract exploit analysis for {token_address[:8]}: "
+                            f"Final={final_probability:.3f}, Base={base_probability:.3f}, "
+                            f"RiskFactors={len(contract_risk_factors)}, "
+                            f"Confidence={confidence_factor:.3f}")
+            
+            return min(0.99, final_probability)  # Cap at 99%
             
         except Exception as e:
-            self.logger.error(f"Error calculating contract exploit probability: {e}")
-            return 0.2
+            self.logger.error(f"Error in integrated contract exploit analysis: {e}")
+            return await self._fallback_contract_analysis(trade_params)
     
     async def _get_whale_dump_probability(self, trade_params: Dict[str, Any]) -> float:
-        """Calculate whale dump probability"""
+        """
+        Calculate whale dump probability using integrated sentiment and technical analysis
+        
+        Args:
+            trade_params: Trade parameters containing token info
+            
+        Returns:
+            float: Probability of whale dump (0.0 to 1.0)
+        """
         try:
-            probability_factors = []
+            token_address = trade_params.get('token_address', '')
+            token_symbol = trade_params.get('token_symbol', '')
             
-            # Check for whale wallet activity
-            whale_activity_score = trade_params.get('whale_activity_score', 0.0)
-            if whale_activity_score > 0.8:
-                probability_factors.append(0.7)
-            elif whale_activity_score > 0.6:
-                probability_factors.append(0.5)
+            # Base probability from whale concentration metrics
+            base_probability = 0.1  # Default baseline
             
-            # Check token concentration in whale wallets
+            # Analyze whale concentration using available data
             top_10_holder_percent = trade_params.get('top_10_holder_percent', 0.0)
             if top_10_holder_percent > 70:  # Top 10 hold >70%
-                probability_factors.append(0.8)
+                base_probability = 0.7
             elif top_10_holder_percent > 50:  # Top 10 hold >50%
-                probability_factors.append(0.6)
+                base_probability = 0.5
+            elif top_10_holder_percent > 30:  # Top 10 hold >30%
+                base_probability = 0.3
             
-            # Check for recent large transactions
-            large_transactions_24h = trade_params.get('large_transactions_24h', 0)
-            if large_transactions_24h > 5:
-                probability_factors.append(0.6)
-            elif large_transactions_24h > 2:
-                probability_factors.append(0.4)
+            # Sentiment analysis for whale dump patterns
+            sentiment_modifier = 1.0
+            if self.sentiment_ai:
+                sentiment_result = await self.sentiment_ai.analyze_token_sentiment(token_address, token_symbol)
+                
+                # High sentiment with concentrated holdings indicates potential dump setup
+                sentiment_score = sentiment_result.overall_sentiment_score
+                viral_potential = sentiment_result.viral_potential
+                
+                # Classic pump-and-dump pattern: high sentiment + high concentration
+                if sentiment_score > 0.8 and base_probability > 0.5:
+                    sentiment_modifier = 1.4  # 40% increase - classic dump setup
+                elif sentiment_score > 0.7 and viral_potential > 0.7:
+                    sentiment_modifier = 1.2  # 20% increase - potential viral dump
+                elif sentiment_score < 0.3:  # Already negative sentiment
+                    sentiment_modifier = 0.8  # 20% decrease - might already be dumping
+                
+                self.logger.debug(f"🐋 Whale + Sentiment for {token_address[:8]}: "
+                                f"Base={base_probability:.3f}, "
+                                f"Sentiment={sentiment_score:.3f}, "
+                                f"Viral={viral_potential:.3f}, "
+                                f"Modifier={sentiment_modifier:.3f}")
             
-            # Check market sentiment vs whale behavior
-            market_sentiment = trade_params.get('market_sentiment', 0.5)
-            if market_sentiment > 0.8 and whale_activity_score > 0.6:  # High sentiment + whale activity
-                probability_factors.append(0.7)  # Potential dump setup
+            # Technical analysis for whale movement patterns
+            technical_modifier = 1.0
+            volume_spike_factor = 1.0
             
-            return max(probability_factors) if probability_factors else 0.1
+            if self.technical_analyzer:
+                tech_analysis = await self.technical_analyzer.analyze_token(token_address, token_symbol)
+                
+                # Large volume spikes often precede whale dumps
+                volume_indicators = [ind for ind in tech_analysis.indicators if 'volume' in ind.name.lower()]
+                if volume_indicators:
+                    avg_volume = sum(ind.value for ind in volume_indicators) / len(volume_indicators)
+                    
+                    # Very high volume with price topping might indicate distribution
+                    if avg_volume > 0.8:
+                        volume_spike_factor = 1.3  # 30% increase
+                    elif avg_volume > 0.6:
+                        volume_spike_factor = 1.1  # 10% increase
+                
+                # RSI and momentum divergence patterns
+                momentum_indicators = [ind for ind in tech_analysis.indicators if 
+                                     any(name in ind.name.lower() for name in ['rsi', 'momentum', 'macd'])]
+                
+                if momentum_indicators:
+                    avg_momentum = sum(ind.value for ind in momentum_indicators) / len(momentum_indicators)
+                    
+                    # Overbought conditions with high whale concentration
+                    if avg_momentum > 0.8 and base_probability > 0.4:
+                        technical_modifier = 1.25  # 25% increase - overbought + concentration
+                    elif avg_momentum < 0.2:  # Already oversold
+                        technical_modifier = 0.9  # 10% decrease - might already be dumped
+                
+                # High volatility can indicate whale activity
+                if tech_analysis.volatility_score > 0.7:
+                    technical_modifier *= 1.1  # Additional 10% for high volatility
+                
+                self.logger.debug(f"🐋 Whale + Technical for {token_address[:8]}: "
+                                f"Volume={avg_volume:.3f}, "
+                                f"Volatility={tech_analysis.volatility_score:.3f}, "
+                                f"Modifiers=Volume:{volume_spike_factor:.3f}, Tech:{technical_modifier:.3f}")
+            
+            # Market timing analysis
+            timing_modifier = 1.0
+            if self.market_data_fetcher:
+                # Analyze market conditions for optimal whale dump timing
+                # Whales often dump during:
+                # 1. High retail FOMO (high sentiment + high volume)
+                # 2. Market rally peaks
+                # 3. When retail is most active
+                
+                # Simulate market timing analysis
+                current_hour = datetime.now().hour
+                
+                # Peak trading hours when retail is most active
+                if 14 <= current_hour <= 16:  # 2-4 PM UTC (US market hours)
+                    timing_modifier = 1.15  # 15% increase during peak retail hours
+                elif 9 <= current_hour <= 11:  # 9-11 AM UTC
+                    timing_modifier = 1.1   # 10% increase during morning hours
+                
+                self.logger.debug(f"🐋 Whale + Timing for {token_address[:8]}: "
+                                f"Hour={current_hour}, Modifier={timing_modifier:.3f}")
+            
+            # Combine all factors
+            final_probability = base_probability * sentiment_modifier * technical_modifier * volume_spike_factor * timing_modifier
+            
+            self.logger.debug(f"🐋 Whale dump analysis for {token_address[:8]}: "
+                            f"Final={final_probability:.3f}, Base={base_probability:.3f}, "
+                            f"Concentration={top_10_holder_percent:.1f}%")
+            
+            return min(0.99, final_probability)  # Cap at 99%
             
         except Exception as e:
-            self.logger.error(f"Error calculating whale dump probability: {e}")
-            return 0.2
+            self.logger.error(f"Error in integrated whale dump analysis: {e}")
+            return await self._fallback_whale_analysis(trade_params)
     
     def _get_impact_multiplier(self, pattern: FailurePattern) -> float:
         """Get impact severity multiplier for different failure patterns"""
@@ -886,4 +1176,207 @@ class DevilsAdvocateSynapse:
             'veto_threshold': self.veto_threshold,
             'avg_analysis_time_target_ms': self.max_analysis_time_ms,
             'protection_active': True
-        } 
+        }
+    
+    # Fallback analysis methods for when intelligence modules are not available
+    
+    async def _fallback_rug_analysis(self, trade_params: Dict[str, Any]) -> float:
+        """Fallback rug pull analysis using basic heuristics"""
+        try:
+            probability_factors = []
+            
+            # Basic contract verification check
+            is_verified = trade_params.get('contract_verified', True)
+            if not is_verified:
+                probability_factors.append(0.6)
+            
+            # Token age check
+            token_age_hours = trade_params.get('token_age_hours', 24)
+            if token_age_hours < 1:  # Very new token
+                probability_factors.append(0.8)
+            elif token_age_hours < 6:
+                probability_factors.append(0.5)
+            
+            # Liquidity check
+            total_liquidity = trade_params.get('total_liquidity_sol', 0.0)
+            market_cap_sol = trade_params.get('market_cap_sol', 1.0)
+            liquidity_ratio = total_liquidity / market_cap_sol if market_cap_sol > 0 else 0
+            
+            if liquidity_ratio < 0.01:
+                probability_factors.append(0.9)
+            elif liquidity_ratio < 0.05:
+                probability_factors.append(0.6)
+            
+            return max(probability_factors) if probability_factors else 0.2
+            
+        except Exception as e:
+            self.logger.error(f"Error in fallback rug analysis: {e}")
+            return 0.3
+    
+    async def _fallback_honeypot_analysis(self, trade_params: Dict[str, Any]) -> float:
+        """Fallback honeypot analysis using basic heuristics"""
+        try:
+            probability_factors = []
+            
+            # Check for transfer restrictions
+            has_transfer_restrictions = trade_params.get('has_transfer_restrictions', False)
+            if has_transfer_restrictions:
+                probability_factors.append(0.8)
+            
+            # Check sell/buy ratio
+            sell_buy_ratio = trade_params.get('sell_buy_ratio', 1.0)
+            if sell_buy_ratio < 0.1:
+                probability_factors.append(0.9)
+            elif sell_buy_ratio < 0.3:
+                probability_factors.append(0.6)
+            
+            # Check for blacklist function
+            has_blacklist = trade_params.get('has_blacklist_function', False)
+            if has_blacklist:
+                probability_factors.append(0.7)
+            
+            return max(probability_factors) if probability_factors else 0.1
+            
+        except Exception as e:
+            self.logger.error(f"Error in fallback honeypot analysis: {e}")
+            return 0.3
+    
+    async def _fallback_slow_rug_analysis(self, trade_params: Dict[str, Any]) -> float:
+        """Fallback slow rug analysis using basic heuristics"""
+        try:
+            probability_factors = []
+            
+            # Liquidity trend
+            liquidity_trend_7d = trade_params.get('liquidity_trend_7d', 0.0)
+            if liquidity_trend_7d < -0.2:
+                probability_factors.append(0.7)
+            elif liquidity_trend_7d < -0.1:
+                probability_factors.append(0.4)
+            
+            # Sell pressure
+            sell_buy_ratio = trade_params.get('sell_buy_ratio', 1.0)
+            if sell_buy_ratio > 3.0:
+                probability_factors.append(0.6)
+            elif sell_buy_ratio > 2.0:
+                probability_factors.append(0.4)
+            
+            # Dev activity
+            dev_activity_suspicious = trade_params.get('dev_activity_suspicious', False)
+            if dev_activity_suspicious:
+                probability_factors.append(0.8)
+            
+            return max(probability_factors) if probability_factors else 0.1
+            
+        except Exception as e:
+            self.logger.error(f"Error in fallback slow rug analysis: {e}")
+            return 0.2
+    
+    async def _fallback_liquidity_analysis(self, trade_params: Dict[str, Any]) -> float:
+        """Fallback liquidity analysis using basic heuristics"""
+        try:
+            probability_factors = []
+            
+            # Liquidity to market cap ratio
+            total_liquidity = trade_params.get('total_liquidity_sol', 0.0)
+            market_cap_sol = trade_params.get('market_cap_sol', 1.0)
+            liquidity_ratio = total_liquidity / market_cap_sol if market_cap_sol > 0 else 0
+            
+            if liquidity_ratio < 0.01:
+                probability_factors.append(0.9)
+            elif liquidity_ratio < 0.05:
+                probability_factors.append(0.6)
+            elif liquidity_ratio < 0.1:
+                probability_factors.append(0.3)
+            
+            # LP concentration
+            liquidity_concentration = trade_params.get('liquidity_concentration', 0.5)
+            if liquidity_concentration > 0.9:
+                probability_factors.append(0.8)
+            elif liquidity_concentration > 0.7:
+                probability_factors.append(0.5)
+            
+            # Recent LP removals
+            large_lp_removals = trade_params.get('large_lp_removals_24h', 0)
+            if large_lp_removals > 2:
+                probability_factors.append(0.7)
+            elif large_lp_removals > 0:
+                probability_factors.append(0.4)
+            
+            return max(probability_factors) if probability_factors else 0.1
+            
+        except Exception as e:
+            self.logger.error(f"Error in fallback liquidity analysis: {e}")
+            return 0.2
+    
+    async def _fallback_contract_analysis(self, trade_params: Dict[str, Any]) -> float:
+        """Fallback contract analysis using basic heuristics"""
+        try:
+            probability_factors = []
+            
+            # Contract verification
+            contract_verified = trade_params.get('contract_verified', True)
+            if not contract_verified:
+                probability_factors.append(0.6)
+            
+            # Known vulnerabilities
+            has_vulnerabilities = trade_params.get('has_known_vulnerabilities', False)
+            if has_vulnerabilities:
+                probability_factors.append(0.9)
+            
+            # Contract age vs complexity
+            token_age_hours = trade_params.get('token_age_hours', 24)
+            contract_complexity = trade_params.get('contract_complexity_score', 0.5)
+            
+            if token_age_hours < 6 and contract_complexity > 0.8:
+                probability_factors.append(0.7)
+            elif token_age_hours < 24 and contract_complexity > 0.9:
+                probability_factors.append(0.5)
+            
+            # Proxy without transparency
+            is_proxy = trade_params.get('is_proxy', False)
+            is_transparent = trade_params.get('is_transparent', True)
+            if is_proxy and not is_transparent:
+                probability_factors.append(0.8)
+            
+            return max(probability_factors) if probability_factors else 0.1
+            
+        except Exception as e:
+            self.logger.error(f"Error in fallback contract analysis: {e}")
+            return 0.2
+    
+    async def _fallback_whale_analysis(self, trade_params: Dict[str, Any]) -> float:
+        """Fallback whale analysis using basic heuristics"""
+        try:
+            probability_factors = []
+            
+            # Whale activity score
+            whale_activity_score = trade_params.get('whale_activity_score', 0.0)
+            if whale_activity_score > 0.8:
+                probability_factors.append(0.7)
+            elif whale_activity_score > 0.6:
+                probability_factors.append(0.5)
+            
+            # Token concentration
+            top_10_holder_percent = trade_params.get('top_10_holder_percent', 0.0)
+            if top_10_holder_percent > 70:
+                probability_factors.append(0.8)
+            elif top_10_holder_percent > 50:
+                probability_factors.append(0.6)
+            
+            # Large transactions
+            large_transactions_24h = trade_params.get('large_transactions_24h', 0)
+            if large_transactions_24h > 5:
+                probability_factors.append(0.6)
+            elif large_transactions_24h > 2:
+                probability_factors.append(0.4)
+            
+            # Sentiment vs activity
+            market_sentiment = trade_params.get('market_sentiment', 0.5)
+            if market_sentiment > 0.8 and whale_activity_score > 0.6:
+                probability_factors.append(0.7)
+            
+            return max(probability_factors) if probability_factors else 0.1
+            
+        except Exception as e:
+            self.logger.error(f"Error in fallback whale analysis: {e}")
+            return 0.2 

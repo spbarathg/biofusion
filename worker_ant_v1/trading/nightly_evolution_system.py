@@ -12,10 +12,9 @@ from typing import Dict, List, Optional, Any, Tuple
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from enum import Enum
-import logging
 import numpy as np
 
-from worker_ant_v1.utils.logger import setup_logger
+from worker_ant_v1.utils.logger import get_logger
 from worker_ant_v1.core.database import get_database_manager
 
 
@@ -94,7 +93,7 @@ class NightlyEvolutionSystem:
     """Genetic algorithm system for wallet evolution and optimization"""
     
     def __init__(self, wallet_manager=None, database_manager=None):
-        self.logger = setup_logger("NightlyEvolutionSystem")
+        self.logger = get_logger("NightlyEvolutionSystem")
         
         # System dependencies
         self.wallet_manager = wallet_manager

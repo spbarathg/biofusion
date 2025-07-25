@@ -9,14 +9,13 @@ Core alert system for battlefield survival:
 """
 
 import asyncio
-import logging
 from typing import Dict, List, Optional, Any
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
 import os
 
-from worker_ant_v1.utils.logger import setup_logger
+from worker_ant_v1.utils.logger import get_logger
 
 class AlertPriority(Enum):
     WARNING = "warning"
@@ -41,7 +40,7 @@ class BattlefieldAlertSystem:
     """Core battlefield alert system"""
     
     def __init__(self):
-        self.logger = setup_logger("BattlefieldAlerts")
+        self.logger = get_logger("BattlefieldAlerts")
         
         # Configuration
         self.alert_log_path = "data/alerts.log"

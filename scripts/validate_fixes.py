@@ -336,5 +336,5 @@ async def main():
         sys.exit(2)
 
 
-if __name__ == "__main__":
-    asyncio.run(main()) 
+# Entry point removed - execute via entry_points/run_bot.py --mode test
+# This maintains the Entry Point Doctrine as defined in CONTRIBUTING.md 

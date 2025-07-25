@@ -16,10 +16,9 @@ from typing import Dict, List, Optional, Any, Tuple
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from enum import Enum
-import logging
 from pathlib import Path
 
-from worker_ant_v1.utils.logger import setup_logger
+from worker_ant_v1.utils.logger import get_logger
 try:
     from solana.keypair import Keypair
 except ImportError:
@@ -122,7 +121,7 @@ class VaultWalletSystem:
     """Manages secure vault wallets for profit protection"""
     
     def __init__(self, kill_switch=None):
-        self.logger = setup_logger("VaultWalletSystem")
+        self.logger = get_logger("VaultWalletSystem")
         
         # Safety systems
         self.kill_switch = kill_switch
@@ -721,6 +720,67 @@ class VaultWalletSystem:
         except Exception as e:
             self.logger.error(f"Error withdrawing from vault: {e}")
             return False
+    
+    async def deposit_profit(self, amount: float) -> bool:
+        """Deposit profit (singular) - alias for deposit_profits for wallet manager compatibility"""
+        return await self.deposit_profits(amount)
+    
+    async def emergency_secure_funds(self, amount: float, source_address: str) -> bool:
+        """Emergency function to secure funds from a specific wallet address"""
+        try:
+            # CRITICAL SAFETY CHECK: Kill switch verification
+            if self.kill_switch and self.kill_switch.is_triggered:
+                self.logger.critical("🚨 Kill switch is active but emergency fund securing is proceeding")
+                # In emergency mode, we proceed even with kill switch active
+            
+            self.logger.critical(f"🚨 EMERGENCY: Securing {amount:.4f} SOL from {source_address}")
+            
+            # In emergency mode, deposit directly to emergency vault
+            emergency_vault_id = "vault_emergency"
+            
+            if emergency_vault_id in self.vaults:
+                vault = self.vaults[emergency_vault_id]
+                vault.balance += amount
+                vault.total_deposits += amount
+                vault.last_activity = datetime.now()
+                
+                # Add emergency metadata
+                if 'emergency_deposits' not in vault.metadata:
+                    vault.metadata['emergency_deposits'] = []
+                
+                vault.metadata['emergency_deposits'].append({
+                    'amount': amount,
+                    'source_address': source_address,
+                    'timestamp': datetime.now().isoformat(),
+                    'reason': 'emergency_secure_funds'
+                })
+                
+                # Update total balances
+                self.total_vault_balance += amount
+                self.total_profits_secured += amount
+                
+                # Save immediately in emergency
+                await self._save_vault_data()
+                
+                self.logger.critical(f"🚨 Emergency secured {amount:.4f} SOL from {source_address} to emergency vault")
+                return True
+            else:
+                self.logger.error(f"❌ Emergency vault not found!")
+                return False
+                
+        except Exception as e:
+            self.logger.critical(f"❌ CRITICAL ERROR in emergency fund securing: {e}")
+            return False
+    
+    async def get_total_balance(self) -> float:
+        """Get total balance across all vaults"""
+        try:
+            total = sum(vault.balance for vault in self.vaults.values())
+            self.logger.debug(f"📊 Total vault balance: {total:.4f} SOL")
+            return total
+        except Exception as e:
+            self.logger.error(f"❌ Error calculating total vault balance: {e}")
+            return 0.0
     
     async def _check_withdrawal_security(self, vault: VaultWallet, amount: float, reason: str) -> bool:
         """Check security requirements for withdrawal"""

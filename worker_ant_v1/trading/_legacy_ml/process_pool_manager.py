@@ -28,7 +28,7 @@ import queue
 import threading
 import uuid
 
-from worker_ant_v1.utils.logger import setup_logger
+from worker_ant_v1.utils.logger import get_logger
 
 
 @dataclass

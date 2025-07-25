@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
 
-from worker_ant_v1.utils.logger import setup_logger
+from worker_ant_v1.utils.logger import get_logger
 
 
 @dataclass
@@ -50,7 +50,7 @@ class AdvancedRecoverySystem:
     def __init__(self, config: Dict[str, Any]):
         """Initialize recovery system"""
         self.config = config
-        self.logger = setup_logger("AdvancedRecoverySystem")
+        self.logger = get_logger("AdvancedRecoverySystem")
         
         # Component states
         self.component_states: Dict[str, RecoveryState] = {}

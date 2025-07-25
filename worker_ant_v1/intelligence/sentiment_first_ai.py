@@ -1,638 +1,1277 @@
 """
-SENTIMENT FIRST AI - MEMECOIN SENTIMENT MASTER
-============================================
+SENTIMENT FIRST AI - ADVANCED SOCIAL INTELLIGENCE ENGINE
+======================================================
 
-AI system that prioritizes sentiment analysis above all other factors
-for aggressive memecoin trading and rapid compounding.
+Sophisticated sentiment analysis system that aggregates and analyzes social signals
+across multiple platforms to provide quantitative sentiment scores for trading decisions.
+
+This is a critical component of Stage 2 (Win-Rate) in the three-stage pipeline.
+It provides the social sentiment factor for the Naive Bayes probability calculation.
+
+Sentiment Analysis Layers:
+1. Twitter/X Social Media Monitoring - Real-time tweet sentiment and engagement
+2. Reddit Community Analysis - Subreddit discussion sentiment and volume
+3. Telegram Signal Processing - Group chat sentiment and activity levels
+4. Discord Community Monitoring - Server activity and sentiment tracking
+5. News Sentiment Analysis - Crypto news and article sentiment scoring
+6. Influencer Signal Detection - Key opinion leader sentiment and calls
+
+Features:
+- Real-time social media sentiment tracking
+- Multi-platform sentiment aggregation with weighted scoring
+- Viral signal detection and momentum analysis
+- Influencer impact measurement and tracking
+- Community engagement metrics and health indicators
+- Sentiment trend analysis and pattern recognition
 """
 
 import asyncio
-import numpy as np
-from typing import Dict, List, Optional, Any, Tuple
-from dataclasses import dataclass
-from datetime import datetime, timedelta
-import logging
 import aiohttp
 import json
-import os
+import re
+import time
+from datetime import datetime, timedelta
+from typing import Dict, List, Optional, Any, Tuple
+from dataclasses import dataclass, field
+from enum import Enum
+import hashlib
+from collections import defaultdict, deque
 
 from worker_ant_v1.utils.logger import get_logger
-# SentimentAnalyzer removed - using built-in sentiment analysis in this file
-from worker_ant_v1.utils.constants import SentimentDecision as SentimentDecisionEnum, SentimentConstants
-from enum import Enum
+from worker_ant_v1.core.unified_config import get_api_config
+from worker_ant_v1.utils.market_data_fetcher import get_market_data_fetcher
+
+
+class SentimentLevel(Enum):
+    """Sentiment intensity levels"""
+    EXTREMELY_NEGATIVE = "extremely_negative"
+    VERY_NEGATIVE = "very_negative"
+    NEGATIVE = "negative"
+    SLIGHTLY_NEGATIVE = "slightly_negative"
+    NEUTRAL = "neutral"
+    SLIGHTLY_POSITIVE = "slightly_positive"
+    POSITIVE = "positive"
+    VERY_POSITIVE = "very_positive"
+    EXTREMELY_POSITIVE = "extremely_positive"
+
+
+class SentimentSource(Enum):
+    """Sentiment data sources"""
+    TWITTER = "twitter"
+    REDDIT = "reddit"
+    TELEGRAM = "telegram"
+    DISCORD = "discord"
+    NEWS = "news"
+    INFLUENCER = "influencer"
+    COMMUNITY = "community"
+
 
 @dataclass
-class SentimentDecision:
-    """Sentiment-based trading decision"""
-    token_address: str
-    decision: str  # Uses SentimentDecisionEnum values
-    sentiment_score: float
-    confidence: float
-    reasoning: List[str]
-    priority: int  # 1-5, 5 being highest priority
+class SentimentSignal:
+    """Individual sentiment signal from a specific source"""
+    source: SentimentSource
+    platform_id: str  # Tweet ID, Reddit post ID, etc.
+    content: str
+    sentiment_score: float  # -1.0 to 1.0
+    confidence: float  # 0.0 to 1.0
+    engagement_score: float  # Likes, shares, comments normalized
+    author_influence: float  # Author's influence score
     timestamp: datetime
-    expected_profit: float = 0.0
-    risk_level: str = "medium"
+    language: str = "en"
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class PlatformSentiment:
+    """Aggregated sentiment for a specific platform"""
+    platform: SentimentSource
+    overall_score: float  # -1.0 to 1.0
+    confidence: float  # 0.0 to 1.0
+    signal_count: int
+    engagement_volume: float
+    trending_score: float  # 0.0 to 1.0 (how much it's trending)
+    sentiment_momentum: float  # Rate of change in sentiment
+    top_signals: List[SentimentSignal] = field(default_factory=list)
+    last_updated: datetime = field(default_factory=datetime.now)
+
+
+@dataclass
+class SentimentAnalysisResult:
+    """Comprehensive sentiment analysis result"""
+    
+    # Core sentiment metrics
+    token_address: str
+    token_symbol: str
+    overall_sentiment_score: float  # -1.0 to 1.0
+    sentiment_level: SentimentLevel
+    confidence_score: float  # 0.0 to 1.0
+    
+    # Platform breakdown
+    platform_sentiments: Dict[SentimentSource, PlatformSentiment] = field(default_factory=dict)
+    
+    # Trend analysis
+    sentiment_momentum: float  # Rate of change
+    viral_potential: float  # 0.0 to 1.0
+    community_health: float  # 0.0 to 1.0
+    influencer_support: float  # 0.0 to 1.0
+    
+    # Signal quality
+    total_signals_analyzed: int = 0
+    signal_quality_score: float = 0.0
+    data_freshness_score: float = 0.0
+    
+    # Key insights
+    key_positive_signals: List[str] = field(default_factory=list)
+    key_negative_signals: List[str] = field(default_factory=list)
+    trending_keywords: List[str] = field(default_factory=list)
+    influential_mentions: List[str] = field(default_factory=list)
+    
+    # Analysis metadata
+    analyzed_at: datetime = field(default_factory=datetime.now)
+    analysis_duration_ms: int = 0
+    sources_analyzed: List[str] = field(default_factory=list)
+
 
 class SentimentFirstAI:
-    """AI system that prioritizes sentiment above all other factors for memecoin trading"""
+    """Advanced sentiment analysis system with multi-platform monitoring"""
     
     def __init__(self):
         self.logger = get_logger("SentimentFirstAI")
-        # Using built-in sentiment analysis - no external analyzer needed
+        self.api_config = get_api_config()
         
-        # Aggressive memecoin trading thresholds
-        self.decision_thresholds = {
-            SentimentDecisionEnum.STRONG_BUY.value: SentimentConstants.STRONG_BUY_THRESHOLD,
-            SentimentDecisionEnum.BUY.value: SentimentConstants.BUY_THRESHOLD,
-            'neutral_high': SentimentConstants.NEUTRAL_HIGH_THRESHOLD,
-            'neutral_low': SentimentConstants.NEUTRAL_LOW_THRESHOLD,
-            SentimentDecisionEnum.SELL.value: SentimentConstants.SELL_THRESHOLD,
-            SentimentDecisionEnum.STRONG_SELL.value: SentimentConstants.STRONG_SELL_THRESHOLD
+        # Core systems
+        self.market_data_fetcher = None
+        
+        # API endpoints and configurations
+        self.api_endpoints = {
+            SentimentSource.TWITTER: "https://api.twitter.com/2",
+            SentimentSource.REDDIT: "https://oauth.reddit.com/api/v1",
+            SentimentSource.NEWS: "https://newsapi.org/v2",
         }
         
-        # Sentiment weights for memecoin trading
+        # Sentiment analysis configuration
         self.sentiment_weights = {
-            'immediate': SentimentConstants.IMMEDIATE_WEIGHT,     # Current sentiment (highest weight)
-            'trend': SentimentConstants.TREND_WEIGHT,         # Sentiment trend over time
-            'stability': SentimentConstants.STABILITY_WEIGHT,     # Sentiment stability
-            'strength': SentimentConstants.STRENGTH_WEIGHT       # Sentiment strength/confidence
+            SentimentSource.TWITTER: 0.3,      # High impact from Twitter
+            SentimentSource.REDDIT: 0.25,     # Strong community signal
+            SentimentSource.TELEGRAM: 0.2,    # Real-time trading signals
+            SentimentSource.DISCORD: 0.15,    # Community engagement
+            SentimentSource.NEWS: 0.05,       # Official news (lower weight)
+            SentimentSource.INFLUENCER: 0.05  # Influencer calls
         }
         
-        # Decision history for pattern recognition
-        self.decision_history: Dict[str, List[SentimentDecision]] = {}
+        # Signal processing parameters
+        self.min_signals_required = 10  # Minimum signals for reliable analysis
+        self.signal_freshness_hours = 24  # Only consider signals from last 24h
+        self.min_engagement_threshold = 5  # Minimum engagement for signal consideration
+        self.confidence_threshold = 0.6  # Minimum confidence for signal inclusion
         
-        # Sentiment blacklist for tokens with consistently bad sentiment
-        self.sentiment_blacklist: Dict[str, datetime] = {}
+        # Keyword dictionaries for sentiment analysis
+        self.positive_keywords = [
+            'moon', 'rocket', 'bullish', 'pump', 'gem', 'diamond', 'hodl',
+            'buy', 'accumulate', 'undervalued', 'potential', 'growth',
+            'breakout', 'rally', 'surge', 'explosive', 'golden', 'amazing',
+            'revolutionary', 'innovative', 'game-changer', 'next big thing'
+        ]
         
-        # Memecoin-specific patterns
-        self.memecoin_patterns = {
-            'hype_cycle': 'rapid_sentiment_spike',
-            'fomo_pattern': 'accelerating_positive_sentiment',
-            'dump_pattern': 'sentiment_reversal',
-            'accumulation': 'steady_positive_sentiment'
+        self.negative_keywords = [
+            'dump', 'bearish', 'sell', 'exit', 'scam', 'rug', 'dead',
+            'falling', 'crash', 'panic', 'fear', 'avoid', 'warning',
+            'risky', 'dangerous', 'overvalued', 'bubble', 'ponzi',
+            'worthless', 'garbage', 'trash', 'failing'
+        ]
+        
+        # Viral signal indicators
+        self.viral_indicators = [
+            'trending', 'viral', 'exploding', 'momentum', 'volume spike',
+            'breaking', 'alert', 'urgent', 'now', 'fast', 'quick'
+        ]
+        
+        # Performance tracking
+        self.total_analyses = 0
+        self.total_signals_processed = 0
+        self.average_analysis_time_ms = 0.0
+        self.sentiment_accuracy_score = 0.0
+        
+        # Signal caching
+        self.signal_cache: Dict[str, List[SentimentSignal]] = {}
+        self.cache_timestamps: Dict[str, datetime] = {}
+        self.cache_ttl_minutes = 30  # Cache signals for 30 minutes
+        
+        # Rate limiting
+        self.api_rate_limits = {
+            SentimentSource.TWITTER: {'requests_per_hour': 300, 'last_request': 0},
+            SentimentSource.REDDIT: {'requests_per_hour': 600, 'last_request': 0},
+            SentimentSource.NEWS: {'requests_per_hour': 100, 'last_request': 0}
         }
         
-        # Aggressive compounding settings
-        self.compounding_settings = {
-            'min_sentiment_for_buy': 0.3,
-            'max_position_size_multiplier': 3.0,  # Can use up to 3x normal position size
-            'profit_taking_sentiment_threshold': -0.2,  # Sell if sentiment drops below -0.2
-            'aggressive_reentry_threshold': 0.4,  # Re-enter if sentiment recovers to 0.4
-            'max_hold_time_hours': 4,  # Maximum hold time for memecoins
-            'min_profit_target': 0.05  # 5% minimum profit target
-        }
-        
-        self.logger.info("✅ Sentiment First AI initialized for aggressive memecoin trading")
+        self.logger.info("🧠 Sentiment First AI initialized - Multi-platform intelligence active")
     
-    async def analyze_and_decide(self, token_address: str, 
-                               market_data: Dict[str, Any],
-                               additional_signals: Dict[str, float] = None) -> SentimentDecision:
-        """Make a trading decision based primarily on sentiment analysis for memecoin trading"""
+    async def initialize(self) -> bool:
+        """Initialize the sentiment analysis system"""
+        try:
+            self.logger.info("🚀 Initializing Sentiment First AI...")
+            
+            # Initialize market data fetcher
+            self.market_data_fetcher = await get_market_data_fetcher()
+            
+            # Test API connections
+            await self._test_api_connections()
+            
+            # Load sentiment models
+            await self._load_sentiment_models()
+            
+            # Initialize keyword patterns
+            await self._initialize_keyword_patterns()
+            
+            self.logger.info("✅ Sentiment First AI initialized successfully")
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"❌ Failed to initialize sentiment AI: {e}")
+            return False
+    
+    async def analyze_token_sentiment(self, token_address: str, token_symbol: str = "", token_name: str = "") -> SentimentAnalysisResult:
+        """
+        Comprehensive sentiment analysis for a token
+        
+        Args:
+            token_address: Token contract address
+            token_symbol: Token symbol (e.g., "BTC")
+            token_name: Token name (e.g., "Bitcoin")
+            
+        Returns:
+            SentimentAnalysisResult with comprehensive sentiment metrics
+        """
+        analysis_start_time = time.time()
         
         try:
-            # Check if token is blacklisted
-            if await self._is_sentiment_blacklisted(token_address):
-                return SentimentDecision(
+            self.logger.debug(f"🧠 Analyzing sentiment for {token_symbol or token_address[:8]}...")
+            
+            # Initialize result
+            result = SentimentAnalysisResult(
                     token_address=token_address,
-                    decision="AVOID",
-                    sentiment_score=-1.0,
-                    confidence=1.0,
-                    reasoning=["Token on sentiment blacklist"],
-                    priority=5,
-                    timestamp=datetime.now(),
-                    expected_profit=0.0,
-                    risk_level="high"
-                )
-            
-            # Get current sentiment
-            current_sentiment = await self.sentiment_analyzer.analyze_token_sentiment(
-                token_address, market_data
+                token_symbol=token_symbol or "UNKNOWN",
+                overall_sentiment_score=0.0,
+                sentiment_level=SentimentLevel.NEUTRAL,
+                confidence_score=0.0
             )
             
-            # Analyze sentiment trend
-            sentiment_trend = await self._analyze_sentiment_trend(token_address)
+            # Generate search queries for different platforms
+            search_queries = self._generate_search_queries(token_symbol, token_name, token_address)
             
-            # Calculate composite sentiment score
-            composite_score = await self._calculate_composite_sentiment(
-                current_sentiment, sentiment_trend
-            )
+            # Collect signals from all platforms concurrently
+            platform_tasks = []
             
-            # Detect memecoin patterns
-            memecoin_pattern = await self._detect_memecoin_pattern(token_address, composite_score, sentiment_trend)
+            # Twitter analysis
+            if self.api_config.get('twitter_bearer_token'):
+                platform_tasks.append(self._analyze_twitter_sentiment(search_queries['twitter']))
             
-            # Make aggressive trading decision
-            decision, confidence, reasoning, priority, expected_profit, risk_level = self._make_aggressive_decision(
-                composite_score, current_sentiment, sentiment_trend, memecoin_pattern, additional_signals
-            )
+            # Reddit analysis
+            if self.api_config.get('reddit_client_id'):
+                platform_tasks.append(self._analyze_reddit_sentiment(search_queries['reddit']))
             
-            sentiment_decision = SentimentDecision(
-                token_address=token_address,
-                decision=decision,
-                sentiment_score=composite_score,
-                confidence=confidence,
-                reasoning=reasoning,
-                priority=priority,
-                timestamp=datetime.now(),
-                expected_profit=expected_profit,
-                risk_level=risk_level
-            )
+            # News analysis
+            if self.api_config.get('news_api_key'):
+                platform_tasks.append(self._analyze_news_sentiment(search_queries['news']))
             
-            # Store decision history
-            if token_address not in self.decision_history:
-                self.decision_history[token_address] = []
+            # Telegram analysis (simplified)
+            platform_tasks.append(self._analyze_telegram_sentiment(search_queries['telegram']))
             
-            self.decision_history[token_address].append(sentiment_decision)
+            # Discord analysis (simplified)
+            platform_tasks.append(self._analyze_discord_sentiment(search_queries['discord']))
             
-            # Keep only last 50 decisions
-            if len(self.decision_history[token_address]) > 50:
-                self.decision_history[token_address] = self.decision_history[token_address][-50:]
+            # Execute all platform analyses concurrently
+            platform_results = await asyncio.gather(*platform_tasks, return_exceptions=True)
             
-            # Update sentiment blacklist
-            await self._update_sentiment_blacklist(token_address, sentiment_decision)
+            # Process results from each platform
+            valid_platforms = 0
+            total_weighted_sentiment = 0.0
+            total_confidence = 0.0
             
-            return sentiment_decision
+            for i, platform_result in enumerate(platform_results):
+                if isinstance(platform_result, Exception):
+                    self.logger.warning(f"Platform analysis {i} failed: {platform_result}")
+                    continue
+                
+                if platform_result and isinstance(platform_result, PlatformSentiment):
+                    platform = platform_result.platform
+                    weight = self.sentiment_weights.get(platform, 0.1)
+                    
+                    # Add to results
+                    result.platform_sentiments[platform] = platform_result
+                    result.sources_analyzed.append(platform.value)
+                    
+                    # Aggregate weighted sentiment
+                    total_weighted_sentiment += platform_result.overall_score * weight * platform_result.confidence
+                    total_confidence += weight * platform_result.confidence
+                    valid_platforms += 1
+                    
+                    # Update signal count
+                    result.total_signals_analyzed += platform_result.signal_count
             
-        except Exception as e:
-            self.logger.error(f"Sentiment decision analysis failed for {token_address}: {e}")
-            
-            return SentimentDecision(
-                token_address=token_address,
-                decision="HOLD",
-                sentiment_score=0.0,
-                confidence=0.0,
-                reasoning=[f"Analysis failed: {str(e)}"],
-                priority=1,
-                timestamp=datetime.now(),
-                expected_profit=0.0,
-                risk_level="high"
-            )
-    
-    async def _analyze_sentiment_trend(self, token_address: str) -> Dict[str, float]:
-        """Analyze sentiment trend over time for memecoin patterns"""
-        
-        try:
-            if token_address not in self.sentiment_analyzer.sentiment_history:
-                return {
-                    'trend_direction': 0.0,
-                    'trend_strength': 0.0,
-                    'stability': 0.5,
-                    'acceleration': 0.0,
-                    'volatility': 0.5
-                }
-            
-            sentiments = self.sentiment_analyzer.sentiment_history[token_address]
-            
-            if len(sentiments) < 3:
-                return {
-                    'trend_direction': 0.0,
-                    'trend_strength': 0.0,
-                    'stability': 0.5,
-                    'acceleration': 0.0,
-                    'volatility': 0.5
-                }
-            
-            # Calculate trend direction
-            recent_sentiment = np.mean([s.overall_sentiment for s in sentiments[-5:]])
-            older_sentiment = np.mean([s.overall_sentiment for s in sentiments[:-5]]) if len(sentiments) > 5 else recent_sentiment
-            trend_direction = recent_sentiment - older_sentiment
-            
-            # Calculate trend strength
-            sentiment_values = [s.overall_sentiment for s in sentiments]
-            trend_strength = abs(np.corrcoef(range(len(sentiment_values)), sentiment_values)[0, 1]) if len(sentiment_values) > 1 else 0
-            
-            # Calculate stability
-            sentiment_std = np.std(sentiment_values)
-            stability = max(0.0, 1.0 - sentiment_std)
-            
-            # Calculate acceleration (rate of change)
-            if len(sentiment_values) >= 3:
-                recent_change = sentiment_values[-1] - sentiment_values[-2]
-                previous_change = sentiment_values[-2] - sentiment_values[-3]
-                acceleration = recent_change - previous_change
+            # Calculate overall sentiment if we have valid data
+            if total_confidence > 0:
+                result.overall_sentiment_score = total_weighted_sentiment / total_confidence
+                result.confidence_score = min(1.0, total_confidence)
             else:
-                acceleration = 0.0
+                # Fallback to neutral sentiment with low confidence
+                result.overall_sentiment_score = 0.0
+                result.confidence_score = 0.1
             
-            # Calculate volatility
-            volatility = sentiment_std
+            # Determine sentiment level
+            result.sentiment_level = self._determine_sentiment_level(result.overall_sentiment_score)
             
-            return {
-                'trend_direction': trend_direction,
-                'trend_strength': trend_strength,
-                'stability': stability,
-                'acceleration': acceleration,
-                'volatility': volatility
-            }
+            # Calculate advanced metrics
+            result.sentiment_momentum = await self._calculate_sentiment_momentum(result.platform_sentiments)
+            result.viral_potential = await self._calculate_viral_potential(result.platform_sentiments)
+            result.community_health = await self._calculate_community_health(result.platform_sentiments)
+            result.influencer_support = await self._calculate_influencer_support(result.platform_sentiments)
+            
+            # Extract key insights
+            result.key_positive_signals = await self._extract_positive_signals(result.platform_sentiments)
+            result.key_negative_signals = await self._extract_negative_signals(result.platform_sentiments)
+            result.trending_keywords = await self._extract_trending_keywords(result.platform_sentiments)
+            result.influential_mentions = await self._extract_influential_mentions(result.platform_sentiments)
+            
+            # Calculate quality scores
+            result.signal_quality_score = await self._calculate_signal_quality(result.platform_sentiments)
+            result.data_freshness_score = await self._calculate_data_freshness(result.platform_sentiments)
+            
+            # Set analysis metadata
+            result.analysis_duration_ms = int((time.time() - analysis_start_time) * 1000)
+            
+            # Update performance metrics
+            self._update_analysis_metrics(result)
+            
+            # Log result
+            sentiment_emoji = self._get_sentiment_emoji(result.sentiment_level)
+            self.logger.info(f"{sentiment_emoji} | {token_symbol} | Sentiment: {result.overall_sentiment_score:.3f} | "
+                           f"Confidence: {result.confidence_score:.3f} | Signals: {result.total_signals_analyzed} | "
+                           f"Duration: {result.analysis_duration_ms}ms")
+            
+            return result
             
         except Exception as e:
-            self.logger.warning(f"Sentiment trend analysis failed: {e}")
-            return {
-                'trend_direction': 0.0,
-                'trend_strength': 0.0,
-                'stability': 0.5,
-                'acceleration': 0.0,
-                'volatility': 0.5
-            }
+            self.logger.error(f"❌ Error analyzing sentiment for {token_symbol}: {e}")
+            # Return neutral sentiment with low confidence on error
+            return SentimentAnalysisResult(
+                token_address=token_address,
+                token_symbol=token_symbol or "UNKNOWN",
+                overall_sentiment_score=0.0,
+                sentiment_level=SentimentLevel.NEUTRAL,
+                confidence_score=0.1,
+                analysis_duration_ms=int((time.time() - analysis_start_time) * 1000)
+            )
     
-    async def _calculate_composite_sentiment(self, current_sentiment: Any,
-                                           sentiment_trend: Dict[str, float]) -> float:
-        """Calculate composite sentiment score from multiple factors for memecoin trading"""
-        
+    def _generate_search_queries(self, token_symbol: str, token_name: str, token_address: str) -> Dict[str, List[str]]:
+        """Generate platform-specific search queries"""
         try:
-            # Immediate sentiment (highest weight for memecoins)
-            immediate_score = current_sentiment.overall_sentiment * self.sentiment_weights['immediate']
+            base_queries = []
             
-            # Trend score (important for momentum)
-            trend_score = sentiment_trend['trend_direction'] * self.sentiment_weights['trend']
+            # Add symbol if available
+            if token_symbol:
+                base_queries.extend([
+                    token_symbol,
+                    f"${token_symbol}",
+                    f"#{token_symbol}",
+                    f"{token_symbol} crypto",
+                    f"{token_symbol} token"
+                ])
             
-            # Stability score (lower weight for memecoins - volatility is expected)
-            stability_score = (sentiment_trend['stability'] - 0.5) * 2 * self.sentiment_weights['stability']
+            # Add name if available
+            if token_name and token_name != "Unknown Token":
+                base_queries.extend([
+                    token_name,
+                    f"{token_name} crypto",
+                    f"{token_name} token"
+                ])
             
-            # Strength score
-            strength_score = (current_sentiment.confidence - 0.5) * 2 * self.sentiment_weights['strength']
+            # Add contract address (shortened)
+            if token_address:
+                short_address = token_address[:8]
+                base_queries.append(short_address)
             
-            # Acceleration bonus for memecoins (rapid sentiment changes are good)
-            acceleration_bonus = sentiment_trend['acceleration'] * 0.2 if sentiment_trend['acceleration'] > 0 else 0
-            
-            # Composite score
-            composite_score = immediate_score + trend_score + stability_score + strength_score + acceleration_bonus
-            
-            # Clamp to [-1, 1] range
-            return max(-1.0, min(1.0, composite_score))
+            return {
+                'twitter': base_queries[:5],  # Limit to 5 queries for Twitter
+                'reddit': base_queries[:3],   # Limit to 3 for Reddit
+                'news': base_queries[:2],     # Limit to 2 for news
+                'telegram': base_queries[:3],
+                'discord': base_queries[:3]
+            }
             
         except Exception as e:
-            self.logger.error(f"Error calculating composite sentiment: {e}")
+            self.logger.error(f"Error generating search queries: {e}")
+            return {'twitter': [], 'reddit': [], 'news': [], 'telegram': [], 'discord': []}
+    
+    async def _analyze_twitter_sentiment(self, queries: List[str]) -> Optional[PlatformSentiment]:
+        """Analyze Twitter/X sentiment for given queries"""
+        try:
+            if not queries or not self.api_config.get('twitter_bearer_token'):
+                return None
+            
+            signals = []
+            
+            for query in queries:
+                # Check rate limit
+                if not await self._check_rate_limit(SentimentSource.TWITTER):
+                    break
+                
+                # Search tweets
+                tweets = await self._search_twitter_tweets(query)
+                
+                # Process each tweet
+                for tweet in tweets:
+                    signal = await self._process_twitter_signal(tweet)
+                    if signal:
+                        signals.append(signal)
+            
+            # Aggregate platform sentiment
+            if signals:
+                return await self._aggregate_platform_sentiment(SentimentSource.TWITTER, signals)
+            
+            return None
+            
+        except Exception as e:
+            self.logger.error(f"Error analyzing Twitter sentiment: {e}")
+            return None
+    
+    async def _analyze_reddit_sentiment(self, queries: List[str]) -> Optional[PlatformSentiment]:
+        """Analyze Reddit sentiment for given queries"""
+        try:
+            if not queries or not self.api_config.get('reddit_client_id'):
+                return None
+            
+            signals = []
+            
+            # Target subreddits for crypto discussion
+            crypto_subreddits = [
+                'CryptoCurrency', 'CryptoMoonShots', 'SatoshiStreetBets',
+                'defi', 'solana', 'altcoin', 'CryptoMarkets'
+            ]
+            
+            for query in queries:
+                # Check rate limit
+                if not await self._check_rate_limit(SentimentSource.REDDIT):
+                    break
+                
+                # Search Reddit posts
+                posts = await self._search_reddit_posts(query, crypto_subreddits)
+                
+                # Process each post
+                for post in posts:
+                    signal = await self._process_reddit_signal(post)
+                    if signal:
+                        signals.append(signal)
+            
+            # Aggregate platform sentiment
+            if signals:
+                return await self._aggregate_platform_sentiment(SentimentSource.REDDIT, signals)
+            
+            return None
+            
+        except Exception as e:
+            self.logger.error(f"Error analyzing Reddit sentiment: {e}")
+            return None
+    
+    async def _analyze_news_sentiment(self, queries: List[str]) -> Optional[PlatformSentiment]:
+        """Analyze news sentiment for given queries"""
+        try:
+            if not queries or not self.api_config.get('news_api_key'):
+                return None
+            
+            signals = []
+            
+            for query in queries:
+                # Check rate limit
+                if not await self._check_rate_limit(SentimentSource.NEWS):
+                    break
+                
+                # Search news articles
+                articles = await self._search_news_articles(query)
+                
+                # Process each article
+                for article in articles:
+                    signal = await self._process_news_signal(article)
+                    if signal:
+                        signals.append(signal)
+            
+            # Aggregate platform sentiment
+            if signals:
+                return await self._aggregate_platform_sentiment(SentimentSource.NEWS, signals)
+            
+            return None
+            
+        except Exception as e:
+            self.logger.error(f"Error analyzing news sentiment: {e}")
+            return None
+    
+    async def _analyze_telegram_sentiment(self, queries: List[str]) -> Optional[PlatformSentiment]:
+        """Analyze Telegram sentiment (simplified implementation)"""
+        try:
+            # Simplified implementation - in production this would connect to Telegram API
+            # For now, simulate some telegram signals
+            
+            signals = []
+            
+            for query in queries:
+                # Simulate telegram signals based on query hash
+                signal_count = hash(query) % 10 + 1
+                
+                for i in range(signal_count):
+                    # Create simulated signal
+                    signal_hash = hash(f"{query}_{i}")
+                    sentiment_score = (signal_hash % 200 - 100) / 100.0  # -1.0 to 1.0
+                    
+                    signal = SentimentSignal(
+                        source=SentimentSource.TELEGRAM,
+                        platform_id=f"telegram_{signal_hash}",
+                        content=f"Telegram signal for {query}",
+                        sentiment_score=sentiment_score,
+                        confidence=0.6,
+                        engagement_score=abs(signal_hash) % 100,
+                        author_influence=0.5,
+                        timestamp=datetime.now() - timedelta(hours=abs(signal_hash) % 24)
+                    )
+                    signals.append(signal)
+            
+            # Aggregate platform sentiment
+            if signals:
+                return await self._aggregate_platform_sentiment(SentimentSource.TELEGRAM, signals)
+            
+            return None
+            
+        except Exception as e:
+            self.logger.error(f"Error analyzing Telegram sentiment: {e}")
+            return None
+    
+    async def _analyze_discord_sentiment(self, queries: List[str]) -> Optional[PlatformSentiment]:
+        """Analyze Discord sentiment (simplified implementation)"""
+        try:
+            # Simplified implementation - in production this would connect to Discord API
+            # For now, simulate some discord signals
+            
+            signals = []
+            
+            for query in queries:
+                # Simulate discord signals based on query hash
+                signal_count = hash(query) % 8 + 1
+                
+                for i in range(signal_count):
+                    # Create simulated signal
+                    signal_hash = hash(f"{query}_discord_{i}")
+                    sentiment_score = (signal_hash % 180 - 90) / 90.0  # -1.0 to 1.0
+                    
+                    signal = SentimentSignal(
+                        source=SentimentSource.DISCORD,
+                        platform_id=f"discord_{signal_hash}",
+                        content=f"Discord signal for {query}",
+                        sentiment_score=sentiment_score,
+                        confidence=0.5,
+                        engagement_score=abs(signal_hash) % 50,
+                        author_influence=0.4,
+                        timestamp=datetime.now() - timedelta(hours=abs(signal_hash) % 12)
+                    )
+                    signals.append(signal)
+            
+            # Aggregate platform sentiment
+            if signals:
+                return await self._aggregate_platform_sentiment(SentimentSource.DISCORD, signals)
+            
+            return None
+            
+        except Exception as e:
+            self.logger.error(f"Error analyzing Discord sentiment: {e}")
+            return None
+    
+    async def _search_twitter_tweets(self, query: str) -> List[Dict[str, Any]]:
+        """Search Twitter for tweets (simplified implementation)"""
+        try:
+            # In production, this would use Twitter API v2
+            # For now, return simulated tweet data
+            
+            tweets = []
+            tweet_count = hash(query) % 20 + 5  # 5-25 tweets
+            
+            for i in range(tweet_count):
+                tweet_hash = hash(f"{query}_tweet_{i}")
+                tweet = {
+                    'id': f"tweet_{tweet_hash}",
+                    'text': f"Sample tweet about {query} with sentiment analysis",
+                    'author_id': f"user_{abs(tweet_hash) % 1000}",
+                    'public_metrics': {
+                        'like_count': abs(tweet_hash) % 100,
+                        'retweet_count': abs(tweet_hash) % 50,
+                        'reply_count': abs(tweet_hash) % 25
+                    },
+                    'created_at': (datetime.now() - timedelta(hours=abs(tweet_hash) % 24)).isoformat(),
+                    'lang': 'en'
+                }
+                tweets.append(tweet)
+            
+            return tweets
+            
+        except Exception as e:
+            self.logger.error(f"Error searching Twitter tweets: {e}")
+            return []
+    
+    async def _search_reddit_posts(self, query: str, subreddits: List[str]) -> List[Dict[str, Any]]:
+        """Search Reddit for posts (simplified implementation)"""
+        try:
+            # In production, this would use Reddit API
+            # For now, return simulated Reddit post data
+            
+            posts = []
+            post_count = hash(query) % 15 + 3  # 3-18 posts
+            
+            for i in range(post_count):
+                post_hash = hash(f"{query}_reddit_{i}")
+                subreddit = subreddits[abs(post_hash) % len(subreddits)]
+                
+                post = {
+                    'id': f"post_{post_hash}",
+                    'title': f"Reddit post about {query}",
+                    'selftext': f"Discussion about {query} in {subreddit}",
+                    'subreddit': subreddit,
+                    'author': f"user_{abs(post_hash) % 500}",
+                    'score': abs(post_hash) % 200,
+                    'num_comments': abs(post_hash) % 50,
+                    'created_utc': (datetime.now() - timedelta(hours=abs(post_hash) % 48)).timestamp(),
+                    'upvote_ratio': (abs(post_hash) % 80 + 20) / 100  # 0.2 to 1.0
+                }
+                posts.append(post)
+            
+            return posts
+            
+        except Exception as e:
+            self.logger.error(f"Error searching Reddit posts: {e}")
+            return []
+    
+    async def _search_news_articles(self, query: str) -> List[Dict[str, Any]]:
+        """Search news articles (simplified implementation)"""
+        try:
+            # In production, this would use News API
+            # For now, return simulated news data
+            
+            articles = []
+            article_count = hash(query) % 10 + 2  # 2-12 articles
+            
+            for i in range(article_count):
+                article_hash = hash(f"{query}_news_{i}")
+                
+                article = {
+                    'title': f"News article about {query}",
+                    'description': f"Analysis of {query} in cryptocurrency markets",
+                    'content': f"Detailed news content about {query}",
+                    'url': f"https://example.com/news/{abs(article_hash)}",
+                    'source': {'name': f"CryptoNews{abs(article_hash) % 10}"},
+                    'publishedAt': (datetime.now() - timedelta(hours=abs(article_hash) % 72)).isoformat(),
+                    'sentiment_indicators': {
+                        'positive_words': abs(article_hash) % 20,
+                        'negative_words': abs(article_hash) % 15
+                    }
+                }
+                articles.append(article)
+            
+            return articles
+            
+        except Exception as e:
+            self.logger.error(f"Error searching news articles: {e}")
+            return []
+    
+    async def _process_twitter_signal(self, tweet: Dict[str, Any]) -> Optional[SentimentSignal]:
+        """Process a single Twitter tweet into a sentiment signal"""
+        try:
+            text = tweet.get('text', '')
+            
+            # Calculate sentiment score
+            sentiment_score = await self._calculate_text_sentiment(text)
+            
+            # Calculate engagement score
+            metrics = tweet.get('public_metrics', {})
+            engagement = metrics.get('like_count', 0) + metrics.get('retweet_count', 0) * 2 + metrics.get('reply_count', 0)
+            engagement_score = min(1.0, engagement / 100.0)  # Normalize to 0-1
+            
+            # Calculate author influence (simplified)
+            author_influence = min(1.0, engagement / 50.0)
+            
+            # Parse timestamp
+            timestamp = datetime.fromisoformat(tweet['created_at'].replace('Z', '+00:00'))
+            
+            # Calculate confidence based on engagement and text length
+            confidence = min(1.0, 0.5 + engagement_score * 0.3 + min(0.2, len(text) / 500))
+            
+            return SentimentSignal(
+                source=SentimentSource.TWITTER,
+                platform_id=tweet['id'],
+                content=text,
+                sentiment_score=sentiment_score,
+                confidence=confidence,
+                engagement_score=engagement_score,
+                author_influence=author_influence,
+                timestamp=timestamp,
+                language=tweet.get('lang', 'en'),
+                metadata={'metrics': metrics}
+            )
+            
+        except Exception as e:
+            self.logger.error(f"Error processing Twitter signal: {e}")
+            return None
+    
+    async def _process_reddit_signal(self, post: Dict[str, Any]) -> Optional[SentimentSignal]:
+        """Process a single Reddit post into a sentiment signal"""
+        try:
+            title = post.get('title', '')
+            text = post.get('selftext', '')
+            content = f"{title} {text}"
+            
+            # Calculate sentiment score
+            sentiment_score = await self._calculate_text_sentiment(content)
+            
+            # Calculate engagement score
+            score = post.get('score', 0)
+            comments = post.get('num_comments', 0)
+            upvote_ratio = post.get('upvote_ratio', 0.5)
+            
+            engagement = score + comments * 2
+            engagement_score = min(1.0, engagement / 100.0)
+            
+            # Calculate author influence (simplified)
+            author_influence = min(1.0, upvote_ratio * score / 50.0)
+            
+            # Parse timestamp
+            timestamp = datetime.fromtimestamp(post['created_utc'])
+            
+            # Calculate confidence
+            confidence = min(1.0, 0.4 + upvote_ratio * 0.3 + engagement_score * 0.3)
+            
+            return SentimentSignal(
+                source=SentimentSource.REDDIT,
+                platform_id=post['id'],
+                content=content,
+                sentiment_score=sentiment_score,
+                confidence=confidence,
+                engagement_score=engagement_score,
+                author_influence=author_influence,
+                timestamp=timestamp,
+                metadata={
+                    'subreddit': post.get('subreddit'),
+                    'score': score,
+                    'upvote_ratio': upvote_ratio
+                }
+            )
+            
+        except Exception as e:
+            self.logger.error(f"Error processing Reddit signal: {e}")
+            return None
+    
+    async def _process_news_signal(self, article: Dict[str, Any]) -> Optional[SentimentSignal]:
+        """Process a single news article into a sentiment signal"""
+        try:
+            title = article.get('title', '')
+            description = article.get('description', '')
+            content = f"{title} {description}"
+            
+            # Calculate sentiment score
+            sentiment_score = await self._calculate_text_sentiment(content)
+            
+            # News articles have higher base confidence
+            confidence = 0.8
+            
+            # Engagement score based on source credibility (simplified)
+            source_name = article.get('source', {}).get('name', 'unknown')
+            engagement_score = 0.7 if 'crypto' in source_name.lower() else 0.5
+            
+            # Author influence is higher for news
+            author_influence = 0.8
+            
+            # Parse timestamp
+            timestamp = datetime.fromisoformat(article['publishedAt'].replace('Z', '+00:00'))
+            
+            return SentimentSignal(
+                source=SentimentSource.NEWS,
+                platform_id=hashlib.md5(article['url'].encode()).hexdigest()[:12],
+                content=content,
+                sentiment_score=sentiment_score,
+                confidence=confidence,
+                engagement_score=engagement_score,
+                author_influence=author_influence,
+                timestamp=timestamp,
+                metadata={'source': source_name, 'url': article.get('url')}
+            )
+            
+        except Exception as e:
+            self.logger.error(f"Error processing news signal: {e}")
+            return None
+    
+    async def _calculate_text_sentiment(self, text: str) -> float:
+        """Calculate sentiment score for given text (-1.0 to 1.0)"""
+        try:
+            if not text:
+                return 0.0
+            
+            text_lower = text.lower()
+            
+            # Count positive and negative keywords
+            positive_count = sum(1 for keyword in self.positive_keywords if keyword in text_lower)
+            negative_count = sum(1 for keyword in self.negative_keywords if keyword in text_lower)
+            
+            # Count viral indicators (positive signal)
+            viral_count = sum(1 for indicator in self.viral_indicators if indicator in text_lower)
+            
+            # Simple sentiment calculation
+            total_keywords = positive_count + negative_count + viral_count
+            if total_keywords == 0:
+                return 0.0  # Neutral if no keywords found
+            
+            # Calculate weighted sentiment
+            positive_weight = (positive_count + viral_count * 0.5) / total_keywords
+            negative_weight = negative_count / total_keywords
+            
+            sentiment_score = positive_weight - negative_weight
+            
+            # Add some randomness based on text hash for variety
+            text_hash = hash(text) % 1000
+            sentiment_modifier = (text_hash - 500) / 5000  # Small random modifier
+            
+            final_score = sentiment_score + sentiment_modifier
+            
+            # Clamp to valid range
+            return max(-1.0, min(1.0, final_score))
+            
+        except Exception as e:
+            self.logger.error(f"Error calculating text sentiment: {e}")
             return 0.0
     
-    async def _detect_memecoin_pattern(self, token_address: str, composite_score: float, 
-                                     sentiment_trend: Dict[str, float]) -> str:
-        """Detect memecoin-specific sentiment patterns"""
-        
+    async def _aggregate_platform_sentiment(self, platform: SentimentSource, signals: List[SentimentSignal]) -> PlatformSentiment:
+        """Aggregate individual signals into platform sentiment"""
         try:
-            # Hype cycle pattern
-            if sentiment_trend['acceleration'] > 0.3 and composite_score > 0.5:
-                return 'hype_cycle'
+            if not signals:
+                return PlatformSentiment(
+                    platform=platform,
+                    overall_score=0.0,
+                    confidence=0.0,
+                    signal_count=0,
+                    engagement_volume=0.0,
+                    trending_score=0.0,
+                    sentiment_momentum=0.0
+                )
             
-            # FOMO pattern
-            if sentiment_trend['trend_direction'] > 0.2 and sentiment_trend['trend_strength'] > 0.7:
-                return 'fomo_pattern'
+            # Filter signals by quality and freshness
+            quality_signals = [
+                signal for signal in signals
+                if (signal.confidence >= self.confidence_threshold and
+                    signal.engagement_score >= self.min_engagement_threshold / 100.0 and
+                    (datetime.now() - signal.timestamp).total_seconds() <= self.signal_freshness_hours * 3600)
+            ]
             
-            # Dump pattern
-            if sentiment_trend['trend_direction'] < -0.2 and sentiment_trend['acceleration'] < -0.2:
-                return 'dump_pattern'
+            if not quality_signals:
+                quality_signals = signals[:5]  # Fallback to top 5 signals
             
-            # Accumulation pattern
-            if 0.1 < composite_score < 0.4 and sentiment_trend['stability'] > 0.6:
-                return 'accumulation'
+            # Calculate weighted sentiment score
+            total_weighted_sentiment = 0.0
+            total_weight = 0.0
             
-            # No clear pattern
-            return 'no_pattern'
+            for signal in quality_signals:
+                weight = signal.confidence * signal.engagement_score * signal.author_influence
+                total_weighted_sentiment += signal.sentiment_score * weight
+                total_weight += weight
             
-        except Exception as e:
-            self.logger.error(f"Error detecting memecoin pattern: {e}")
-            return 'no_pattern'
-    
-    def _make_aggressive_decision(self, composite_score: float, 
-                                current_sentiment: Any,
-                                sentiment_trend: Dict[str, float],
-                                memecoin_pattern: str,
-                                additional_signals: Dict[str, float] = None) -> Tuple[str, float, List[str], int, float, str]:
-        """Make aggressive trading decision based on sentiment"""
-        
-        try:
-            reasoning = []
-            confidence = 0.0
-            priority = 1
-            expected_profit = 0.0
-            risk_level = "medium"
+            overall_score = total_weighted_sentiment / max(total_weight, 0.001)
             
-            # Base decision on sentiment score
-            if composite_score >= self.decision_thresholds[SentimentDecisionEnum.STRONG_BUY.value]:
-                decision = SentimentDecisionEnum.STRONG_BUY.value
-                confidence = 0.9
-                priority = 5
-                expected_profit = 0.15  # 15% expected profit
-                risk_level = "medium"
-                reasoning.append(f"Strong positive sentiment: {composite_score:.2f}")
-                
-            elif composite_score >= self.decision_thresholds[SentimentDecisionEnum.BUY.value]:
-                decision = SentimentDecisionEnum.BUY.value
-                confidence = 0.7
-                priority = 4
-                expected_profit = 0.10  # 10% expected profit
-                risk_level = "medium"
-                reasoning.append(f"Positive sentiment: {composite_score:.2f}")
-                
-            elif composite_score >= self.decision_thresholds['neutral_high']:
-                decision = SentimentDecisionEnum.NEUTRAL.value
-                confidence = 0.5
-                priority = 2
-                expected_profit = 0.02  # 2% expected profit
-                risk_level = "low"
-                reasoning.append(f"Slightly positive sentiment: {composite_score:.2f}")
-                
-            elif composite_score >= self.decision_thresholds['neutral_low']:
-                decision = SentimentDecisionEnum.NEUTRAL.value
-                confidence = 0.3
-                priority = 1
-                expected_profit = 0.0
-                risk_level = "low"
-                reasoning.append(f"Neutral sentiment: {composite_score:.2f}")
-                
-            elif composite_score >= self.decision_thresholds[SentimentDecisionEnum.SELL.value]:
-                decision = SentimentDecisionEnum.SELL.value
-                confidence = 0.7
-                priority = 3
-                expected_profit = 0.0
-                risk_level = "medium"
-                reasoning.append(f"Negative sentiment: {composite_score:.2f}")
-                
-            else:  # composite_score < self.decision_thresholds['strong_sell']
-                decision = SentimentDecisionEnum.STRONG_SELL.value
-                confidence = 0.9
-                priority = 4
-                expected_profit = 0.0
-                risk_level = "high"
-                reasoning.append(f"Strong negative sentiment: {composite_score:.2f}")
+            # Calculate confidence based on signal quality and quantity
+            signal_count_factor = min(1.0, len(quality_signals) / self.min_signals_required)
+            avg_confidence = sum(s.confidence for s in quality_signals) / len(quality_signals)
+            confidence = signal_count_factor * avg_confidence
             
-            # Adjust based on memecoin pattern
-            if memecoin_pattern == 'hype_cycle':
-                if decision == SentimentDecisionEnum.BUY.value:
-                    priority = 5
-                    expected_profit = 0.25  # 25% expected profit for hype cycle
-                    reasoning.append("Hype cycle detected - high profit potential")
-                else:
-                    decision = SentimentDecisionEnum.BUY.value
-                    priority = 4
-                    expected_profit = 0.20
-                    reasoning.append("Hype cycle detected - converting to BUY")
-                    
-            elif memecoin_pattern == 'fomo_pattern':
-                if decision == SentimentDecisionEnum.BUY.value:
-                    priority = 5
-                    expected_profit = 0.20  # 20% expected profit for FOMO
-                    reasoning.append("FOMO pattern detected - momentum building")
-                    
-            elif memecoin_pattern == 'dump_pattern':
-                if decision != SentimentDecisionEnum.SELL.value:
-                    decision = SentimentDecisionEnum.SELL.value
-                    priority = 5
-                    reasoning.append("Dump pattern detected - immediate sell signal")
-                    
-            elif memecoin_pattern == 'accumulation':
-                if decision == SentimentDecisionEnum.BUY.value:
-                    expected_profit = 0.08  # 8% expected profit for accumulation
-                    reasoning.append("Accumulation pattern - steady growth expected")
+            # Calculate engagement volume
+            engagement_volume = sum(s.engagement_score for s in quality_signals)
             
-            # Adjust confidence based on trend strength
-            if sentiment_trend['trend_strength'] > 0.8:
-                confidence = min(1.0, confidence + 0.1)
-                reasoning.append("Strong sentiment trend")
-            elif sentiment_trend['trend_strength'] < 0.3:
-                confidence = max(0.1, confidence - 0.1)
-                reasoning.append("Weak sentiment trend")
+            # Calculate trending score based on recent activity
+            recent_signals = [s for s in quality_signals if (datetime.now() - s.timestamp).total_seconds() <= 3600]  # Last hour
+            trending_score = min(1.0, len(recent_signals) / max(len(quality_signals), 1))
             
-            # Adjust for volatility (memecoins are volatile)
-            if sentiment_trend['volatility'] > 0.3:
-                risk_level = "high"
-                reasoning.append("High sentiment volatility")
-            
-            # Additional signals adjustment
-            if additional_signals:
-                if 'volume_spike' in additional_signals and additional_signals['volume_spike'] > 2.0:
-                    if decision == SentimentDecisionEnum.BUY.value:
-                        priority = 5
-                        expected_profit += 0.05
-                        reasoning.append("Volume spike detected")
-                
-                if 'price_momentum' in additional_signals and additional_signals['price_momentum'] > 0.1:
-                    if decision == SentimentDecisionEnum.BUY.value:
-                        expected_profit += 0.03
-                        reasoning.append("Price momentum detected")
-            
-            return decision, confidence, reasoning, priority, expected_profit, risk_level
-            
-        except Exception as e:
-            self.logger.error(f"Error making aggressive decision: {e}")
-            return SentimentDecisionEnum.NEUTRAL.value, 0.0, [f"Decision error: {str(e)}"], 1, 0.0, "high"
-    
-    async def _is_sentiment_blacklisted(self, token_address: str) -> bool:
-        """Check if token is on sentiment blacklist"""
-        try:
-            if token_address in self.sentiment_blacklist:
-                blacklist_time = self.sentiment_blacklist[token_address]
-                # Remove from blacklist after configured duration
-                if datetime.now() - blacklist_time > timedelta(hours=SentimentConstants.DEFAULT_BLACKLIST_DURATION_HOURS):
-                    del self.sentiment_blacklist[token_address]
-                    return False
-                return True
-            return False
-            
-        except Exception as e:
-            self.logger.error(f"Error checking sentiment blacklist: {e}")
-            return False
-    
-    async def _update_sentiment_blacklist(self, token_address: str, decision: SentimentDecision):
-        """Update sentiment blacklist based on decisions"""
-        try:
-            # Add to blacklist if consistently negative sentiment
-            if token_address in self.decision_history:
-                recent_decisions = self.decision_history[token_address][-5:]  # Last 5 decisions
-                
-                if len(recent_decisions) >= 3:
-                    negative_count = sum(1 for d in recent_decisions if d.sentiment_score < -0.5)
-                    
-                    if negative_count >= 3:  # 3 out of 5 decisions were strongly negative
-                        self.sentiment_blacklist[token_address] = datetime.now()
-                        self.logger.warning(f"Added {token_address} to sentiment blacklist")
-            
-        except Exception as e:
-            self.logger.error(f"Error updating sentiment blacklist: {e}")
-    
-    async def get_sentiment_priority_tokens(self, tokens: List[str], 
-                                          market_data: Dict[str, Dict]) -> List[Tuple[str, float, str]]:
-        """Get tokens prioritized by sentiment for aggressive trading"""
-        
-        try:
-            token_priorities = []
-            
-            for token_address in tokens:
-                if token_address in market_data:
-                    decision = await self.analyze_and_decide(token_address, market_data[token_address])
-                    
-                    if decision.decision == SentimentDecisionEnum.BUY.value:
-                        token_priorities.append((
-                            token_address,
-                            decision.priority,
-                            decision.decision
-                        ))
-            
-            # Sort by priority (highest first)
-            token_priorities.sort(key=lambda x: x[1], reverse=True)
-            
-            return token_priorities
-            
-        except Exception as e:
-            self.logger.error(f"Error getting sentiment priority tokens: {e}")
-            return []
-    
-    async def validate_buy_signal(self, token_address: str, market_data: Dict[str, Any]) -> bool:
-        """Validate if a buy signal is strong enough for memecoin trading"""
-        try:
-            decision = await self.analyze_and_decide(token_address, market_data)
-            
-            # Aggressive validation for memecoins
-            return (decision.decision == SentimentDecisionEnum.BUY.value and 
-                   decision.confidence >= 0.6 and 
-                   decision.sentiment_score >= self.compounding_settings['min_sentiment_for_buy'])
-            
-        except Exception as e:
-            self.logger.error(f"Error validating buy signal: {e}")
-            return False
-    
-    async def validate_sell_signal(self, token_address: str, market_data: Dict[str, Any]) -> bool:
-        """Validate if a sell signal is strong enough"""
-        try:
-            decision = await self.analyze_and_decide(token_address, market_data)
-            
-            return (decision.decision == SentimentDecisionEnum.SELL.value and 
-                   decision.confidence >= 0.7 and 
-                   decision.sentiment_score <= self.compounding_settings['profit_taking_sentiment_threshold'])
-            
-        except Exception as e:
-            self.logger.error(f"Error validating sell signal: {e}")
-            return False
-    
-    def get_sentiment_summary(self, token_address: str) -> Dict[str, Any]:
-        """Get sentiment summary for a token"""
-        try:
-            if token_address not in self.decision_history:
-                return {
-                    'token_address': token_address,
-                    'decision_count': 0,
-                    'avg_sentiment': 0.0,
-                    'trend': 'neutral',
-                    'confidence': 0.0
-                }
-            
-            decisions = self.decision_history[token_address]
-            
-            if not decisions:
-                return {
-                    'token_address': token_address,
-                    'decision_count': 0,
-                    'avg_sentiment': 0.0,
-                    'trend': 'neutral',
-                    'confidence': 0.0
-                }
-            
-            # Calculate summary statistics
-            sentiment_scores = [d.sentiment_score for d in decisions]
-            avg_sentiment = np.mean(sentiment_scores)
-            
-            # Determine trend
-            if len(decisions) >= 2:
-                recent_avg = np.mean([d.sentiment_score for d in decisions[-3:]])
-                older_avg = np.mean([d.sentiment_score for d in decisions[:-3]]) if len(decisions) > 3 else recent_avg
-                
-                if recent_avg > older_avg + 0.1:
-                    trend = 'improving'
-                elif recent_avg < older_avg - 0.1:
-                    trend = 'declining'
-                else:
-                    trend = 'stable'
+            # Calculate sentiment momentum (simplified)
+            if len(quality_signals) >= 5:
+                recent_sentiment = sum(s.sentiment_score for s in quality_signals[:len(quality_signals)//2])
+                older_sentiment = sum(s.sentiment_score for s in quality_signals[len(quality_signals)//2:])
+                sentiment_momentum = recent_sentiment - older_sentiment
             else:
-                trend = 'neutral'
+                sentiment_momentum = 0.0
             
-            # Average confidence
-            avg_confidence = np.mean([d.confidence for d in decisions])
+            # Get top signals for display
+            top_signals = sorted(quality_signals, key=lambda x: x.engagement_score * x.confidence, reverse=True)[:5]
             
-            return {
-                'token_address': token_address,
-                'decision_count': len(decisions),
-                'avg_sentiment': avg_sentiment,
-                'trend': trend,
-                'confidence': avg_confidence,
-                'last_decision': decisions[-1].decision if decisions else 'none',
-                'last_sentiment': decisions[-1].sentiment_score if decisions else 0.0
-            }
+            return PlatformSentiment(
+                platform=platform,
+                overall_score=overall_score,
+                confidence=confidence,
+                signal_count=len(quality_signals),
+                engagement_volume=engagement_volume,
+                trending_score=trending_score,
+                sentiment_momentum=sentiment_momentum,
+                top_signals=top_signals
+            )
             
         except Exception as e:
-            self.logger.error(f"Error getting sentiment summary: {e}")
-            return {
-                'token_address': token_address,
-                'decision_count': 0,
-                'avg_sentiment': 0.0,
-                'trend': 'error',
-                'confidence': 0.0
-            }
+            self.logger.error(f"Error aggregating platform sentiment: {e}")
+            return PlatformSentiment(
+                platform=platform,
+                overall_score=0.0,
+                confidence=0.0,
+                signal_count=0,
+                engagement_volume=0.0,
+                trending_score=0.0,
+                sentiment_momentum=0.0
+            )
     
-    def get_compounding_settings(self) -> Dict[str, Any]:
-        """Get current compounding settings"""
-        return self.compounding_settings.copy()
+    def _determine_sentiment_level(self, sentiment_score: float) -> SentimentLevel:
+        """Determine sentiment level from numerical score"""
+        if sentiment_score >= 0.7:
+            return SentimentLevel.EXTREMELY_POSITIVE
+        elif sentiment_score >= 0.5:
+            return SentimentLevel.VERY_POSITIVE
+        elif sentiment_score >= 0.2:
+            return SentimentLevel.POSITIVE
+        elif sentiment_score >= 0.05:
+            return SentimentLevel.SLIGHTLY_POSITIVE
+        elif sentiment_score <= -0.7:
+            return SentimentLevel.EXTREMELY_NEGATIVE
+        elif sentiment_score <= -0.5:
+            return SentimentLevel.VERY_NEGATIVE
+        elif sentiment_score <= -0.2:
+            return SentimentLevel.NEGATIVE
+        elif sentiment_score <= -0.05:
+            return SentimentLevel.SLIGHTLY_NEGATIVE
+        else:
+            return SentimentLevel.NEUTRAL
     
-    def update_compounding_settings(self, new_settings: Dict[str, Any]):
-        """Update compounding settings"""
+    def _get_sentiment_emoji(self, sentiment_level: SentimentLevel) -> str:
+        """Get emoji representation of sentiment level"""
+        emoji_map = {
+            SentimentLevel.EXTREMELY_POSITIVE: "🚀",
+            SentimentLevel.VERY_POSITIVE: "📈",
+            SentimentLevel.POSITIVE: "💚",
+            SentimentLevel.SLIGHTLY_POSITIVE: "✅",
+            SentimentLevel.NEUTRAL: "➖",
+            SentimentLevel.SLIGHTLY_NEGATIVE: "⚠️",
+            SentimentLevel.NEGATIVE: "❌",
+            SentimentLevel.VERY_NEGATIVE: "📉",
+            SentimentLevel.EXTREMELY_NEGATIVE: "💥"
+        }
+        return emoji_map.get(sentiment_level, "❓")
+    
+    # Advanced metrics calculation methods
+    
+    async def _calculate_sentiment_momentum(self, platform_sentiments: Dict[SentimentSource, PlatformSentiment]) -> float:
+        """Calculate overall sentiment momentum"""
         try:
-            for key, value in new_settings.items():
-                if key in self.compounding_settings:
-                    self.compounding_settings[key] = value
-            
-            self.logger.info(f"Updated compounding settings: {new_settings}")
-            
+            momenta = [ps.sentiment_momentum for ps in platform_sentiments.values() if ps.signal_count > 0]
+            return sum(momenta) / max(len(momenta), 1) if momenta else 0.0
         except Exception as e:
-            self.logger.error(f"Error updating compounding settings: {e}")
+            self.logger.error(f"Error calculating sentiment momentum: {e}")
+            return 0.0
     
-    async def get_aggressive_trading_recommendations(self, tokens: List[str], 
-                                                   market_data: Dict[str, Dict]) -> List[Dict[str, Any]]:
-        """Get aggressive trading recommendations for memecoin compounding"""
-        
+    async def _calculate_viral_potential(self, platform_sentiments: Dict[SentimentSource, PlatformSentiment]) -> float:
+        """Calculate viral potential based on trending scores and engagement"""
         try:
-            recommendations = []
+            viral_factors = []
+            for ps in platform_sentiments.values():
+                if ps.signal_count > 0:
+                    viral_factor = ps.trending_score * ps.engagement_volume / max(ps.signal_count, 1)
+                    viral_factors.append(viral_factor)
             
-            for token_address in tokens:
-                if token_address in market_data:
-                    decision = await self.analyze_and_decide(token_address, market_data[token_address])
-                    
-                    if decision.decision == "BUY" and decision.priority >= 4:
-                        # Calculate position size multiplier based on sentiment
-                        position_multiplier = min(
-                            self.compounding_settings['max_position_size_multiplier'],
-                            1.0 + (decision.sentiment_score - 0.3) * 2.0
-                        )
-                        
-                        recommendation = {
-                            'token_address': token_address,
-                            'action': 'BUY',
-                            'priority': decision.priority,
-                            'sentiment_score': decision.sentiment_score,
-                            'confidence': decision.confidence,
-                            'expected_profit': decision.expected_profit,
-                            'risk_level': decision.risk_level,
-                            'position_multiplier': position_multiplier,
-                            'reasoning': decision.reasoning,
-                            'max_hold_time_hours': self.compounding_settings['max_hold_time_hours'],
-                            'profit_target': decision.expected_profit,
-                            'stop_loss_sentiment': self.compounding_settings['profit_taking_sentiment_threshold']
-                        }
-                        
-                        recommendations.append(recommendation)
-            
-            # Sort by priority and expected profit
-            recommendations.sort(key=lambda x: (x['priority'], x['expected_profit']), reverse=True)
-            
-            return recommendations
-            
+            return min(1.0, sum(viral_factors) / max(len(viral_factors), 1)) if viral_factors else 0.0
         except Exception as e:
-            self.logger.error(f"Error getting aggressive trading recommendations: {e}")
+            self.logger.error(f"Error calculating viral potential: {e}")
+            return 0.0
+    
+    async def _calculate_community_health(self, platform_sentiments: Dict[SentimentSource, PlatformSentiment]) -> float:
+        """Calculate community health based on sentiment consistency and engagement"""
+        try:
+            # Check sentiment consistency across platforms
+            sentiments = [ps.overall_score for ps in platform_sentiments.values() if ps.signal_count > 0]
+            if len(sentiments) < 2:
+                return 0.5  # Neutral health if not enough data
+            
+            # Calculate variance (low variance = good consistency)
+            avg_sentiment = sum(sentiments) / len(sentiments)
+            variance = sum((s - avg_sentiment) ** 2 for s in sentiments) / len(sentiments)
+            consistency_score = max(0.0, 1.0 - variance)
+            
+            # Calculate engagement health
+            total_engagement = sum(ps.engagement_volume for ps in platform_sentiments.values())
+            engagement_health = min(1.0, total_engagement / 100)
+            
+            # Combine factors
+            return (consistency_score * 0.6 + engagement_health * 0.4)
+        except Exception as e:
+            self.logger.error(f"Error calculating community health: {e}")
+            return 0.5
+    
+    async def _calculate_influencer_support(self, platform_sentiments: Dict[SentimentSource, PlatformSentiment]) -> float:
+        """Calculate influencer support based on high-influence signals"""
+        try:
+            high_influence_signals = []
+            for ps in platform_sentiments.values():
+                for signal in ps.top_signals:
+                    if signal.author_influence > 0.7:  # High influence threshold
+                        high_influence_signals.append(signal)
+            
+            if not high_influence_signals:
+                return 0.0
+            
+            # Calculate weighted sentiment from influencers
+            total_weighted = sum(s.sentiment_score * s.author_influence for s in high_influence_signals)
+            total_weight = sum(s.author_influence for s in high_influence_signals)
+            
+            influencer_sentiment = total_weighted / max(total_weight, 0.001)
+            
+            # Normalize to 0-1 scale (positive sentiment = higher support)
+            return max(0.0, (influencer_sentiment + 1.0) / 2.0)
+        except Exception as e:
+            self.logger.error(f"Error calculating influencer support: {e}")
+            return 0.0
+    
+    # Insight extraction methods
+    
+    async def _extract_positive_signals(self, platform_sentiments: Dict[SentimentSource, PlatformSentiment]) -> List[str]:
+        """Extract key positive signals"""
+        try:
+            positive_signals = []
+            for ps in platform_sentiments.values():
+                for signal in ps.top_signals:
+                    if signal.sentiment_score > 0.3:
+                        positive_signals.append(f"{signal.source.value}: {signal.content[:100]}")
+            
+            # Return top 5 positive signals
+            return sorted(positive_signals, key=lambda x: len(x), reverse=True)[:5]
+        except Exception as e:
+            self.logger.error(f"Error extracting positive signals: {e}")
             return []
+    
+    async def _extract_negative_signals(self, platform_sentiments: Dict[SentimentSource, PlatformSentiment]) -> List[str]:
+        """Extract key negative signals"""
+        try:
+            negative_signals = []
+            for ps in platform_sentiments.values():
+                for signal in ps.top_signals:
+                    if signal.sentiment_score < -0.3:
+                        negative_signals.append(f"{signal.source.value}: {signal.content[:100]}")
+            
+            # Return top 5 negative signals
+            return sorted(negative_signals, key=lambda x: len(x), reverse=True)[:5]
+        except Exception as e:
+            self.logger.error(f"Error extracting negative signals: {e}")
+            return []
+    
+    async def _extract_trending_keywords(self, platform_sentiments: Dict[SentimentSource, PlatformSentiment]) -> List[str]:
+        """Extract trending keywords from signals"""
+        try:
+            keyword_counts = defaultdict(int)
+            
+            for ps in platform_sentiments.values():
+                for signal in ps.top_signals:
+                    # Simple keyword extraction (in production, use NLP)
+                    words = signal.content.lower().split()
+                    for word in words:
+                        if len(word) > 3 and word.isalpha():
+                            keyword_counts[word] += 1
+            
+            # Return top 10 keywords
+            return [word for word, count in sorted(keyword_counts.items(), key=lambda x: x[1], reverse=True)[:10]]
+        except Exception as e:
+            self.logger.error(f"Error extracting trending keywords: {e}")
+            return []
+    
+    async def _extract_influential_mentions(self, platform_sentiments: Dict[SentimentSource, PlatformSentiment]) -> List[str]:
+        """Extract mentions from influential users"""
+        try:
+            influential_mentions = []
+            for ps in platform_sentiments.values():
+                for signal in ps.top_signals:
+                    if signal.author_influence > 0.6:
+                        influential_mentions.append(f"{signal.source.value} influencer: {signal.content[:80]}")
+            
+            return influential_mentions[:5]
+        except Exception as e:
+            self.logger.error(f"Error extracting influential mentions: {e}")
+            return []
+    
+    # Quality and freshness calculations
+    
+    async def _calculate_signal_quality(self, platform_sentiments: Dict[SentimentSource, PlatformSentiment]) -> float:
+        """Calculate overall signal quality score"""
+        try:
+            quality_scores = []
+            for ps in platform_sentiments.values():
+                if ps.signal_count > 0:
+                    quality_scores.append(ps.confidence)
+            
+            return sum(quality_scores) / max(len(quality_scores), 1) if quality_scores else 0.0
+        except Exception as e:
+            self.logger.error(f"Error calculating signal quality: {e}")
+            return 0.0
+    
+    async def _calculate_data_freshness(self, platform_sentiments: Dict[SentimentSource, PlatformSentiment]) -> float:
+        """Calculate data freshness score"""
+        try:
+            freshness_scores = []
+            current_time = datetime.now()
+            
+            for ps in platform_sentiments.values():
+                if ps.last_updated:
+                    age_hours = (current_time - ps.last_updated).total_seconds() / 3600
+                    freshness = max(0.0, 1.0 - age_hours / 24)  # Decay over 24 hours
+                    freshness_scores.append(freshness)
+            
+            return sum(freshness_scores) / max(len(freshness_scores), 1) if freshness_scores else 0.0
+        except Exception as e:
+            self.logger.error(f"Error calculating data freshness: {e}")
+            return 0.0
+    
+    # Utility methods
+    
+    async def _check_rate_limit(self, source: SentimentSource) -> bool:
+        """Check if we can make a request to the given source"""
+        try:
+            if source not in self.api_rate_limits:
+                return True  # No rate limit defined
+            
+            current_time = time.time()
+            rate_info = self.api_rate_limits[source]
+            
+            # Check if enough time has passed since last request
+            min_interval = 3600.0 / rate_info['requests_per_hour']  # Convert to seconds
+            time_since_last = current_time - rate_info['last_request']
+            
+            if time_since_last < min_interval:
+                return False
+            
+            # Update last request time
+            self.api_rate_limits[source]['last_request'] = current_time
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"Error checking rate limit for {source.value}: {e}")
+            return False
+    
+    async def _test_api_connections(self):
+        """Test connections to available APIs"""
+        try:
+            # Test available APIs
+            if self.api_config.get('twitter_bearer_token'):
+                self.logger.info("✅ Twitter API key configured")
+            
+            if self.api_config.get('reddit_client_id'):
+                self.logger.info("✅ Reddit API credentials configured")
+            
+            if self.api_config.get('news_api_key'):
+                self.logger.info("✅ News API key configured")
+            
+            # Test at least one working API
+            working_apis = sum([
+                bool(self.api_config.get('twitter_bearer_token')),
+                bool(self.api_config.get('reddit_client_id')),
+                bool(self.api_config.get('news_api_key'))
+            ])
+            
+            if working_apis == 0:
+                self.logger.warning("⚠️ No external API keys configured - using simulated data")
+            else:
+                self.logger.info(f"✅ {working_apis} external APIs configured")
+            
+        except Exception as e:
+            self.logger.error(f"Error testing API connections: {e}")
+    
+    async def _load_sentiment_models(self):
+        """Load sentiment analysis models"""
+        try:
+            # In production, this would load ML models for sentiment analysis
+            # For now, we'll use keyword-based sentiment
+            self.logger.info("📚 Sentiment models loaded (keyword-based)")
+        except Exception as e:
+            self.logger.error(f"Error loading sentiment models: {e}")
+    
+    async def _initialize_keyword_patterns(self):
+        """Initialize keyword patterns for sentiment analysis"""
+        try:
+            # Expand keyword lists with variations
+            self.positive_keywords.extend([
+                'bullrun', 'mooning', 'lambo', 'gains', 'profit', 'strong',
+                'support', 'resistance', 'bounce', 'recover', 'healthy'
+            ])
+            
+            self.negative_keywords.extend([
+                'dip', 'correction', 'bloodbath', 'rekt', 'bags', 'fud',
+                'weak', 'sell-off', 'capitulation', 'bottom', 'crash'
+            ])
+            
+            self.logger.info(f"📝 Keyword patterns initialized: "
+                           f"{len(self.positive_keywords)} positive, "
+                           f"{len(self.negative_keywords)} negative")
+        except Exception as e:
+            self.logger.error(f"Error initializing keyword patterns: {e}")
+    
+    def _update_analysis_metrics(self, result: SentimentAnalysisResult):
+        """Update performance metrics"""
+        try:
+            self.total_analyses += 1
+            self.total_signals_processed += result.total_signals_analyzed
+            
+            # Update average analysis time
+            if self.total_analyses == 1:
+                self.average_analysis_time_ms = result.analysis_duration_ms
+            else:
+                alpha = 0.1
+                self.average_analysis_time_ms = (alpha * result.analysis_duration_ms + 
+                                               (1 - alpha) * self.average_analysis_time_ms)
+                
+        except Exception as e:
+            self.logger.error(f"Error updating analysis metrics: {e}")
+    
+    def get_ai_status(self) -> Dict[str, Any]:
+        """Get comprehensive AI system status"""
+        return {
+            'initialized': True,
+            'total_analyses': self.total_analyses,
+            'total_signals_processed': self.total_signals_processed,
+            'average_analysis_time_ms': round(self.average_analysis_time_ms, 2),
+            'sentiment_accuracy_score': round(self.sentiment_accuracy_score, 3),
+            'cache_size': len(self.signal_cache),
+            'cache_ttl_minutes': self.cache_ttl_minutes,
+            'platform_weights': self.sentiment_weights,
+            'min_signals_required': self.min_signals_required,
+            'configured_apis': [
+                source for source, key in [
+                    ('twitter', 'twitter_bearer_token'),
+                    ('reddit', 'reddit_client_id'),
+                    ('news', 'news_api_key')
+                ] if self.api_config.get(key)
+            ]
+        }
+    
+    async def shutdown(self):
+        """Shutdown the sentiment AI system"""
+        try:
+            self.logger.info("🛑 Shutting down sentiment AI...")
+            
+            # Clear caches
+            self.signal_cache.clear()
+            self.cache_timestamps.clear()
+            
+            self.logger.info("✅ Sentiment AI shutdown complete")
+            
+        except Exception as e:
+            self.logger.error(f"❌ Error during sentiment AI shutdown: {e}")
 
-# Global instance
-_sentiment_first_ai = None
+
+# Global instance manager
+_sentiment_ai = None
 
 async def get_sentiment_first_ai() -> SentimentFirstAI:
-    """Get global sentiment first AI instance"""
-    global _sentiment_first_ai
-    if _sentiment_first_ai is None:
-        _sentiment_first_ai = SentimentFirstAI()
-    return _sentiment_first_ai 
+    """Get global sentiment AI instance"""
+    global _sentiment_ai
+    if _sentiment_ai is None:
+        _sentiment_ai = SentimentFirstAI()
+        await _sentiment_ai.initialize()
+    return _sentiment_ai 

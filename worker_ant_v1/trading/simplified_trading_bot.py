@@ -33,7 +33,7 @@ from worker_ant_v1.core.unified_trading_engine import UnifiedTradingEngine
 from worker_ant_v1.core.wallet_manager import UnifiedWalletManager
 from worker_ant_v1.safety.vault_wallet_system import VaultWalletSystem
 from worker_ant_v1.trading.market_scanner import RealMarketScanner
-from worker_ant_v1.safety.kill_switch import EnhancedKillSwitch
+from worker_ant_v1.safety.kill_switch import EnhancedKillSwitch, KillSwitchTrigger
 from worker_ant_v1.utils.logger import get_logger
 
 
@@ -196,17 +196,51 @@ class SimplifiedTradingBot:
         """Main trading loop - scan and process opportunities"""
         while self.running:
             try:
+                # ⚡ KILL SWITCH CHECK - Critical safety check before any trading activity
+                if self.kill_switch.is_triggered:
+                    self.logger.critical(f"🚨 KILL SWITCH ACTIVE - Trading loop stopped | "
+                                       f"Reason: {self.kill_switch.trigger_reason.value if self.kill_switch.trigger_reason else 'Unknown'}")
+                    self.running = False
+                    break
+                
+                # Check kill switch conditions with current metrics
+                current_metrics = {
+                    'daily_loss_sol': max(0, self.metrics.initial_capital_sol - self.metrics.current_capital_sol),
+                    'max_daily_loss_sol': self.config.initial_capital_sol * 0.2,  # 20% max daily loss
+                    'error_count': getattr(self.metrics, 'error_count', 0),
+                    'anomaly_score': getattr(self.metrics, 'anomaly_score', 0.0),
+                    'security_status': True  # Assume secure unless otherwise detected
+                }
+                
+                if self.kill_switch.check_conditions(current_metrics):
+                    self.logger.critical("🚨 KILL SWITCH TRIGGERED BY CONDITIONS - Emergency shutdown initiated")
+                    await self.emergency_shutdown()
+                    break
+                
                 # Scan for opportunities
                 opportunities = await self.market_scanner.scan_opportunities()
                 
                 # Process each opportunity through three-stage pipeline
                 for opportunity in opportunities:
+                    # Additional kill switch check before processing each opportunity
+                    if self.kill_switch.is_triggered:
+                        self.logger.warning("🚨 KILL SWITCH TRIGGERED during opportunity processing - stopping immediately")
+                        self.running = False
+                        break
+                    
                     await self._process_opportunity_pipeline(opportunity)
                 
                 await asyncio.sleep(self.config.scan_interval_seconds)
                 
             except Exception as e:
                 self.logger.error(f"❌ Error in trading loop: {e}")
+                
+                # Increment error count for kill switch monitoring
+                if hasattr(self.metrics, 'error_count'):
+                    self.metrics.error_count += 1
+                else:
+                    self.metrics.error_count = 1
+                
                 await asyncio.sleep(60)  # Back off on error
     
     async def _process_opportunity_pipeline(self, opportunity: Dict[str, Any]):
@@ -220,6 +254,11 @@ class SimplifiedTradingBot:
         try:
             token_address = opportunity['token_address']
             token_symbol = opportunity.get('token_symbol', 'Unknown')
+            
+            # ⚡ KILL SWITCH CHECK - Safety check before pipeline processing
+            if self.kill_switch.is_triggered:
+                self.logger.warning(f"🚨 KILL SWITCH ACTIVE - Skipping pipeline for {token_symbol}")
+                return
             
             # Skip if we already have a position
             if token_address in self.active_positions:
@@ -743,6 +782,27 @@ class SimplifiedTradingBot:
             token_address = opportunity['token_address']
             token_symbol = opportunity.get('token_symbol', 'Unknown')
             
+            # ⚡ CRITICAL KILL SWITCH CHECK - Final safety gate before trade execution
+            if self.kill_switch.is_triggered:
+                self.logger.critical(f"🚨 KILL SWITCH ACTIVE - Trade execution BLOCKED for {token_symbol} | "
+                                   f"Reason: {self.kill_switch.trigger_reason.value if self.kill_switch.trigger_reason else 'Unknown'}")
+                return
+            
+            # Final pre-execution kill switch condition check
+            final_metrics = {
+                'daily_loss_sol': max(0, self.metrics.initial_capital_sol - self.metrics.current_capital_sol),
+                'max_daily_loss_sol': self.config.initial_capital_sol * 0.2,  # 20% max daily loss
+                'error_count': getattr(self.metrics, 'error_count', 0),
+                'anomaly_score': getattr(self.metrics, 'anomaly_score', 0.0),
+                'security_status': True
+            }
+            
+            if self.kill_switch.check_conditions(final_metrics):
+                self.logger.critical(f"🚨 KILL SWITCH TRIGGERED ON FINAL CHECK - Trade execution BLOCKED for {token_symbol}")
+                return
+            
+            self.logger.info(f"✅ KILL SWITCH CLEAR - Proceeding with trade execution for {token_symbol}")
+            
             # Execute buy order
             result = await self.trading_engine.execute_buy_order(
                 token_address=token_address,
@@ -782,6 +842,18 @@ class SimplifiedTradingBot:
         """Monitor active positions for exits"""
         while self.running:
             try:
+                # ⚡ KILL SWITCH CHECK - Emergency position closure if triggered
+                if self.kill_switch.is_triggered:
+                    self.logger.critical(f"🚨 KILL SWITCH ACTIVE - Emergency closure of all positions | "
+                                       f"Reason: {self.kill_switch.trigger_reason.value if self.kill_switch.trigger_reason else 'Unknown'}")
+                    
+                    # Emergency close all positions immediately
+                    emergency_positions = list(self.active_positions.items())
+                    for token_address, position in emergency_positions:
+                        await self._close_position(token_address, position, f"KILL_SWITCH_EMERGENCY_{self.kill_switch.trigger_reason.value if self.kill_switch.trigger_reason else 'UNKNOWN'}")
+                    
+                    break
+                
                 positions_to_close = []
                 
                 for token_address, position in self.active_positions.items():
@@ -791,12 +863,24 @@ class SimplifiedTradingBot:
                 
                 # Close positions
                 for token_address, position, reason in positions_to_close:
+                    # Additional kill switch check before each position closure
+                    if self.kill_switch.is_triggered:
+                        self.logger.warning(f"🚨 KILL SWITCH TRIGGERED during position closure - switching to emergency mode")
+                        reason = f"KILL_SWITCH_EMERGENCY_{reason}"
+                    
                     await self._close_position(token_address, position, reason)
                 
                 await asyncio.sleep(30)  # Check every 30 seconds
                 
             except Exception as e:
                 self.logger.error(f"❌ Error in position monitoring: {e}")
+                
+                # Increment error count for kill switch monitoring
+                if hasattr(self.metrics, 'error_count'):
+                    self.metrics.error_count += 1
+                else:
+                    self.metrics.error_count = 1
+                
                 await asyncio.sleep(60)
     
     async def _should_close_position(self, position: Dict[str, Any]) -> tuple[bool, str]:
@@ -946,9 +1030,63 @@ class SimplifiedTradingBot:
             self.logger.error(f"❌ Error during shutdown: {e}")
     
     async def emergency_shutdown(self):
-        """Emergency shutdown"""
-        self.logger.error("🚨 EMERGENCY SHUTDOWN TRIGGERED")
-        await self.shutdown()
+        """Emergency shutdown with kill switch integration"""
+        try:
+            self.logger.critical("🚨 EMERGENCY SHUTDOWN TRIGGERED")
+            
+            # Trigger kill switch if not already triggered
+            if not self.kill_switch.is_triggered:
+                self.kill_switch.trigger(
+                    reason=KillSwitchTrigger.SYSTEM_ERROR,
+                    details="Emergency shutdown called"
+                )
+                self.logger.critical("🚨 KILL SWITCH TRIGGERED BY EMERGENCY SHUTDOWN")
+            
+            # Set running to False immediately to stop all loops
+            self.running = False
+            
+            # Emergency close all positions immediately (no waiting)
+            if self.active_positions:
+                self.logger.critical(f"🚨 EMERGENCY CLOSING {len(self.active_positions)} ACTIVE POSITIONS")
+                
+                emergency_closure_tasks = []
+                for token_address, position in list(self.active_positions.items()):
+                    task = asyncio.create_task(
+                        self._close_position(token_address, position, "EMERGENCY_SHUTDOWN")
+                    )
+                    emergency_closure_tasks.append(task)
+                
+                # Wait for all emergency closures with timeout
+                try:
+                    await asyncio.wait_for(
+                        asyncio.gather(*emergency_closure_tasks, return_exceptions=True),
+                        timeout=30.0  # 30 second timeout for emergency closure
+                    )
+                    self.logger.critical("✅ ALL EMERGENCY POSITION CLOSURES COMPLETED")
+                except asyncio.TimeoutError:
+                    self.logger.critical("⚠️ EMERGENCY POSITION CLOSURE TIMEOUT - Some positions may remain open")
+            
+            # Move remaining funds to vault immediately
+            if hasattr(self, 'vault_system') and self.vault_system:
+                try:
+                    await asyncio.wait_for(
+                        self.vault_system.emergency_secure_all_funds(),
+                        timeout=10.0
+                    )
+                    self.logger.critical("✅ EMERGENCY VAULT SECURING COMPLETED")
+                except Exception as e:
+                    self.logger.critical(f"❌ EMERGENCY VAULT SECURING FAILED: {e}")
+            
+            # Call normal shutdown for cleanup
+            await self.shutdown()
+            
+            self.logger.critical("🚨 EMERGENCY SHUTDOWN COMPLETED")
+            
+        except Exception as e:
+            self.logger.critical(f"❌ CRITICAL ERROR IN EMERGENCY SHUTDOWN: {e}")
+            # Force stop everything
+            self.running = False
+            sys.exit(1)
     
     def get_status(self) -> Dict[str, Any]:
         """Get bot status"""

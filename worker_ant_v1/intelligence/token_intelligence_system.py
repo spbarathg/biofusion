@@ -12,12 +12,11 @@ from typing import Dict, List, Optional, Tuple, Any
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from enum import Enum
-import logging
 import aiohttp
 import json
 import os
 
-from worker_ant_v1.utils.logger import setup_logger
+from worker_ant_v1.utils.logger import get_logger
 from worker_ant_v1.utils.constants import SentimentDecision as SentimentDecisionEnum
 from worker_ant_v1.intelligence.sentiment_first_ai import SentimentFirstAI
 from worker_ant_v1.intelligence.technical_analyzer import TechnicalAnalyzer
@@ -79,7 +78,7 @@ class TokenIntelligenceSystem:
     """Advanced token intelligence and analysis system"""
     
     def __init__(self):
-        self.logger = setup_logger("TokenIntelligenceSystem")
+        self.logger = get_logger("TokenIntelligenceSystem")
         
         # Analysis components
         self.sentiment_analyzer: Optional[SentimentFirstAI] = None

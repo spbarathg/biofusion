@@ -1,706 +1,1023 @@
 """
-CENTRALIZED MARKET DATA FETCHER
-==============================
+MARKET DATA FETCHER - CENTRALIZED DATA SOURCING ENGINE
+====================================================
 
-Unified utility for fetching market data from multiple sources.
-Consolidates all external API calls to reduce redundancy and improve maintainability.
+Production-ready market data fetching system that aggregates real-time data
+from multiple sources with intelligent caching, rate limiting, and fallback mechanisms.
+
+This module provides the data foundation for the entire trading system:
+- Real-time price feeds
+- Volume and liquidity analysis
+- Token metadata and contract verification
+- Social sentiment indicators
+- Historical trend analysis
+
+Features:
+- Multi-source data aggregation (Birdeye, DexScreener, Jupiter, Helius)
+- Intelligent caching with TTL
+- Rate limiting and request management
+- Automatic fallback and retry logic
+- Data quality validation and sanitization
+- Comprehensive error handling and monitoring
 """
 
 import asyncio
 import aiohttp
-import os
 import time
+import hashlib
+from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any, Union
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
 from enum import Enum
+import json
+import logging
+from urllib.parse import urlencode
 
 from worker_ant_v1.utils.logger import get_logger
-from worker_ant_v1.utils.constants import (
-    DataSource, APIEndpoints, TokenMints, MarketScannerConstants,
-    DefaultValues, ErrorMessages, SuccessMessages
-)
+from worker_ant_v1.core.unified_config import get_api_config, get_network_rpc_url
 
 
-# DataSource enum is now imported from constants
+class DataSource(Enum):
+    """Market data sources"""
+    BIRDEYE = "birdeye"
+    DEXSCREENER = "dexscreener"
+    JUPITER = "jupiter"
+    HELIUS = "helius"
+    SOLANA_TRACKER = "solana_tracker"
+    RAYDIUM = "raydium"
+
+
+class DataQuality(Enum):
+    """Data quality levels"""
+    EXCELLENT = "excellent"  # <5 min old, multiple sources
+    GOOD = "good"           # <15 min old, 2+ sources
+    FAIR = "fair"           # <60 min old, 1 source
+    POOR = "poor"           # >60 min old or incomplete
+    INVALID = "invalid"     # Missing critical data
 
 
 @dataclass
-class TokenMarketData:
-    """Standardized token market data structure"""
+class DataMetrics:
+    """Data quality and freshness metrics"""
+    sources_used: List[str] = field(default_factory=list)
+    last_updated: datetime = field(default_factory=datetime.now)
+    quality_score: float = 0.0  # 0.0 to 1.0
+    quality_level: DataQuality = DataQuality.POOR
+    completeness: float = 0.0  # 0.0 to 1.0
+    confidence: float = 0.0  # 0.0 to 1.0
+    latency_ms: float = 0.0
+    cache_hit: bool = False
+
+
+@dataclass
+class TokenData:
+    """Comprehensive token data structure"""
     
-    # Basic token info
-    token_address: str
-    symbol: str
-    name: str
+    # Core identification
+    address: str
+    symbol: str = "UNKNOWN"
+    name: str = "Unknown Token"
     
     # Price data
-    price: float
-    price_change_1h: float = 0.0
-    price_change_24h: float = 0.0
+    price: float = 0.0
+    price_usd: float = 0.0
     
-    # Volume and liquidity
-    volume_24h: float = 0.0
-    liquidity: float = 0.0
-    market_cap: float = 0.0
+    # Volume metrics
+    volume_24h_usd: float = 0.0
+    volume_24h_sol: float = 0.0
+    volume_7d_usd: float = 0.0
+    volume_momentum: float = 1.0  # 24h vs 7d average
     
-    # Token metrics
-    holder_count: int = 0
+    # Liquidity metrics
+    liquidity_sol: float = 0.0
+    liquidity_usd: float = 0.0
+    liquidity_concentration: float = 0.5  # 0=distributed, 1=concentrated
+    
+    # Price changes
+    price_change_1h_percent: float = 0.0
+    price_change_24h_percent: float = 0.0
+    price_change_7d_percent: float = 0.0
+    
+    # Market metrics
+    market_cap_usd: Optional[float] = None
+    fully_diluted_valuation: Optional[float] = None
+    circulating_supply: Optional[float] = None
+    total_supply: Optional[float] = None
+    
+    # Token characteristics
     age_hours: float = 0.0
+    holder_count: int = 0
+    dev_holdings_percent: float = 0.0
+    top_10_holder_percent: float = 0.0
     
-    # Metadata
-    decimals: int = 9
-    supply: Optional[float] = None
-    last_updated: datetime = field(default_factory=datetime.now)
+    # Contract information
+    contract_verified: bool = False
+    has_transfer_restrictions: bool = False
+    has_blacklist_function: bool = False
+    has_mint_function: bool = True
+    max_transaction_amount: Optional[float] = None
     
-    # Source tracking
-    data_sources: List[str] = field(default_factory=list)
-    confidence_score: float = 0.0
-
-
-@dataclass
-class MarketOpportunity:
-    """Trading opportunity with market data"""
+    # Trading metrics
+    sell_buy_ratio: float = 1.0
+    large_transactions_24h: int = 0
+    whale_activity_score: float = 0.0
     
-    token_address: str
-    token_symbol: str
-    market_data: TokenMarketData
+    # Social signals
+    social_buzz_score: float = 0.5
+    twitter_mentions: int = 0
+    telegram_members: int = 0
+    discord_members: int = 0
     
-    # Opportunity metrics
-    opportunity_score: float
-    risk_level: float
-    expected_profit: float
+    # Technical indicators
+    rsi_14: Optional[float] = None
+    moving_avg_20: Optional[float] = None
+    moving_avg_50: Optional[float] = None
+    volatility_24h: float = 0.0
     
-    # Trading parameters
-    recommended_position_size: float
-    max_slippage_percent: float
+    # Risk factors
+    honeypot_risk: float = 0.0
+    rug_risk_score: float = 0.0
+    scam_probability: float = 0.0
     
-    # Metadata
-    detected_at: datetime = field(default_factory=datetime.now)
-    source: str = "market_scanner"
+    # Data quality
+    data_metrics: DataMetrics = field(default_factory=DataMetrics)
+    
+    # Raw data storage
+    raw_data: Dict[str, Any] = field(default_factory=dict)
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for caching/serialization"""
+        result = {}
+        for key, value in self.__dict__.items():
+            if key == 'data_metrics':
+                result[key] = {
+                    'sources_used': value.sources_used,
+                    'last_updated': value.last_updated.isoformat(),
+                    'quality_score': value.quality_score,
+                    'quality_level': value.quality_level.value,
+                    'completeness': value.completeness,
+                    'confidence': value.confidence,
+                    'latency_ms': value.latency_ms,
+                    'cache_hit': value.cache_hit
+                }
+            elif isinstance(value, datetime):
+                result[key] = value.isoformat()
+            elif isinstance(value, Enum):
+                result[key] = value.value
+            else:
+                result[key] = value
+        return result
 
 
 class MarketDataFetcher:
-    """Centralized market data fetcher with caching and rate limiting"""
+    """Production-ready market data fetching system"""
     
     def __init__(self):
         self.logger = get_logger("MarketDataFetcher")
+        self.api_config = get_api_config()
+        self.rpc_url = get_network_rpc_url()
         
         # API endpoints
         self.endpoints = {
-            DataSource.JUPITER: {
-                "base_url": APIEndpoints.JUPITER_BASE_URL,
-                "price_url": APIEndpoints.JUPITER_PRICE_URL,
-                "quote_url": APIEndpoints.JUPITER_QUOTE_URL,
-                "swap_url": APIEndpoints.JUPITER_SWAP_URL,
-            },
-            DataSource.BIRDEYE: {
-                "base_url": APIEndpoints.BIRDEYE_BASE_URL,
-                "token_url": APIEndpoints.BIRDEYE_TOKEN_URL,
-                "trending_url": APIEndpoints.BIRDEYE_TRENDING_URL,
-                "price_history_url": f"{APIEndpoints.BIRDEYE_BASE_URL}/public/token/{{}}/price_history",
-            },
-            DataSource.DEXSCREENER: {
-                "base_url": APIEndpoints.DEXSCREENER_BASE_URL,
-                "token_url": APIEndpoints.DEXSCREENER_TOKEN_URL,
-                "trending_url": APIEndpoints.DEXSCREENER_TRENDING_URL,
-            },
-            DataSource.HELIUS: {
-                "base_url": APIEndpoints.HELIUS_BASE_URL,
-                "token_metadata_url": APIEndpoints.HELIUS_TOKEN_METADATA_URL,
-            },
+            DataSource.BIRDEYE: "https://public-api.birdeye.so",
+            DataSource.DEXSCREENER: "https://api.dexscreener.com/latest",
+            DataSource.JUPITER: "https://quote-api.jup.ag/v6",
+            DataSource.HELIUS: "https://api.helius.xyz/v0",
+            DataSource.SOLANA_TRACKER: "https://api.solanatracker.io/tokens",
+            DataSource.RAYDIUM: "https://api.raydium.io/v2"
         }
         
-        # API keys - CANONICAL ACCESS THROUGH UNIFIED CONFIG
-        from worker_ant_v1.core.unified_config import get_trading_config
-        config = get_trading_config()
-        
-        self.api_keys = {
-            DataSource.BIRDEYE: config.birdeye_api_key,
-            DataSource.HELIUS: config.helius_api_key,
-            DataSource.DEXSCREENER: config.dexscreener_api_key,
-        }
+        # Caching system
+        self.cache: Dict[str, TokenData] = {}
+        self.cache_timestamps: Dict[str, datetime] = {}
+        self.cache_ttl_seconds = 300  # 5 minutes default TTL
+        self.max_cache_size = 1000
         
         # Rate limiting
         self.rate_limits = {
-            DataSource.JUPITER: {"requests_per_second": 10, "last_request": 0.0},
-            DataSource.BIRDEYE: {"requests_per_second": 5, "last_request": 0.0},
-            DataSource.DEXSCREENER: {"requests_per_second": 5, "last_request": 0.0},
-            DataSource.HELIUS: {"requests_per_second": 3, "last_request": 0.0},
+            DataSource.BIRDEYE: {'requests_per_minute': 100, 'last_request': 0},
+            DataSource.DEXSCREENER: {'requests_per_minute': 300, 'last_request': 0},
+            DataSource.JUPITER: {'requests_per_minute': 200, 'last_request': 0},
+            DataSource.HELIUS: {'requests_per_minute': 100, 'last_request': 0},
+            DataSource.SOLANA_TRACKER: {'requests_per_minute': 60, 'last_request': 0},
+            DataSource.RAYDIUM: {'requests_per_minute': 120, 'last_request': 0}
         }
         
-        # Caching
-        self.cache: Dict[str, Dict[str, Any]] = {}
-        self.cache_ttl = MonitoringConstants.DEFAULT_CACHE_DURATION_SECONDS
+        # Performance metrics
+        self.total_requests = 0
+        self.cache_hits = 0
+        self.cache_misses = 0
+        self.error_count = 0
+        self.average_response_time_ms = 0.0
         
-        # Session management
+        # HTTP session
         self.session: Optional[aiohttp.ClientSession] = None
-        self.timeout = aiohttp.ClientTimeout(total=10)
         
-        # Statistics
-        self.stats = {
-            "requests_made": 0,
-            "cache_hits": 0,
-            "errors": 0,
-            "last_reset": datetime.now(),
-        }
-        
-        self.logger.info("🔍 Market Data Fetcher initialized")
+        self.logger.info("📊 Market Data Fetcher initialized - Multi-source aggregation ready")
     
     async def initialize(self) -> bool:
         """Initialize the market data fetcher"""
         try:
-            self.session = aiohttp.ClientSession(timeout=self.timeout)
+            self.logger.info("🚀 Initializing Market Data Fetcher...")
             
-            # Test connections to available APIs
+            # Create HTTP session with proper configuration
+            timeout = aiohttp.ClientTimeout(total=30, connect=10)
+            connector = aiohttp.TCPConnector(
+                limit=100,  # Total connection pool size
+                limit_per_host=20,  # Connections per host
+                ttl_dns_cache=300,  # DNS cache TTL
+                use_dns_cache=True
+            )
+            
+            self.session = aiohttp.ClientSession(
+                timeout=timeout,
+                connector=connector,
+                headers={
+                    'User-Agent': 'AntBot/1.0 (Trading Bot)',
+                    'Accept': 'application/json',
+                    'Accept-Encoding': 'gzip, deflate'
+                }
+            )
+            
+            # Test API connections
             await self._test_api_connections()
             
             self.logger.info("✅ Market Data Fetcher initialized successfully")
             return True
             
         except Exception as e:
-            self.logger.error(f"❌ Market Data Fetcher initialization failed: {e}")
+            self.logger.error(f"❌ Failed to initialize market data fetcher: {e}")
             return False
     
-    async def shutdown(self):
-        """Shutdown the market data fetcher"""
-        if self.session:
-            await self.session.close()
-        self.logger.info("🛑 Market Data Fetcher shutdown complete")
-    
-    async def get_token_data(self, token_address: str, sources: Optional[List[DataSource]] = None) -> Optional[TokenMarketData]:
-        """Get comprehensive token data from multiple sources"""
+    async def get_comprehensive_token_data(self, token_address: str) -> Optional[Dict[str, Any]]:
+        """
+        Get comprehensive token data from multiple sources
+        
+        Args:
+            token_address: Solana token address
+            
+        Returns:
+            Dict with comprehensive token data or None if failed
+        """
+        start_time = time.time()
+        
         try:
             # Check cache first
-            cache_key = f"token_{token_address}"
-            cached_data = self._get_cached_data(cache_key)
+            cached_data = await self._get_cached_data(token_address)
             if cached_data:
-                self.stats["cache_hits"] += 1
-                return TokenMarketData(**cached_data)
+                self.cache_hits += 1
+                cached_data.data_metrics.cache_hit = True
+                return cached_data.to_dict()
+
+            self.cache_misses += 1
             
-            # Use default sources if none specified
-            if sources is None:
-                sources = [DataSource.JUPITER, DataSource.BIRDEYE, DataSource.DEXSCREENER]
-            
-            # Fetch data from all sources
-            tasks = []
-            for source in sources:
-                if source in self.endpoints:
-                    tasks.append(self._fetch_from_source(source, token_address))
-            
-            if not tasks:
-                self.logger.warning(f"No valid sources available for {token_address}")
+            # Fetch from multiple sources
+            token_data = await self._fetch_multi_source_data(token_address)
+            if not token_data:
                 return None
             
-            # Wait for all requests to complete
-            results = await asyncio.gather(*tasks, return_exceptions=True)
-            
-            # Combine results
-            combined_data = await self._combine_token_data(token_address, results, sources)
+            # Calculate data quality metrics
+            token_data.data_metrics = await self._calculate_data_quality(token_data)
             
             # Cache the result
-            self._cache_data(cache_key, combined_data.__dict__)
+            await self._cache_token_data(token_address, token_data)
             
-            return combined_data
+            # Update performance metrics
+            response_time_ms = (time.time() - start_time) * 1000
+            self._update_performance_metrics(response_time_ms)
+            
+            self.logger.debug(f"📊 Fetched comprehensive data for {token_address[:8]} "
+                           f"(Quality: {token_data.data_metrics.quality_level.value}, "
+                           f"Sources: {len(token_data.data_metrics.sources_used)})")
+            
+            return token_data.to_dict()
             
         except Exception as e:
-            self.logger.error(f"Error fetching token data for {token_address}: {e}")
-            self.stats["errors"] += 1
+            self.logger.error(f"❌ Error fetching comprehensive token data for {token_address}: {e}")
+            self.error_count += 1
             return None
     
-    async def get_trending_tokens(self, limit: int = 50) -> List[str]:
-        """Get trending tokens from multiple sources"""
+    async def _fetch_multi_source_data(self, token_address: str) -> Optional[TokenData]:
+        """Fetch data from multiple sources and aggregate"""
         try:
-            trending_tokens = set()
+            # Initialize token data structure
+            token_data = TokenData(address=token_address)
+            sources_used = []
             
-            # Fetch from Birdeye
-            if DataSource.BIRDEYE in self.endpoints:
-                try:
-                    birdeye_tokens = await self._get_birdeye_trending(limit // 2)
-                    trending_tokens.update(birdeye_tokens)
-                except Exception as e:
-                    self.logger.warning(f"Birdeye trending fetch failed: {e}")
+            # Fetch from each available source concurrently
+            fetch_tasks = []
             
-            # Fetch from DexScreener
-            if DataSource.DEXSCREENER in self.endpoints:
-                try:
-                    dexscreener_tokens = await self._get_dexscreener_trending(limit // 2)
-                    trending_tokens.update(dexscreener_tokens)
-                except Exception as e:
-                    self.logger.warning(f"DexScreener trending fetch failed: {e}")
+            # Birdeye API (comprehensive data)
+            if self.api_config.get('birdeye_api_key'):
+                fetch_tasks.append(self._fetch_birdeye_data(token_address))
             
-            return list(trending_tokens)[:limit]
+            # DexScreener API (pair and trading data)
+            fetch_tasks.append(self._fetch_dexscreener_data(token_address))
             
-        except Exception as e:
-            self.logger.error(f"Error fetching trending tokens: {e}")
-            return []
-    
-    async def get_token_price(self, token_address: str) -> Optional[float]:
-        """Get current token price (fast method)"""
-        try:
-            # Try Jupiter first (fastest)
-            price = await self._get_jupiter_price(token_address)
-            if price:
-                return price
+            # Jupiter API (price data)
+            if self.api_config.get('jupiter_api_key'):
+                fetch_tasks.append(self._fetch_jupiter_data(token_address))
             
-            # Fallback to full token data
-            token_data = await self.get_token_data(token_address, [DataSource.JUPITER, DataSource.BIRDEYE])
-            return token_data.price if token_data else None
+            # Helius API (blockchain data)
+            if self.api_config.get('helius_api_key'):
+                fetch_tasks.append(self._fetch_helius_data(token_address))
             
-        except Exception as e:
-            self.logger.error(f"Error getting token price for {token_address}: {e}")
-            return None
-    
-    async def get_market_opportunities(
-        self, 
-        min_liquidity: float = MarketScannerConstants.MIN_LIQUIDITY_SOL, 
-        min_volume: float = MarketScannerConstants.MIN_VOLUME_24H_SOL
-    ) -> List[MarketOpportunity]:
-        """Get market opportunities based on criteria"""
-        try:
-            opportunities = []
-            trending_tokens = await self.get_trending_tokens(MarketScannerConstants.MAX_TRENDING_TOKENS)
+            # Solana Tracker API (token metrics)
+            if self.api_config.get('solana_tracker_api_key'):
+                fetch_tasks.append(self._fetch_solana_tracker_data(token_address))
             
-            # Get data for trending tokens
-            for token_address in trending_tokens[:MarketScannerConstants.DEFAULT_TRENDING_TOKENS]:  # Limit for performance
-                token_data = await self.get_token_data(token_address)
-                if not token_data:
+            # Execute all fetch tasks concurrently
+            results = await asyncio.gather(*fetch_tasks, return_exceptions=True)
+            
+            # Aggregate data from all sources
+            for i, result in enumerate(results):
+                if isinstance(result, Exception):
+                    self.logger.warning(f"❌ Source {i} fetch failed: {result}")
                     continue
                 
-                # Apply filters
-                if token_data.liquidity < min_liquidity or token_data.volume_24h < min_volume:
-                    continue
-                
-                # Calculate opportunity metrics
-                opportunity = await self._calculate_opportunity(token_data)
-                if opportunity:
-                    opportunities.append(opportunity)
+                if result and isinstance(result, dict):
+                    source_name = result.get('source', f'unknown_{i}')
+                    sources_used.append(source_name)
+                    
+                    # Merge data using source-specific logic
+                    token_data = await self._merge_source_data(token_data, result, source_name)
             
-            # Sort by opportunity score
-            opportunities.sort(key=lambda x: x.opportunity_score, reverse=True)
+            # Validate minimum data requirements
+            if not self._validate_minimum_data(token_data):
+                self.logger.warning(f"⚠️ Insufficient data for token {token_address[:8]}")
+                return None
             
-            return opportunities[:MarketScannerConstants.DEFAULT_TRENDING_TOKENS]  # Return top opportunities
+            # Store sources used
+            token_data.data_metrics.sources_used = sources_used
             
-        except Exception as e:
-            self.logger.error(f"Error getting market opportunities: {e}")
-            return []
-    
-    async def _fetch_from_source(self, source: DataSource, token_address: str) -> Optional[Dict[str, Any]]:
-        """Fetch data from a specific source"""
-        try:
-            await self._rate_limit(source)
-            
-            if source == DataSource.JUPITER:
-                return await self._fetch_jupiter_data(token_address)
-            elif source == DataSource.BIRDEYE:
-                return await self._fetch_birdeye_data(token_address)
-            elif source == DataSource.DEXSCREENER:
-                return await self._fetch_dexscreener_data(token_address)
-            elif source == DataSource.HELIUS:
-                return await self._fetch_helius_data(token_address)
-            
-            return None
+            return token_data
             
         except Exception as e:
-            self.logger.error(f"Error fetching from {source.value}: {e}")
-            return None
-    
-    async def _fetch_jupiter_data(self, token_address: str) -> Optional[Dict[str, Any]]:
-        """Fetch data from Jupiter API"""
-        try:
-            url = f"{self.endpoints[DataSource.JUPITER]['price_url']}?ids={token_address}"
-            
-            async with self.session.get(url) as response:
-                if response.status == 200:
-                    data = await response.json()
-                    if "data" in data and token_address in data["data"]:
-                        token_data = data["data"][token_address]
-                        return {
-                            "price": float(token_data.get("price", 0)),
-                            "volume_24h": float(token_data.get("volume24h", 0)),
-                            "liquidity": float(token_data.get("liquidity", 0)),
-                            "source": DataSource.JUPITER.value,
-                        }
-            
-            return None
-            
-        except Exception as e:
-            self.logger.error(f"Jupiter fetch error: {e}")
+            self.logger.error(f"❌ Error in multi-source data fetch: {e}")
             return None
     
     async def _fetch_birdeye_data(self, token_address: str) -> Optional[Dict[str, Any]]:
-        """Fetch data from Birdeye API"""
+        """Fetch comprehensive data from Birdeye API"""
         try:
-            headers = {}
-            if self.api_keys[DataSource.BIRDEYE]:
-                headers["X-API-KEY"] = self.api_keys[DataSource.BIRDEYE]
+            if not await self._check_rate_limit(DataSource.BIRDEYE):
+                return None
             
-            url = f"{self.endpoints[DataSource.BIRDEYE]['token_url']}/{token_address}"
+            headers = {'X-API-KEY': self.api_config['birdeye_api_key']}
             
-            async with self.session.get(url, headers=headers) as response:
+            # Fetch multiple endpoints from Birdeye
+            base_url = self.endpoints[DataSource.BIRDEYE]
+            
+            # Token overview
+            overview_url = f"{base_url}/defi/token_overview"
+            overview_params = {'address': token_address}
+            
+            # Price history
+            price_url = f"{base_url}/defi/history_price"
+            price_params = {
+                'address': token_address,
+                'address_type': 'token',
+                'type': '1D'
+            }
+            
+            # Token security
+            security_url = f"{base_url}/defi/token_security"
+            security_params = {'address': token_address}
+            
+            async with self.session.get(overview_url, headers=headers, params=overview_params) as response:
                 if response.status == 200:
-                    data = await response.json()
-                    if "data" in data:
-                        token_info = data["data"]
-                        return {
-                            "symbol": token_info.get("symbol", "UNKNOWN"),
-                            "name": token_info.get("name", "Unknown Token"),
-                            "price": float(token_info.get("price", 0)),
-                            "volume_24h": float(token_info.get("volume24h", 0)),
-                            "liquidity": float(token_info.get("liquidity", 0)),
-                            "market_cap": float(token_info.get("marketCap", 0)),
-                            "price_change_24h": float(token_info.get("priceChange24h", 0)),
-                            "price_change_1h": float(token_info.get("priceChange1h", 0)),
-                            "holder_count": int(token_info.get("holder", 0)),
-                            "age_hours": float(token_info.get("ageHours", 0)),
-                            "source": DataSource.BIRDEYE.value,
-                        }
+                    overview_data = await response.json()
+                else:
+                    self.logger.warning(f"⚠️ Birdeye overview API error: {response.status}")
             
-            return None
+            # Fetch price history
+            price_data = {}
+            try:
+                async with self.session.get(price_url, headers=headers, params=price_params) as response:
+                    if response.status == 200:
+                        price_data = await response.json()
+            except Exception as e:
+                self.logger.debug(f"Birdeye price history fetch failed: {e}")
+            
+            # Fetch security data
+            security_data = {}
+            try:
+                async with self.session.get(security_url, headers=headers, params=security_params) as response:
+                    if response.status == 200:
+                        security_data = await response.json()
+            except Exception as e:
+                self.logger.debug(f"Birdeye security data fetch failed: {e}")
+            
+            # Transform to standard format
+            return self._transform_birdeye_data(overview_data, price_data, security_data)
             
         except Exception as e:
-            self.logger.error(f"Birdeye fetch error: {e}")
+            self.logger.error(f"❌ Error fetching Birdeye data: {e}")
             return None
     
     async def _fetch_dexscreener_data(self, token_address: str) -> Optional[Dict[str, Any]]:
-        """Fetch data from DexScreener API"""
+        """Fetch trading data from DexScreener API"""
         try:
-            url = f"{self.endpoints[DataSource.DEXSCREENER]['token_url']}/{token_address}"
+            if not await self._check_rate_limit(DataSource.DEXSCREENER):
+                return None
+            
+            url = f"{self.endpoints[DataSource.DEXSCREENER]}/dex/tokens/{token_address}"
             
             async with self.session.get(url) as response:
                 if response.status == 200:
                     data = await response.json()
-                    pairs = data.get("pairs", [])
-                    if pairs:
-                        pair = pairs[0]  # Take first pair
-                        return {
-                            "symbol": pair.get("baseToken", {}).get("symbol", "UNKNOWN"),
-                            "name": pair.get("baseToken", {}).get("name", "Unknown Token"),
-                            "price": float(pair.get("priceNative", 0)),
-                            "volume_24h": float(pair.get("volume", {}).get("h24", 0)),
-                            "liquidity": float(pair.get("liquidity", {}).get("base", 0)),
-                            "price_change_24h": float(pair.get("priceChange", {}).get("h24", 0)),
-                            "source": DataSource.DEXSCREENER.value,
-                        }
-            
+                    return self._transform_dexscreener_data(data)
+                else:
+                    self.logger.warning(f"⚠️ DexScreener API error: {response.status}")
             return None
             
         except Exception as e:
-            self.logger.error(f"DexScreener fetch error: {e}")
+            self.logger.error(f"❌ Error fetching DexScreener data: {e}")
+            return None
+    
+    async def _fetch_jupiter_data(self, token_address: str) -> Optional[Dict[str, Any]]:
+        """Fetch price data from Jupiter API"""
+        try:
+            if not await self._check_rate_limit(DataSource.JUPITER):
+                return None
+            
+            url = f"{self.endpoints[DataSource.JUPITER]}/price"
+            params = {'ids': token_address}
+            
+            async with self.session.get(url, params=params) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    return self._transform_jupiter_data(data, token_address)
+                else:
+                    self.logger.warning(f"⚠️ Jupiter API error: {response.status}")
+            return None
+            
+        except Exception as e:
+            self.logger.error(f"❌ Error fetching Jupiter data: {e}")
             return None
     
     async def _fetch_helius_data(self, token_address: str) -> Optional[Dict[str, Any]]:
-        """Fetch metadata from Helius API"""
+        """Fetch blockchain data from Helius API"""
         try:
-            if not self.api_keys[DataSource.HELIUS]:
+            if not await self._check_rate_limit(DataSource.HELIUS):
                 return None
             
-            url = f"{self.endpoints[DataSource.HELIUS]['token_metadata_url']}?api-key={self.api_keys[DataSource.HELIUS]}"
-            payload = {"mintAccounts": [token_address]}
+            # Get token metadata
+            url = f"{self.endpoints[DataSource.HELIUS]}/token-metadata"
+            params = {
+                'api-key': self.api_config['helius_api_key'],
+                'mint': token_address
+            }
             
-            async with self.session.post(url, json=payload) as response:
+            async with self.session.get(url, params=params) as response:
                 if response.status == 200:
                     data = await response.json()
-                    if data and len(data) > 0:
-                        metadata = data[0].get("onChainMetadata", {}).get("metadata", {})
-                        return {
-                            "symbol": metadata.get("symbol", "UNKNOWN"),
-                            "name": metadata.get("name", "Unknown Token"),
-                            "decimals": int(metadata.get("decimals", 9)),
-                            "source": DataSource.HELIUS.value,
-                        }
-            
+                    return self._transform_helius_data(data)
+                else:
+                    self.logger.warning(f"⚠️ Helius API error: {response.status}")
             return None
             
         except Exception as e:
-            self.logger.error(f"Helius fetch error: {e}")
+            self.logger.error(f"❌ Error fetching Helius data: {e}")
             return None
     
-    async def _get_jupiter_price(self, token_address: str) -> Optional[float]:
-        """Get price from Jupiter (fast method)"""
+    async def _fetch_solana_tracker_data(self, token_address: str) -> Optional[Dict[str, Any]]:
+        """Fetch token metrics from Solana Tracker API"""
         try:
-            url = f"{self.endpoints[DataSource.JUPITER]['price_url']}?ids={token_address}"
+            if not await self._check_rate_limit(DataSource.SOLANA_TRACKER):
+                return None
             
-            async with self.session.get(url) as response:
-                if response.status == 200:
-                    data = await response.json()
-                    if "data" in data and token_address in data["data"]:
-                        return float(data["data"][token_address].get("price", 0))
-            
-            return None
-            
-        except Exception as e:
-            self.logger.error(f"Jupiter price fetch error: {e}")
-            return None
-    
-    async def _get_birdeye_trending(self, limit: int) -> List[str]:
-        """Get trending tokens from Birdeye"""
-        try:
-            headers = {}
-            if self.api_keys[DataSource.BIRDEYE]:
-                headers["X-API-KEY"] = self.api_keys[DataSource.BIRDEYE]
-            
-            url = self.endpoints[DataSource.BIRDEYE]["trending_url"]
+            headers = {'Authorization': f'Bearer {self.api_config["solana_tracker_api_key"]}'}
+            url = f"{self.endpoints[DataSource.SOLANA_TRACKER]}/{token_address}"
             
             async with self.session.get(url, headers=headers) as response:
                 if response.status == 200:
                     data = await response.json()
-                    if "data" in data:
-                        tokens = []
-                        for token in data["data"][:limit]:
-                            if "address" in token:
-                                tokens.append(token["address"])
-                        return tokens
-            
-            return []
+                    return self._transform_solana_tracker_data(data)
+                else:
+                    self.logger.warning(f"⚠️ Solana Tracker API error: {response.status}")
+            return None
             
         except Exception as e:
-            self.logger.error(f"Birdeye trending fetch error: {e}")
-            return []
-    
-    async def _get_dexscreener_trending(self, limit: int) -> List[str]:
-        """Get trending tokens from DexScreener"""
-        try:
-            url = self.endpoints[DataSource.DEXSCREENER]["trending_url"]
-            
-            async with self.session.get(url) as response:
-                if response.status == 200:
-                    data = await response.json()
-                    if "pairs" in data:
-                        tokens = []
-                        for pair in data["pairs"][:limit]:
-                            if "tokenAddress" in pair:
-                                tokens.append(pair["tokenAddress"])
-                        return tokens
-            
-            return []
-            
-        except Exception as e:
-            self.logger.error(f"DexScreener trending fetch error: {e}")
-            return []
-    
-    async def _combine_token_data(self, token_address: str, results: List[Any], sources: List[DataSource]) -> TokenMarketData:
-        """Combine data from multiple sources"""
-        try:
-            # Filter out exceptions and None results
-            valid_results = [r for r in results if isinstance(r, dict) and r is not None]
-            
-            if not valid_results:
-                return TokenMarketData(
-                    token_address=token_address,
-                    symbol="UNKNOWN",
-                    name="Unknown Token",
-                    price=0.0,
-                )
-            
-            # Combine data with priority
-            combined = {
-                "token_address": token_address,
-                "symbol": "UNKNOWN",
-                "name": "Unknown Token",
-                "price": 0.0,
-                "price_change_1h": 0.0,
-                "price_change_24h": 0.0,
-                "volume_24h": 0.0,
-                "liquidity": 0.0,
-                "market_cap": 0.0,
-                "holder_count": 0,
-                "age_hours": 0.0,
-                "decimals": 9,
-                "data_sources": [],
-                "confidence_score": 0.0,
-            }
-            
-            # Priority order: Jupiter > Birdeye > DexScreener > Helius
-            priority_order = [DataSource.JUPITER, DataSource.BIRDEYE, DataSource.DEXSCREENER, DataSource.HELIUS]
-            
-            for source in priority_order:
-                source_data = next((r for r in valid_results if r.get("source") == source.value), None)
-                if source_data:
-                    combined["data_sources"].append(source.value)
-                    
-                    # Update fields if not already set
-                    for field, value in source_data.items():
-                        if field != "source" and (combined.get(field) == 0 or combined.get(field) == "UNKNOWN"):
-                            combined[field] = value
-            
-            # Calculate confidence score based on number of sources
-            combined["confidence_score"] = min(len(combined["data_sources"]) / len(sources), 1.0)
-            
-            return TokenMarketData(**combined)
-            
-        except Exception as e:
-            self.logger.error(f"Error combining token data: {e}")
-            return TokenMarketData(
-                token_address=token_address,
-                symbol="UNKNOWN",
-                name="Unknown Token",
-                price=0.0,
-            )
-    
-    async def _calculate_opportunity(self, token_data: TokenMarketData) -> Optional[MarketOpportunity]:
-        """Calculate trading opportunity from token data"""
-        try:
-            # Basic opportunity scoring
-            volume_score = min(token_data.volume_24h / 1000, 1.0)  # Normalize to 1000 SOL
-            liquidity_score = min(token_data.liquidity / 100, 1.0)  # Normalize to 100 SOL
-            price_change_score = abs(token_data.price_change_24h) / 100  # Normalize to 100%
-            
-            # Calculate opportunity score
-            opportunity_score = (volume_score * 0.3 + liquidity_score * 0.3 + price_change_score * 0.4)
-            
-            # Calculate risk level (inverse of liquidity)
-            risk_level = max(0.1, 1.0 - liquidity_score)
-            
-            # Calculate expected profit (simplified)
-            expected_profit = price_change_score * 0.5  # Conservative estimate
-            
-            # Determine position size based on liquidity
-            recommended_position_size = min(token_data.liquidity * 0.1, 50.0)  # Max 10% of liquidity, 50 SOL
-            
-            # Calculate max slippage based on liquidity
-            max_slippage_percent = max(0.5, 5.0 - (liquidity_score * 4.5))  # 0.5% to 5%
-            
-            return MarketOpportunity(
-                token_address=token_data.token_address,
-                token_symbol=token_data.symbol,
-                market_data=token_data,
-                opportunity_score=opportunity_score,
-                risk_level=risk_level,
-                expected_profit=expected_profit,
-                recommended_position_size=recommended_position_size,
-                max_slippage_percent=max_slippage_percent,
-            )
-            
-        except Exception as e:
-            self.logger.error(f"Error calculating opportunity: {e}")
+            self.logger.error(f"❌ Error fetching Solana Tracker data: {e}")
             return None
     
-    async def _rate_limit(self, source: DataSource):
-        """Apply rate limiting for API calls"""
-        if source not in self.rate_limits:
-            return
-        
-        rate_limit = self.rate_limits[source]
-        min_interval = 1.0 / rate_limit["requests_per_second"]
-        
-        current_time = time.time()
-        time_since_last = current_time - rate_limit["last_request"]
-        
-        if time_since_last < min_interval:
-            await asyncio.sleep(min_interval - time_since_last)
-        
-        rate_limit["last_request"] = time.time()
-        self.stats["requests_made"] += 1
+    def _transform_birdeye_data(self, overview_data: Dict, price_data: Dict, security_data: Dict) -> Dict[str, Any]:
+        """Transform Birdeye API response to standard format"""
+        try:
+            data = overview_data.get('data', {})
+            
+            return {
+                'source': DataSource.BIRDEYE.value,
+                'symbol': data.get('symbol', 'UNKNOWN'),
+                'name': data.get('name', 'Unknown Token'),
+                'price': float(data.get('price', 0)),
+                'price_usd': float(data.get('price', 0)),
+                'volume_24h_usd': float(data.get('volume24h', 0)),
+                'liquidity_usd': float(data.get('liquidity', 0)),
+                'price_change_24h_percent': float(data.get('priceChange24h', 0)) * 100,
+                'market_cap_usd': data.get('mc'),
+                'holder_count': int(data.get('numberMarkets', 0)),
+                'contract_verified': security_data.get('data', {}).get('isVerified', False),
+                'raw_data': {
+                    'overview': overview_data,
+                    'price_history': price_data,
+                    'security': security_data
+                }
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Error transforming Birdeye data: {e}")
+            return {'source': DataSource.BIRDEYE.value}
     
-    def _get_cached_data(self, key: str) -> Optional[Dict[str, Any]]:
-        """Get data from cache"""
-        if key in self.cache:
-            cached_item = self.cache[key]
-            if datetime.now() - cached_item["timestamp"] < timedelta(seconds=self.cache_ttl):
-                return cached_item["data"]
-            else:
-                del self.cache[key]
-        return None
+    def _transform_dexscreener_data(self, data: Dict) -> Dict[str, Any]:
+        """Transform DexScreener API response to standard format"""
+        try:
+            pairs = data.get('pairs', [])
+            if not pairs:
+                return {'source': DataSource.DEXSCREENER.value}
+            
+            # Use the first pair (usually the most liquid)
+            pair = pairs[0]
+            base_token = pair.get('baseToken', {})
+            
+            # Calculate age
+            created_at = pair.get('pairCreatedAt')
+            age_hours = 0.0
+            if created_at:
+                try:
+                    created_time = datetime.fromtimestamp(created_at / 1000)
+                    age_hours = (datetime.now() - created_time).total_seconds() / 3600
+                except:
+                    pass
+            
+            return {
+                'source': DataSource.DEXSCREENER.value,
+                'symbol': base_token.get('symbol', 'UNKNOWN'),
+                'name': base_token.get('name', 'Unknown Token'),
+                'price': float(pair.get('priceUsd', 0)),
+                'price_usd': float(pair.get('priceUsd', 0)),
+                'volume_24h_usd': float(pair.get('volume', {}).get('h24', 0)),
+                'liquidity_usd': float(pair.get('liquidity', {}).get('usd', 0)),
+                'price_change_1h_percent': float(pair.get('priceChange', {}).get('h1', 0)),
+                'price_change_24h_percent': float(pair.get('priceChange', {}).get('h24', 0)),
+                'age_hours': age_hours,
+                'raw_data': data
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Error transforming DexScreener data: {e}")
+            return {'source': DataSource.DEXSCREENER.value}
     
-    def _cache_data(self, key: str, data: Dict[str, Any]):
-        """Cache data"""
-        self.cache[key] = {
-            "data": data,
-            "timestamp": datetime.now(),
+    def _transform_jupiter_data(self, data: Dict, token_address: str) -> Dict[str, Any]:
+        """Transform Jupiter API response to standard format"""
+        try:
+            price_data = data.get('data', {}).get(token_address, {})
+            
+            return {
+                'source': DataSource.JUPITER.value,
+                'price': float(price_data.get('price', 0)),
+                'price_usd': float(price_data.get('price', 0)),
+                'raw_data': data
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Error transforming Jupiter data: {e}")
+            return {'source': DataSource.JUPITER.value}
+    
+    def _transform_helius_data(self, data: Dict) -> Dict[str, Any]:
+        """Transform Helius API response to standard format"""
+        try:
+            return {
+                'source': DataSource.HELIUS.value,
+                'symbol': data.get('symbol', 'UNKNOWN'),
+                'name': data.get('name', 'Unknown Token'),
+                'total_supply': float(data.get('supply', 0)),
+                'contract_verified': data.get('verified', False),
+                'raw_data': data
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Error transforming Helius data: {e}")
+            return {'source': DataSource.HELIUS.value}
+    
+    def _transform_solana_tracker_data(self, data: Dict) -> Dict[str, Any]:
+        """Transform Solana Tracker API response to standard format"""
+        try:
+            return {
+                'source': DataSource.SOLANA_TRACKER.value,
+                'symbol': data.get('symbol', 'UNKNOWN'),
+                'name': data.get('name', 'Unknown Token'),
+                'holder_count': int(data.get('holders', 0)),
+                'volume_24h_usd': float(data.get('volume24h', 0)),
+                'social_buzz_score': min(1.0, float(data.get('socialScore', 0)) / 100),
+                'raw_data': data
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Error transforming Solana Tracker data: {e}")
+            return {'source': DataSource.SOLANA_TRACKER.value}
+    
+    async def _merge_source_data(self, token_data: TokenData, source_data: Dict[str, Any], source_name: str) -> TokenData:
+        """Merge data from a specific source into the main token data"""
+        try:
+            # Use weighted averaging for numerical fields where we have multiple sources
+            weight = self._get_source_weight(source_name)
+            
+            # Basic fields (take first non-empty value)
+            if not token_data.symbol or token_data.symbol == "UNKNOWN":
+                token_data.symbol = source_data.get('symbol', token_data.symbol)
+            
+            if not token_data.name or token_data.name == "Unknown Token":
+                token_data.name = source_data.get('name', token_data.name)
+            
+            # Price data (weighted average)
+            if source_data.get('price', 0) > 0:
+                if token_data.price == 0:
+                    token_data.price = float(source_data['price'])
+                else:
+                    token_data.price = self._weighted_average(token_data.price, float(source_data['price']), weight)
+            
+            # Volume data (prefer higher values)
+            if source_data.get('volume_24h_usd', 0) > token_data.volume_24h_usd:
+                token_data.volume_24h_usd = float(source_data['volume_24h_usd'])
+            
+            # Liquidity data (prefer higher values)
+            if source_data.get('liquidity_usd', 0) > token_data.liquidity_usd:
+                token_data.liquidity_usd = float(source_data['liquidity_usd'])
+            
+            # Price changes (weighted average)
+            if source_data.get('price_change_24h_percent') is not None:
+                if token_data.price_change_24h_percent == 0:
+                    token_data.price_change_24h_percent = float(source_data['price_change_24h_percent'])
+                else:
+                    token_data.price_change_24h_percent = self._weighted_average(
+                        token_data.price_change_24h_percent, 
+                        float(source_data['price_change_24h_percent']), 
+                        weight
+                    )
+            
+            # Market cap (prefer non-zero values)
+            if source_data.get('market_cap_usd') and not token_data.market_cap_usd:
+                token_data.market_cap_usd = float(source_data['market_cap_usd'])
+            
+            # Holder count (prefer higher values)
+            if source_data.get('holder_count', 0) > token_data.holder_count:
+                token_data.holder_count = int(source_data['holder_count'])
+            
+            # Age (prefer actual values)
+            if source_data.get('age_hours', 0) > 0 and token_data.age_hours == 0:
+                token_data.age_hours = float(source_data['age_hours'])
+            
+            # Contract verification (any true value makes it true)
+            if source_data.get('contract_verified', False):
+                token_data.contract_verified = True
+            
+            # Social signals
+            if source_data.get('social_buzz_score', 0) > token_data.social_buzz_score:
+                token_data.social_buzz_score = float(source_data['social_buzz_score'])
+            
+            # Store raw data
+            token_data.raw_data[source_name] = source_data.get('raw_data', source_data)
+            
+            return token_data
+            
+        except Exception as e:
+            self.logger.error(f"Error merging source data from {source_name}: {e}")
+            return token_data
+    
+    def _get_source_weight(self, source_name: str) -> float:
+        """Get reliability weight for different data sources"""
+        weights = {
+            DataSource.BIRDEYE.value: 0.9,      # Most comprehensive
+            DataSource.DEXSCREENER.value: 0.8,  # Good trading data
+            DataSource.JUPITER.value: 0.7,      # Reliable pricing
+            DataSource.HELIUS.value: 0.8,       # Good blockchain data
+            DataSource.SOLANA_TRACKER.value: 0.6, # Social signals
+            DataSource.RAYDIUM.value: 0.7       # DEX data
         }
-        
-        # Clean old cache entries
-        current_time = datetime.now()
-        keys_to_remove = []
-        for k, v in self.cache.items():
-            if current_time - v["timestamp"] > timedelta(seconds=self.cache_ttl * 2):
-                keys_to_remove.append(k)
-        
-        for k in keys_to_remove:
-            del self.cache[k]
+        return weights.get(source_name, 0.5)
+    
+    def _weighted_average(self, current_value: float, new_value: float, weight: float) -> float:
+        """Calculate weighted average between current and new value"""
+        return current_value * (1 - weight) + new_value * weight
+    
+    def _validate_minimum_data(self, token_data: TokenData) -> bool:
+        """Validate that we have minimum required data"""
+        return (
+            token_data.address and
+            token_data.symbol and token_data.symbol != "UNKNOWN" and
+            token_data.price > 0
+        )
+    
+    async def _calculate_data_quality(self, token_data: TokenData) -> DataMetrics:
+        """Calculate comprehensive data quality metrics"""
+        try:
+            metrics = DataMetrics()
+            metrics.sources_used = token_data.data_metrics.sources_used.copy()
+            metrics.last_updated = datetime.now()
+            
+            # Calculate completeness score
+            required_fields = [
+                'symbol', 'name', 'price', 'volume_24h_usd', 'liquidity_usd',
+                'price_change_24h_percent', 'market_cap_usd', 'holder_count'
+            ]
+            
+            completed_fields = 0
+            for field in required_fields:
+                value = getattr(token_data, field, None)
+                if value and value != "UNKNOWN" and value != "Unknown Token" and value != 0:
+                    completed_fields += 1
+            
+            metrics.completeness = completed_fields / len(required_fields)
+            
+            # Calculate quality score based on multiple factors
+            quality_factors = []
+            
+            # Source diversity (0-0.3)
+            source_score = min(0.3, len(metrics.sources_used) * 0.1)
+            quality_factors.append(source_score)
+            
+            # Data completeness (0-0.4)
+            completeness_score = metrics.completeness * 0.4
+            quality_factors.append(completeness_score)
+            
+            # Data freshness (0-0.2)
+            freshness_score = 0.2  # Full score for new data
+            quality_factors.append(freshness_score)
+            
+            # Price validation (0-0.1)
+            price_valid = 0.1 if token_data.price > 0 else 0.0
+            quality_factors.append(price_valid)
+            
+            metrics.quality_score = sum(quality_factors)
+            
+            # Determine quality level
+            if metrics.quality_score >= 0.8 and len(metrics.sources_used) >= 3:
+                metrics.quality_level = DataQuality.EXCELLENT
+            elif metrics.quality_score >= 0.6 and len(metrics.sources_used) >= 2:
+                metrics.quality_level = DataQuality.GOOD
+            elif metrics.quality_score >= 0.4:
+                metrics.quality_level = DataQuality.FAIR
+            elif metrics.quality_score >= 0.2:
+                metrics.quality_level = DataQuality.POOR
+            else:
+                metrics.quality_level = DataQuality.INVALID
+            
+            # Calculate confidence
+            metrics.confidence = min(1.0, metrics.quality_score + (len(metrics.sources_used) * 0.1))
+            
+            return metrics
+            
+        except Exception as e:
+            self.logger.error(f"Error calculating data quality: {e}")
+            return DataMetrics()
+    
+    async def _get_cached_data(self, token_address: str) -> Optional[TokenData]:
+        """Get data from cache if valid"""
+        try:
+            if token_address not in self.cache:
+                return None
+    
+            # Check if cache is still valid
+            cache_time = self.cache_timestamps.get(token_address)
+            if not cache_time:
+                return None
+            
+            age_seconds = (datetime.now() - cache_time).total_seconds()
+            if age_seconds > self.cache_ttl_seconds:
+                # Remove expired entry
+                self.cache.pop(token_address, None)
+                self.cache_timestamps.pop(token_address, None)
+                return None
+            
+            return self.cache[token_address]
+            
+        except Exception as e:
+            self.logger.error(f"Error getting cached data: {e}")
+            return None
+    
+    async def _cache_token_data(self, token_address: str, token_data: TokenData):
+        """Cache token data with TTL management"""
+        try:
+            # Clean cache if it's getting too large
+            if len(self.cache) >= self.max_cache_size:
+                await self._clean_cache()
+            
+            self.cache[token_address] = token_data
+            self.cache_timestamps[token_address] = datetime.now()
+            
+        except Exception as e:
+            self.logger.error(f"Error caching token data: {e}")
+    
+    async def _clean_cache(self):
+        """Remove oldest cache entries"""
+        try:
+            # Sort by timestamp and remove oldest 20%
+            sorted_entries = sorted(
+                self.cache_timestamps.items(),
+                key=lambda x: x[1]
+            )
+            
+            entries_to_remove = len(sorted_entries) // 5  # Remove 20%
+            
+            for address, _ in sorted_entries[:entries_to_remove]:
+                self.cache.pop(address, None)
+                self.cache_timestamps.pop(address, None)
+            
+            self.logger.debug(f"🗑️ Cleaned {entries_to_remove} old cache entries")
+            
+        except Exception as e:
+            self.logger.error(f"Error cleaning cache: {e}")
+    
+    async def _check_rate_limit(self, source: DataSource) -> bool:
+        """Check if we can make a request to the given source"""
+        try:
+            current_time = time.time()
+            rate_info = self.rate_limits[source]
+            
+            # Check if enough time has passed since last request
+            min_interval = 60.0 / rate_info['requests_per_minute']
+            time_since_last = current_time - rate_info['last_request']
+            
+            if time_since_last < min_interval:
+                self.logger.debug(f"⏳ Rate limit hit for {source.value}, waiting...")
+                await asyncio.sleep(min_interval - time_since_last)
+            
+            # Update last request time
+            self.rate_limits[source]['last_request'] = time.time()
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"Error checking rate limit for {source.value}: {e}")
+            return False
     
     async def _test_api_connections(self):
         """Test connections to available APIs"""
-        test_tasks = []
-        
-        if DataSource.JUPITER in self.endpoints:
-            test_tasks.append(self._test_jupiter_connection())
-        
-        if DataSource.BIRDEYE in self.endpoints:
-            test_tasks.append(self._test_birdeye_connection())
-        
-        if DataSource.DEXSCREENER in self.endpoints:
-            test_tasks.append(self._test_dexscreener_connection())
-        
-        if test_tasks:
-            results = await asyncio.gather(*test_tasks, return_exceptions=True)
-            
-            for i, result in enumerate(results):
-                if isinstance(result, Exception):
-                    self.logger.warning(f"API connection test failed: {result}")
-                else:
-                    self.logger.info(f"✅ API connection test passed")
-    
-    async def _test_jupiter_connection(self) -> bool:
-        """Test Jupiter API connection"""
         try:
-            url = f"{self.endpoints[DataSource.JUPITER]['price_url']}?ids=SOL"
-            async with self.session.get(url) as response:
-                return response.status == 200
-        except Exception:
-            return False
+            connection_tests = []
+            
+            # Test each API that has keys configured
+            if self.api_config.get('birdeye_api_key'):
+                connection_tests.append(self._test_birdeye_connection())
+            
+            connection_tests.append(self._test_dexscreener_connection())
+            
+            if self.api_config.get('jupiter_api_key'):
+                connection_tests.append(self._test_jupiter_connection())
+            
+            if self.api_config.get('helius_api_key'):
+                connection_tests.append(self._test_helius_connection())
+            
+            # Run all tests concurrently
+            results = await asyncio.gather(*connection_tests, return_exceptions=True)
+            
+            successful_tests = sum(1 for result in results if result is True)
+            self.logger.info(f"✅ API Connection Tests: {successful_tests}/{len(results)} passed")
+            
+        except Exception as e:
+            self.logger.error(f"Error testing API connections: {e}")
     
     async def _test_birdeye_connection(self) -> bool:
         """Test Birdeye API connection"""
         try:
-            headers = {}
-            if self.api_keys[DataSource.BIRDEYE]:
-                headers["X-API-KEY"] = self.api_keys[DataSource.BIRDEYE]
+            headers = {'X-API-KEY': self.api_config['birdeye_api_key']}
+            url = f"{self.endpoints[DataSource.BIRDEYE]}/public/tokenlist"
             
-            url = f"{self.endpoints[DataSource.BIRDEYE]['token_url']}/So11111111111111111111111111111111111111112"
             async with self.session.get(url, headers=headers) as response:
-                return response.status == 200
-        except Exception:
+                if response.status == 200:
+                    self.logger.info("✅ Birdeye API connection verified")
+                    return True
+                else:
+                    self.logger.warning(f"⚠️ Birdeye API test failed: {response.status}")
+                    return False
+                    
+        except Exception as e:
+            self.logger.warning(f"⚠️ Birdeye API connection test failed: {e}")
             return False
     
     async def _test_dexscreener_connection(self) -> bool:
         """Test DexScreener API connection"""
         try:
-            url = f"{self.endpoints[DataSource.DEXSCREENER]['token_url']}/So11111111111111111111111111111111111111112"
+            url = f"{self.endpoints[DataSource.DEXSCREENER]}/dex/search?q=SOL"
+            
             async with self.session.get(url) as response:
-                return response.status == 200
-        except Exception:
+                if response.status == 200:
+                    self.logger.info("✅ DexScreener API connection verified")
+                    return True
+                else:
+                    self.logger.warning(f"⚠️ DexScreener API test failed: {response.status}")
             return False
     
-    def get_stats(self) -> Dict[str, Any]:
-        """Get fetcher statistics"""
+        except Exception as e:
+            self.logger.warning(f"⚠️ DexScreener API connection test failed: {e}")
+            return False
+    
+    async def _test_jupiter_connection(self) -> bool:
+        """Test Jupiter API connection"""
+        try:
+            url = f"{self.endpoints[DataSource.JUPITER]}/price?ids=So11111111111111111111111111111111111111112"
+            
+            async with self.session.get(url) as response:
+                if response.status == 200:
+                    self.logger.info("✅ Jupiter API connection verified")
+                    return True
+                else:
+                    self.logger.warning(f"⚠️ Jupiter API test failed: {response.status}")
+                    return False
+                    
+        except Exception as e:
+            self.logger.warning(f"⚠️ Jupiter API connection test failed: {e}")
+            return False
+    
+    async def _test_helius_connection(self) -> bool:
+        """Test Helius API connection"""
+        try:
+            url = f"{self.endpoints[DataSource.HELIUS]}/addresses/So11111111111111111111111111111111111111112"
+            params = {'api-key': self.api_config['helius_api_key']}
+            
+            async with self.session.get(url, params=params) as response:
+                if response.status == 200:
+                    self.logger.info("✅ Helius API connection verified")
+                    return True
+                else:
+                    self.logger.warning(f"⚠️ Helius API test failed: {response.status}")
+                    return False
+                    
+        except Exception as e:
+            self.logger.warning(f"⚠️ Helius API connection test failed: {e}")
+            return False
+    
+    def _update_performance_metrics(self, response_time_ms: float):
+        """Update performance tracking metrics"""
+        try:
+            self.total_requests += 1
+            
+            # Update average response time
+            if self.total_requests == 1:
+                self.average_response_time_ms = response_time_ms
+            else:
+                # Exponential moving average
+                alpha = 0.1
+                self.average_response_time_ms = (alpha * response_time_ms + 
+                                               (1 - alpha) * self.average_response_time_ms)
+                
+        except Exception as e:
+            self.logger.error(f"Error updating performance metrics: {e}")
+    
+    def get_fetcher_status(self) -> Dict[str, Any]:
+        """Get comprehensive fetcher status"""
+        cache_hit_rate = 0.0
+        if self.total_requests > 0:
+            cache_hit_rate = self.cache_hits / (self.cache_hits + self.cache_misses)
+        
         return {
-            **self.stats,
-            "cache_size": len(self.cache),
-            "uptime_hours": (datetime.now() - self.stats["last_reset"]).total_seconds() / 3600,
+            'initialized': self.session is not None,
+            'total_requests': self.total_requests,
+            'cache_hits': self.cache_hits,
+            'cache_misses': self.cache_misses,
+            'cache_hit_rate': round(cache_hit_rate, 3),
+            'error_count': self.error_count,
+            'average_response_time_ms': round(self.average_response_time_ms, 2),
+            'cache_size': len(self.cache),
+            'cache_ttl_seconds': self.cache_ttl_seconds,
+            'data_sources_available': len([
+                source for source, key in [
+                    (DataSource.BIRDEYE, 'birdeye_api_key'),
+                    (DataSource.JUPITER, 'jupiter_api_key'),
+                    (DataSource.HELIUS, 'helius_api_key'),
+                    (DataSource.SOLANA_TRACKER, 'solana_tracker_api_key'),
+                    (DataSource.RAYDIUM, 'raydium_api_key')
+                ] if self.api_config.get(key)
+            ]) + 1  # +1 for DexScreener (no key required)
         }
+    
+    async def shutdown(self):
+        """Shutdown the market data fetcher"""
+        try:
+            self.logger.info("🛑 Shutting down market data fetcher...")
+            
+            # Clear caches
+            self.cache.clear()
+            self.cache_timestamps.clear()
+            
+            # Close HTTP session
+            if self.session:
+                await self.session.close()
+                self.session = None
+            
+            self.logger.info("✅ Market data fetcher shutdown complete")
+            
+        except Exception as e:
+            self.logger.error(f"❌ Error during fetcher shutdown: {e}")
 
 
-# Global instance
-_market_data_fetcher: Optional[MarketDataFetcher] = None
-
+# Global instance manager
+_market_data_fetcher = None
 
 async def get_market_data_fetcher() -> MarketDataFetcher:
-    """Get or create global market data fetcher instance"""
+    """Get global market data fetcher instance"""
     global _market_data_fetcher
-    
     if _market_data_fetcher is None:
         _market_data_fetcher = MarketDataFetcher()
         await _market_data_fetcher.initialize()
-    
     return _market_data_fetcher
-
-
-async def shutdown_market_data_fetcher():
-    """Shutdown global market data fetcher"""
-    global _market_data_fetcher
-    
-    if _market_data_fetcher:
-        await _market_data_fetcher.shutdown()
-        _market_data_fetcher = None 
