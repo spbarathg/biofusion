@@ -20,11 +20,14 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
-from dataclasses import dataclass, field, asdict
+from dataclasses import asdict
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 import uuid
+
+# Import unified schemas to eliminate circular dependencies
+from worker_ant_v1.core.schemas import TradeRecord, SystemEvent
 
 # TimescaleDB integration - using lazy imports to avoid circular dependency
 
@@ -34,92 +37,6 @@ try:
     ENCRYPTION_AVAILABLE = True
 except ImportError:
     ENCRYPTION_AVAILABLE = False
-
-
-@dataclass
-class TradeRecord:
-    """Secure trade record with sensitive data handling."""
-
-    # Basic trade info
-    timestamp: str
-    token_address: str
-    token_symbol: str
-    trade_type: str  # BUY or SELL
-    success: bool
-
-    # Trade details
-    amount_sol: float
-    amount_tokens: float
-    price: float
-    slippage_percent: float
-
-    # Performance metrics
-    latency_ms: int
-    gas_cost_sol: float = 0.0
-    rpc_cost_sol: float = 0.0
-    api_cost_sol: float = 0.0
-
-    # P&L (for sells)
-    profit_loss_sol: Optional[float] = None
-    profit_loss_percent: Optional[float] = None
-    hold_time_seconds: Optional[int] = None
-
-    # Technical details (sensitive data masked)
-    tx_signature_hash: Optional[str] = None  # Hash instead of full signature
-    retry_count: int = 0
-    exit_reason: Optional[str] = None
-    error_message: Optional[str] = None
-
-    # Session tracking
-    session_id: str = field(default_factory=lambda: secrets.token_hex(8))
-    
-    # Wallet identification
-    wallet_id: str = ""
-
-    def mask_sensitive_data(self):
-        """Mask sensitive data for safe logging."""
-        if hasattr(self, "tx_signature") and self.tx_signature:
-            self.tx_signature_hash = hashlib.sha256(
-                self.tx_signature.encode()
-            ).hexdigest()[:16]
-            delattr(self, "tx_signature")
-
-    def to_db_record(self):
-        """Convert to TimescaleDB trade record"""
-        # Lazy import to avoid circular dependency
-        from worker_ant_v1.core.database import TradeRecord as DBTradeRecord
-        
-        # Parse timestamp string to datetime
-        if isinstance(self.timestamp, str):
-            timestamp_dt = datetime.fromisoformat(self.timestamp.replace('Z', '+00:00'))
-        else:
-            timestamp_dt = self.timestamp
-            
-        return DBTradeRecord(
-            timestamp=timestamp_dt,
-            trade_id=str(uuid.uuid4()),
-            session_id=self.session_id,
-            wallet_id=self.wallet_id or "unknown",
-            token_address=self.token_address,
-            token_symbol=self.token_symbol,
-            trade_type=self.trade_type,
-            success=self.success,
-            amount_sol=self.amount_sol,
-            amount_tokens=self.amount_tokens,
-            price=self.price,
-            slippage_percent=self.slippage_percent,
-            latency_ms=self.latency_ms,
-            gas_cost_sol=self.gas_cost_sol,
-            rpc_cost_sol=self.rpc_cost_sol,
-            api_cost_sol=self.api_cost_sol,
-            profit_loss_sol=self.profit_loss_sol,
-            profit_loss_percent=self.profit_loss_percent,
-            hold_time_seconds=self.hold_time_seconds,
-            tx_signature_hash=self.tx_signature_hash,
-            retry_count=self.retry_count,
-            exit_reason=self.exit_reason,
-            error_message=self.error_message
-        )
 
 
 @dataclass

@@ -57,10 +57,8 @@ dependencies = [
     "cryptography>=41.0.7",
     "pycryptodome>=3.19.0",
     
-    # API integrations
-    "jupiter-python-sdk>=0.2.0",
-    "birdeye-python>=0.2.0",
-    "dexscreener-python>=0.2.0",
+    # API integrations (using direct HTTP calls - more reliable than SDK dependencies)
+    # Note: API integrations are handled via aiohttp rather than specific SDKs
     
     # Configuration and environment
     "pyyaml>=6.0.1",

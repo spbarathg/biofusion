@@ -28,6 +28,7 @@ import numpy as np
 from asyncpg import Pool, Connection
 
 from worker_ant_v1.utils.logger import setup_logger
+from worker_ant_v1.core.schemas import TradeRecord, SystemEvent, PerformanceMetric
 
 
 @dataclass
@@ -44,90 +45,6 @@ class DatabaseConfig:
     statement_cache_size: int = 100
     max_cached_statement_lifetime: int = 300
     ssl_mode: str = "prefer"
-
-
-@dataclass  
-class TradeRecord:
-    """Enhanced trade record for TimescaleDB storage"""
-    # Time-series primary key
-    timestamp: datetime
-    
-    # Trade identification
-    trade_id: str
-    session_id: str
-    wallet_id: str
-    
-    # Token information
-    token_address: str
-    token_symbol: str
-    
-    # Trade details
-    trade_type: str  # BUY, SELL
-    success: bool
-    amount_sol: float
-    amount_tokens: float
-    price: float
-    slippage_percent: float
-    
-    # Performance metrics
-    latency_ms: int
-    
-    # Optional fields with defaults
-    token_name: Optional[str] = None
-    gas_cost_sol: float = 0.0
-    rpc_cost_sol: float = 0.0
-    api_cost_sol: float = 0.0
-    
-    # P&L metrics
-    profit_loss_sol: Optional[float] = None
-    profit_loss_percent: Optional[float] = None
-    hold_time_seconds: Optional[int] = None
-    
-    # Technical details
-    tx_signature_hash: Optional[str] = None
-    retry_count: int = 0
-    exit_reason: Optional[str] = None
-    error_message: Optional[str] = None
-    
-    # Market context
-    market_cap_usd: Optional[float] = None
-    volume_24h_usd: Optional[float] = None
-    price_change_24h_percent: Optional[float] = None
-    
-    # AI Signal Snapshot for Naive Bayes Training
-    signal_snapshot: Optional[Dict[str, Any]] = None  # Stores {'sentiment': 0.8, 'rug_risk': 0.1, ...}
-    
-    # Metadata
-    metadata: Optional[Dict[str, Any]] = None
-
-
-@dataclass
-class SystemEvent:
-    """System event record for TimescaleDB"""
-    timestamp: datetime
-    event_id: str
-    event_type: str
-    component: str
-    severity: str  # INFO, WARNING, ERROR, CRITICAL
-    message: str
-    event_data: Dict[str, Any]
-    session_id: Optional[str] = None
-    wallet_id: Optional[str] = None
-    resolved: bool = False
-    resolution_time: Optional[datetime] = None
-
-
-@dataclass
-class PerformanceMetric:
-    """Performance metric record for TimescaleDB"""
-    timestamp: datetime
-    metric_name: str
-    value: float
-    unit: str
-    component: str
-    labels: Dict[str, str]
-    aggregation_period: Optional[str] = None  # 1m, 5m, 1h, etc.
-    metadata: Optional[Dict[str, Any]] = None
 
 
 @dataclass

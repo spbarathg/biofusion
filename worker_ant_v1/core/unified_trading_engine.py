@@ -1025,40 +1025,198 @@ class UnifiedTradingEngine:
             self.logger.info("❌ Trading disabled")
 
     async def _process_profit_to_vault(self, profit_sol: float, order_id: str):
-        """Process profit to vault system with transaction safety"""
+        """Process profit to vault system with robust error handling and fallback storage"""
         try:
             from decimal import Decimal
+            import json
+            import time
+            from pathlib import Path
             
             # Use Decimal for precise currency calculations
             profit_decimal = Decimal(str(profit_sol))
             
             # Ensure we have vault system reference
             if not self.vault_system:
-                self.logger.error("CRITICAL: Vault system not available for profit processing")
+                self.logger.critical("CRITICAL: Vault system not available for profit processing")
+                await self._store_profit_fallback(profit_sol, order_id, "vault_system_unavailable")
                 return
             
-            # Process profit with retry mechanism
-            max_retries = 3
+            # Process profit with enhanced retry mechanism
+            max_retries = 5
+            base_delay = 1.0
+            
             for attempt in range(max_retries):
                 try:
-                    success = await self.vault_system.deposit_profits(float(profit_decimal))
+                    # Check vault system health before attempting deposit
+                    if hasattr(self.vault_system, 'health_check'):
+                        health_ok = await self.vault_system.health_check()
+                        if not health_ok:
+                            self.logger.warning(f"Vault system health check failed, attempt {attempt + 1}")
+                            if attempt == max_retries - 1:
+                                await self._store_profit_fallback(profit_sol, order_id, "vault_health_check_failed")
+                                return
+                            continue
+                    
+                    # Attempt to deposit profit
+                    success = await asyncio.wait_for(
+                        self.vault_system.deposit_profits(float(profit_decimal)), 
+                        timeout=30.0  # 30 second timeout
+                    )
+                    
                     if success:
                         self.logger.info(f"💰 PROFIT SECURED: {profit_decimal} SOL deposited to vault for order {order_id}")
+                        # Log successful profit processing for audit trail
+                        await self._log_profit_success(profit_sol, order_id)
                         return
                     else:
                         self.logger.warning(f"Vault deposit failed for order {order_id}, attempt {attempt + 1}")
+                        
+                except asyncio.TimeoutError:
+                    self.logger.error(f"Vault deposit timeout for order {order_id}, attempt {attempt + 1}")
                 except Exception as e:
                     self.logger.error(f"Vault deposit error for order {order_id}, attempt {attempt + 1}: {e}")
                 
-                # Wait before retry
+                # Wait before retry with exponential backoff
                 if attempt < max_retries - 1:
-                    await asyncio.sleep(1.0)
+                    delay = base_delay * (2 ** attempt)  # Exponential backoff
+                    await asyncio.sleep(min(delay, 10.0))  # Cap at 10 seconds
             
-            # If all retries failed, this is critical
+            # If all retries failed, store in fallback system
             self.logger.critical(f"CRITICAL FAILURE: Could not secure profit {profit_decimal} SOL for order {order_id}")
+            await self._store_profit_fallback(profit_sol, order_id, "all_retries_failed")
             
         except Exception as e:
             self.logger.critical(f"CRITICAL ERROR in profit processing for order {order_id}: {e}")
+            await self._store_profit_fallback(profit_sol, order_id, f"processing_error: {str(e)}")
+    
+    async def _store_profit_fallback(self, profit_sol: float, order_id: str, reason: str):
+        """Store profit in fallback system when vault fails"""
+        try:
+            import json
+            import time
+            from pathlib import Path
+            
+            # Create fallback storage directory
+            fallback_dir = Path("logs/profit_fallback")
+            fallback_dir.mkdir(parents=True, exist_ok=True)
+            
+            # Prepare fallback record
+            fallback_record = {
+                'timestamp': time.time(),
+                'datetime': datetime.now().isoformat(),
+                'order_id': order_id,
+                'profit_sol': float(profit_sol),
+                'reason': reason,
+                'status': 'pending_recovery',
+                'recovery_attempts': 0
+            }
+            
+            # Store in timestamped file
+            filename = f"profit_fallback_{int(time.time())}_{order_id[:8]}.json"
+            fallback_file = fallback_dir / filename
+            
+            with open(fallback_file, 'w') as f:
+                json.dump(fallback_record, f, indent=2)
+            
+            self.logger.critical(f"🆘 PROFIT FALLBACK: {profit_sol} SOL stored in {fallback_file}")
+            
+            # Also attempt to log to database if available
+            try:
+                if hasattr(self, 'db_manager') and self.db_manager:
+                    from worker_ant_v1.core.schemas import SystemEvent
+                    event = SystemEvent(
+                        timestamp=datetime.now(),
+                        event_id=str(uuid.uuid4()),
+                        event_type="profit_fallback",
+                        component="trading_engine",
+                        severity="CRITICAL",
+                        message=f"Profit fallback storage: {profit_sol} SOL for order {order_id}",
+                        event_data=fallback_record
+                    )
+                    await self.db_manager.insert_system_event(event)
+            except Exception as db_error:
+                self.logger.error(f"Failed to log fallback to database: {db_error}")
+            
+            # Start background recovery task
+            asyncio.create_task(self._schedule_profit_recovery(fallback_file, fallback_record))
+            
+        except Exception as e:
+            self.logger.critical(f"CATASTROPHIC: Failed to store profit fallback for order {order_id}: {e}")
+            # Last resort: write to emergency log
+            emergency_log = Path("logs/EMERGENCY_PROFIT_LOG.txt")
+            emergency_log.parent.mkdir(parents=True, exist_ok=True)
+            with open(emergency_log, 'a') as f:
+                f.write(f"{datetime.now().isoformat()} | ORDER: {order_id} | PROFIT: {profit_sol} SOL | REASON: {reason} | ERROR: {str(e)}\n")
+    
+    async def _log_profit_success(self, profit_sol: float, order_id: str):
+        """Log successful profit processing for audit trail"""
+        try:
+            if hasattr(self, 'db_manager') and self.db_manager:
+                from worker_ant_v1.core.schemas import SystemEvent
+                event = SystemEvent(
+                    timestamp=datetime.now(),
+                    event_id=str(uuid.uuid4()),
+                    event_type="profit_secured",
+                    component="trading_engine",
+                    severity="INFO",
+                    message=f"Profit successfully secured: {profit_sol} SOL for order {order_id}",
+                    event_data={
+                        'order_id': order_id,
+                        'profit_sol': profit_sol,
+                        'vault_deposit': True
+                    }
+                )
+                await self.db_manager.insert_system_event(event)
+        except Exception as e:
+            self.logger.error(f"Failed to log profit success: {e}")
+    
+    async def _schedule_profit_recovery(self, fallback_file: Path, record: dict):
+        """Schedule automatic profit recovery attempts"""
+        try:
+            # Wait before attempting recovery
+            await asyncio.sleep(300)  # Wait 5 minutes before first recovery attempt
+            
+            max_recovery_attempts = 10
+            for attempt in range(max_recovery_attempts):
+                try:
+                    # Check if vault system is available again
+                    if self.vault_system and hasattr(self.vault_system, 'health_check'):
+                        health_ok = await self.vault_system.health_check()
+                        if health_ok:
+                            # Attempt to process the fallback profit
+                            success = await self.vault_system.deposit_profits(record['profit_sol'])
+                            if success:
+                                # Update fallback record
+                                record['status'] = 'recovered'
+                                record['recovered_at'] = datetime.now().isoformat()
+                                record['recovery_attempts'] = attempt + 1
+                                
+                                with open(fallback_file, 'w') as f:
+                                    json.dump(record, f, indent=2)
+                                
+                                self.logger.info(f"✅ PROFIT RECOVERED: {record['profit_sol']} SOL for order {record['order_id']}")
+                                return
+                
+                except Exception as e:
+                    self.logger.error(f"Profit recovery attempt {attempt + 1} failed: {e}")
+                
+                # Update attempt count
+                record['recovery_attempts'] = attempt + 1
+                with open(fallback_file, 'w') as f:
+                    json.dump(record, f, indent=2)
+                
+                # Wait before next attempt (exponential backoff)
+                await asyncio.sleep(min(600 * (2 ** attempt), 3600))  # Cap at 1 hour
+            
+            # Mark as failed recovery
+            record['status'] = 'recovery_failed'
+            with open(fallback_file, 'w') as f:
+                json.dump(record, f, indent=2)
+            
+            self.logger.critical(f"💀 PROFIT RECOVERY FAILED: {record['profit_sol']} SOL for order {record['order_id']} - manual intervention required")
+            
+        except Exception as e:
+            self.logger.critical(f"Profit recovery scheduler failed: {e}")
 
 # Global instance
 _trading_engine = None

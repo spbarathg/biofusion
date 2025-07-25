@@ -105,11 +105,15 @@ class SimplifiedTradingBot:
         self.running = False
         self.initialized = False
         
-        # Cache for Naive Bayes (simple in-memory)
+        # Enhanced Naive Bayes with dynamic learning
         self.signal_probabilities = {
-            'p_win_base': 0.55,  # Base win probability
-            'p_loss_base': 0.45, # Base loss probability
-            'signal_conditionals': {}  # P(Signal|Win), P(Signal|Loss)
+            'p_win_base': 0.55,  # Base win probability (updated from historical data)
+            'p_loss_base': 0.45, # Base loss probability (updated from historical data)
+            'signal_conditionals': {},  # P(Signal|Win), P(Signal|Loss) - learned from history
+            'total_trades': 0,
+            'successful_trades': 0,
+            'signal_history': [],  # Store recent signal outcomes for learning
+            'last_update': datetime.now()
         }
         
         # Kelly Criterion parameters
@@ -271,8 +275,8 @@ class SimplifiedTradingBot:
             # Gather signals for Naive Bayes
             market_data = await self._gather_market_signals(opportunity)
             
-            # Calculate win probability using Naive Bayes
-            win_probability = self._calculate_naive_bayes_probability(market_data)
+            # Calculate win probability using Enhanced Naive Bayes
+            win_probability = await self._calculate_naive_bayes_probability(market_data)
             
             if win_probability < self.config.hunt_threshold:
                 self.logger.info(f"⏸️ STAGE 2 SKIP: {token_symbol} | Win prob {win_probability:.3f} < {self.config.hunt_threshold}")
@@ -303,7 +307,8 @@ class SimplifiedTradingBot:
             await self._execute_trade(
                 opportunity=opportunity,
                 position_size=optimal_position_size,
-                win_probability=win_probability
+                win_probability=win_probability,
+                entry_signals=market_data  # Store signals for learning
             )
             
         except Exception as e:
@@ -338,16 +343,19 @@ class SimplifiedTradingBot:
             self.logger.error(f"Error gathering market signals: {e}")
             return {}
     
-    def _calculate_naive_bayes_probability(self, signals: Dict[str, Any]) -> float:
+    async def _calculate_naive_bayes_probability(self, signals: Dict[str, Any]) -> float:
         """
-        Core Naive Bayes probability calculation
+        Enhanced Naive Bayes probability calculation with dynamic learning
         P(Win | Signals) ∝ P(Win) * Π P(Signal_i | Win)
         """
         try:
             if not signals:
                 return 0.5  # Default probability
             
-            # Get base probabilities
+            # Update learning from historical data periodically
+            await self._update_signal_probabilities_if_needed()
+            
+            # Get base probabilities (updated from historical performance)
             p_win = self.signal_probabilities['p_win_base']
             p_loss = self.signal_probabilities['p_loss_base']
             
@@ -355,18 +363,37 @@ class SimplifiedTradingBot:
             likelihood_win = p_win
             likelihood_loss = p_loss
             
-            # Apply each signal (simplified conditional probabilities)
+            # Apply each signal using learned conditional probabilities
             signal_contributions = 0
             
             for signal_name, signal_value in signals.items():
                 if self._is_positive_signal(signal_value):
-                    # Positive signal increases win likelihood
-                    p_signal_given_win = 0.7  # Simplified: 70% chance positive signal occurs in wins
-                    p_signal_given_loss = 0.3  # 30% chance positive signal occurs in losses
+                    # Get learned conditional probabilities or use defaults
+                    conditionals = self.signal_probabilities['signal_conditionals'].get(signal_name, {
+                        'p_signal_given_win': 0.7,  # Default if not learned
+                        'p_signal_given_loss': 0.3,
+                        'sample_count': 0
+                    })
                     
-                    likelihood_win *= p_signal_given_win
-                    likelihood_loss *= p_signal_given_loss
+                    p_signal_given_win = conditionals['p_signal_given_win']
+                    p_signal_given_loss = conditionals['p_signal_given_loss']
+                    
+                    # Apply confidence weighting based on sample size
+                    sample_count = conditionals.get('sample_count', 0)
+                    confidence = min(1.0, sample_count / 100.0)  # Full confidence after 100 samples
+                    
+                    # Blend learned probabilities with defaults based on confidence
+                    default_win = 0.7
+                    default_loss = 0.3
+                    
+                    weighted_p_win = (confidence * p_signal_given_win) + ((1 - confidence) * default_win)
+                    weighted_p_loss = (confidence * p_signal_given_loss) + ((1 - confidence) * default_loss)
+                    
+                    likelihood_win *= weighted_p_win
+                    likelihood_loss *= weighted_p_loss
                     signal_contributions += 1
+                    
+                    self.logger.debug(f"Signal {signal_name}: P(Win)={weighted_p_win:.3f}, P(Loss)={weighted_p_loss:.3f}, Confidence={confidence:.2f}")
             
             # Normalize and calculate final probability
             total_likelihood = likelihood_win + likelihood_loss
@@ -378,11 +405,12 @@ class SimplifiedTradingBot:
             # Apply smoothing to prevent extreme probabilities
             final_probability = max(0.05, min(0.95, final_probability))
             
-            self.logger.debug(f"📊 Naive Bayes: {final_probability:.3f} ({signal_contributions} signals)")
+            self.logger.debug(f"📊 Enhanced Naive Bayes: {final_probability:.3f} ({signal_contributions} signals, "
+                            f"base P(Win)={p_win:.3f})")
             return final_probability
             
         except Exception as e:
-            self.logger.error(f"Error in Naive Bayes calculation: {e}")
+            self.logger.error(f"Error in Enhanced Naive Bayes calculation: {e}")
             return 0.5
     
     def _is_positive_signal(self, value: Any) -> bool:
@@ -393,6 +421,125 @@ class SimplifiedTradingBot:
             return bool(value)
         except:
             return False
+    
+    async def _update_signal_probabilities_if_needed(self):
+        """Update signal probabilities from historical data if needed"""
+        try:
+            current_time = datetime.now()
+            last_update = self.signal_probabilities.get('last_update', current_time)
+            
+            # Update every hour or if we have new trade data
+            if (current_time - last_update).total_seconds() > 3600:  # 1 hour
+                await self._learn_from_historical_data()
+                self.signal_probabilities['last_update'] = current_time
+                
+        except Exception as e:
+            self.logger.error(f"Error updating signal probabilities: {e}")
+    
+    async def _learn_from_historical_data(self):
+        """Learn signal probabilities from historical trade data"""
+        try:
+            # Update base win/loss probabilities from recent performance
+            if self.metrics.trades_executed > 0:
+                historical_win_rate = self.metrics.successful_trades / self.metrics.trades_executed
+                
+                # Use exponential moving average to update base probabilities
+                alpha = 0.1  # Learning rate
+                current_p_win = self.signal_probabilities['p_win_base']
+                new_p_win = alpha * historical_win_rate + (1 - alpha) * current_p_win
+                
+                self.signal_probabilities['p_win_base'] = max(0.1, min(0.9, new_p_win))
+                self.signal_probabilities['p_loss_base'] = 1.0 - self.signal_probabilities['p_win_base']
+                
+                self.logger.debug(f"Updated base probabilities: P(Win)={new_p_win:.3f} from {self.metrics.trades_executed} trades")
+            
+            # Learn conditional probabilities from signal history
+            await self._update_conditional_probabilities()
+            
+        except Exception as e:
+            self.logger.error(f"Error learning from historical data: {e}")
+    
+    async def _update_conditional_probabilities(self):
+        """Update conditional probabilities P(Signal|Win) and P(Signal|Loss) from signal history"""
+        try:
+            signal_history = self.signal_probabilities.get('signal_history', [])
+            
+            if len(signal_history) < 10:  # Need minimum data
+                return
+            
+            # Group by signal name and outcome
+            signal_stats = {}
+            
+            for record in signal_history:
+                signals = record.get('signals', {})
+                was_successful = record.get('successful', False)
+                
+                for signal_name, signal_value in signals.items():
+                    if signal_name not in signal_stats:
+                        signal_stats[signal_name] = {
+                            'positive_wins': 0,
+                            'positive_losses': 0,
+                            'total_wins': 0,
+                            'total_losses': 0
+                        }
+                    
+                    is_positive = self._is_positive_signal(signal_value)
+                    
+                    if was_successful:
+                        signal_stats[signal_name]['total_wins'] += 1
+                        if is_positive:
+                            signal_stats[signal_name]['positive_wins'] += 1
+                    else:
+                        signal_stats[signal_name]['total_losses'] += 1
+                        if is_positive:
+                            signal_stats[signal_name]['positive_losses'] += 1
+            
+            # Calculate conditional probabilities
+            for signal_name, stats in signal_stats.items():
+                total_wins = stats['total_wins']
+                total_losses = stats['total_losses']
+                
+                if total_wins > 0 and total_losses > 0:
+                    p_signal_given_win = stats['positive_wins'] / total_wins
+                    p_signal_given_loss = stats['positive_losses'] / total_losses
+                    
+                    # Apply smoothing to prevent extreme values
+                    p_signal_given_win = max(0.1, min(0.9, p_signal_given_win))
+                    p_signal_given_loss = max(0.1, min(0.9, p_signal_given_loss))
+                    
+                    self.signal_probabilities['signal_conditionals'][signal_name] = {
+                        'p_signal_given_win': p_signal_given_win,
+                        'p_signal_given_loss': p_signal_given_loss,
+                        'sample_count': total_wins + total_losses
+                    }
+                    
+                    self.logger.debug(f"Learned {signal_name}: P(+|Win)={p_signal_given_win:.3f}, "
+                                    f"P(+|Loss)={p_signal_given_loss:.3f} from {total_wins + total_losses} samples")
+            
+        except Exception as e:
+            self.logger.error(f"Error updating conditional probabilities: {e}")
+    
+    def _record_signal_outcome(self, signals: Dict[str, Any], successful: bool):
+        """Record signal outcome for learning"""
+        try:
+            record = {
+                'timestamp': datetime.now(),
+                'signals': signals.copy(),
+                'successful': successful
+            }
+            
+            # Add to history (keep last 1000 records)
+            signal_history = self.signal_probabilities.get('signal_history', [])
+            signal_history.append(record)
+            
+            # Keep only recent history
+            if len(signal_history) > 1000:
+                signal_history = signal_history[-1000:]
+            
+            self.signal_probabilities['signal_history'] = signal_history
+            
+        except Exception as e:
+            self.logger.error(f"Error recording signal outcome: {e}")
     
     def _calculate_kelly_position_size(self, win_probability: float, current_capital: float) -> float:
         """
@@ -432,7 +579,7 @@ class SimplifiedTradingBot:
             self.logger.error(f"Error in Kelly Criterion calculation: {e}")
             return current_capital * 0.01  # Conservative fallback
     
-    async def _execute_trade(self, opportunity: Dict[str, Any], position_size: float, win_probability: float):
+    async def _execute_trade(self, opportunity: Dict[str, Any], position_size: float, win_probability: float, entry_signals: Dict[str, Any] = None):
         """Execute trade with simplified, direct execution"""
         try:
             token_address = opportunity['token_address']
@@ -446,7 +593,7 @@ class SimplifiedTradingBot:
             )
             
             if result.get('success', False):
-                # Track position
+                # Track position with entry signals for learning
                 position = {
                     'token_address': token_address,
                     'token_symbol': token_symbol,
@@ -456,7 +603,8 @@ class SimplifiedTradingBot:
                     'win_probability': win_probability,
                     'stop_loss_price': result.get('execution_price', 0) * (1 - self.config.stop_loss_percent),
                     'target_profit': result.get('execution_price', 0) * 1.15,  # 15% target
-                    'max_hold_until': datetime.now() + timedelta(hours=self.config.max_hold_time_hours)
+                    'max_hold_until': datetime.now() + timedelta(hours=self.config.max_hold_time_hours),
+                    'entry_signals': entry_signals or {}  # Store for learning
                 }
                 
                 self.active_positions[token_address] = position
@@ -550,6 +698,12 @@ class SimplifiedTradingBot:
                 # Update win rate
                 self.metrics.win_rate = self.metrics.successful_trades / self.metrics.trades_executed if self.metrics.trades_executed > 0 else 0
                 self.metrics.avg_profit_per_trade = self.metrics.total_profit_sol / self.metrics.trades_executed if self.metrics.trades_executed > 0 else 0
+                
+                # Record signal outcome for Naive Bayes learning
+                if 'entry_signals' in position:
+                    was_successful = pnl_sol > 0
+                    self._record_signal_outcome(position['entry_signals'], was_successful)
+                    self.logger.debug(f"📚 Recorded signal outcome for learning: {'WIN' if was_successful else 'LOSS'}")
                 
                 # Remove from active positions
                 del self.active_positions[token_address]

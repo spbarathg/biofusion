@@ -142,28 +142,49 @@ class DevilsAdvocateSynapse:
             
             self.logger.debug(f"🔍 WCCA analyzing R-EL for {token_address[:8]} | Position: {position_size_sol:.4f} SOL")
             
-            # Calculate Risk-Adjusted Expected Loss for catastrophic failure patterns
-            catastrophic_patterns = [FailurePattern.RUG_PULL, FailurePattern.HONEYPOT]
+            # Calculate Risk-Adjusted Expected Loss for ALL catastrophic failure patterns
+            # Include all patterns that could result in >80% loss
+            catastrophic_patterns = [
+                FailurePattern.RUG_PULL,
+                FailurePattern.HONEYPOT,
+                FailurePattern.SLOW_RUG,
+                FailurePattern.LIQUIDITY_DRAIN,
+                FailurePattern.CONTRACT_EXPLOIT,
+                FailurePattern.WHALE_DUMP
+            ]
+            
             max_rel = 0.0
             worst_pattern = None
+            rel_breakdown = {}
             
             for pattern in catastrophic_patterns:
-                # Get failure probability from specialized modules
+                # Get failure probability from specialized analysis
                 if pattern == FailurePattern.RUG_PULL:
                     failure_probability = await self._get_rug_pull_probability(trade_params)
                 elif pattern == FailurePattern.HONEYPOT:
                     failure_probability = await self._get_honeypot_probability(trade_params)
+                elif pattern == FailurePattern.SLOW_RUG:
+                    failure_probability = await self._get_slow_rug_probability(trade_params)
+                elif pattern == FailurePattern.LIQUIDITY_DRAIN:
+                    failure_probability = await self._get_liquidity_drain_probability(trade_params)
+                elif pattern == FailurePattern.CONTRACT_EXPLOIT:
+                    failure_probability = await self._get_contract_exploit_probability(trade_params)
+                elif pattern == FailurePattern.WHALE_DUMP:
+                    failure_probability = await self._get_whale_dump_probability(trade_params)
                 else:
                     failure_probability = 0.0
                 
-                # Calculate R-EL: P(Loss) * |Position_Size|
-                rel = failure_probability * position_size_sol
+                # Calculate R-EL: P(Loss) * |Position_Size| * Impact_Severity
+                # Apply impact multiplier for different patterns
+                impact_multiplier = self._get_impact_multiplier(pattern)
+                rel = failure_probability * position_size_sol * impact_multiplier
+                rel_breakdown[pattern.value] = rel
                 
                 if rel > max_rel:
                     max_rel = rel
                     worst_pattern = pattern
                 
-                self.logger.debug(f"📊 {pattern.value} R-EL: {rel:.4f} SOL (P={failure_probability:.3f})")
+                self.logger.debug(f"📊 {pattern.value} R-EL: {rel:.4f} SOL (P={failure_probability:.3f}, Impact={impact_multiplier:.1f})")
             
             # VETO DECISION: If any R-EL exceeds threshold
             if max_rel > self.acceptable_rel_threshold:
@@ -176,16 +197,21 @@ class DevilsAdvocateSynapse:
                     "reason": veto_reason,
                     "rel_calculated": max_rel,
                     "threshold": self.acceptable_rel_threshold,
-                    "worst_pattern": worst_pattern.value
+                    "worst_pattern": worst_pattern.value,
+                    "rel_breakdown": rel_breakdown,
+                    "patterns_analyzed": len(catastrophic_patterns)
                 }
             
             # CLEAR DECISION: All R-EL within acceptable limits
             analysis_duration = (datetime.now() - start_time).total_seconds() * 1000
-            self.logger.info(f"✅ WCCA CLEAR | {token_address[:8]} | Max R-EL: {max_rel:.4f} SOL | Duration: {analysis_duration:.1f}ms")
+            self.logger.info(f"✅ WCCA CLEAR | {token_address[:8]} | Max R-EL: {max_rel:.4f} SOL | "
+                           f"Patterns: {len(catastrophic_patterns)} | Duration: {analysis_duration:.1f}ms")
             
             return {
                 "veto": False,
                 "max_rel": max_rel,
+                "rel_breakdown": rel_breakdown,
+                "patterns_analyzed": len(catastrophic_patterns),
                 "analysis_duration_ms": analysis_duration
             }
             
@@ -309,6 +335,164 @@ class DevilsAdvocateSynapse:
         except Exception as e:
             self.logger.error(f"Error calculating honeypot probability: {e}")
             return 0.3  # Default to moderate risk on error
+    
+    async def _get_slow_rug_probability(self, trade_params: Dict[str, Any]) -> float:
+        """Calculate slow rug pull probability"""
+        try:
+            probability_factors = []
+            
+            # Check for gradual liquidity reduction patterns
+            liquidity_trend = trade_params.get('liquidity_trend_7d', 0.0)
+            if liquidity_trend < -0.2:  # 20% liquidity reduction
+                probability_factors.append(0.7)
+            elif liquidity_trend < -0.1:  # 10% liquidity reduction
+                probability_factors.append(0.4)
+            
+            # Check for increasing sell pressure
+            sell_buy_ratio = trade_params.get('sell_buy_ratio', 1.0)
+            if sell_buy_ratio > 3.0:  # 3:1 sell to buy ratio
+                probability_factors.append(0.6)
+            elif sell_buy_ratio > 2.0:  # 2:1 sell to buy ratio
+                probability_factors.append(0.4)
+            
+            # Check for dev wallet activity
+            dev_activity_suspicious = trade_params.get('dev_activity_suspicious', False)
+            if dev_activity_suspicious:
+                probability_factors.append(0.8)
+            
+            return max(probability_factors) if probability_factors else 0.1
+            
+        except Exception as e:
+            self.logger.error(f"Error calculating slow rug probability: {e}")
+            return 0.2
+    
+    async def _get_liquidity_drain_probability(self, trade_params: Dict[str, Any]) -> float:
+        """Calculate liquidity drain probability"""
+        try:
+            probability_factors = []
+            
+            # Check total liquidity vs market cap
+            total_liquidity = trade_params.get('total_liquidity_sol', 0.0)
+            market_cap_sol = trade_params.get('market_cap_sol', 0.0)
+            
+            if market_cap_sol > 0:
+                liquidity_ratio = total_liquidity / market_cap_sol
+                if liquidity_ratio < 0.01:  # Less than 1% liquidity
+                    probability_factors.append(0.9)
+                elif liquidity_ratio < 0.05:  # Less than 5% liquidity
+                    probability_factors.append(0.6)
+                elif liquidity_ratio < 0.1:  # Less than 10% liquidity
+                    probability_factors.append(0.3)
+            
+            # Check for large single LP positions
+            liquidity_concentration = trade_params.get('liquidity_concentration', 0.5)
+            if liquidity_concentration > 0.9:  # 90% in single LP
+                probability_factors.append(0.8)
+            elif liquidity_concentration > 0.7:  # 70% in single LP
+                probability_factors.append(0.5)
+            
+            # Check for recent large liquidity removals
+            large_lp_removals = trade_params.get('large_lp_removals_24h', 0)
+            if large_lp_removals > 2:
+                probability_factors.append(0.7)
+            elif large_lp_removals > 0:
+                probability_factors.append(0.4)
+            
+            return max(probability_factors) if probability_factors else 0.1
+            
+        except Exception as e:
+            self.logger.error(f"Error calculating liquidity drain probability: {e}")
+            return 0.2
+    
+    async def _get_contract_exploit_probability(self, trade_params: Dict[str, Any]) -> float:
+        """Calculate contract exploit probability"""
+        try:
+            probability_factors = []
+            
+            # Check if contract is verified
+            contract_verified = trade_params.get('contract_verified', True)
+            if not contract_verified:
+                probability_factors.append(0.6)
+            
+            # Check for known vulnerable patterns
+            has_known_vulnerabilities = trade_params.get('has_known_vulnerabilities', False)
+            if has_known_vulnerabilities:
+                probability_factors.append(0.9)
+            
+            # Check contract complexity vs age
+            token_age_hours = trade_params.get('token_age_hours', 24)
+            contract_complexity = trade_params.get('contract_complexity_score', 0.5)
+            
+            if token_age_hours < 6 and contract_complexity > 0.8:  # Complex new contract
+                probability_factors.append(0.7)
+            elif token_age_hours < 24 and contract_complexity > 0.9:  # Very complex contract
+                probability_factors.append(0.5)
+            
+            # Check for proxy contracts without transparency
+            is_proxy = trade_params.get('is_proxy', False)
+            is_transparent = trade_params.get('is_transparent', True)
+            if is_proxy and not is_transparent:
+                probability_factors.append(0.8)
+            
+            return max(probability_factors) if probability_factors else 0.1
+            
+        except Exception as e:
+            self.logger.error(f"Error calculating contract exploit probability: {e}")
+            return 0.2
+    
+    async def _get_whale_dump_probability(self, trade_params: Dict[str, Any]) -> float:
+        """Calculate whale dump probability"""
+        try:
+            probability_factors = []
+            
+            # Check for whale wallet activity
+            whale_activity_score = trade_params.get('whale_activity_score', 0.0)
+            if whale_activity_score > 0.8:
+                probability_factors.append(0.7)
+            elif whale_activity_score > 0.6:
+                probability_factors.append(0.5)
+            
+            # Check token concentration in whale wallets
+            top_10_holder_percent = trade_params.get('top_10_holder_percent', 0.0)
+            if top_10_holder_percent > 70:  # Top 10 hold >70%
+                probability_factors.append(0.8)
+            elif top_10_holder_percent > 50:  # Top 10 hold >50%
+                probability_factors.append(0.6)
+            
+            # Check for recent large transactions
+            large_transactions_24h = trade_params.get('large_transactions_24h', 0)
+            if large_transactions_24h > 5:
+                probability_factors.append(0.6)
+            elif large_transactions_24h > 2:
+                probability_factors.append(0.4)
+            
+            # Check market sentiment vs whale behavior
+            market_sentiment = trade_params.get('market_sentiment', 0.5)
+            if market_sentiment > 0.8 and whale_activity_score > 0.6:  # High sentiment + whale activity
+                probability_factors.append(0.7)  # Potential dump setup
+            
+            return max(probability_factors) if probability_factors else 0.1
+            
+        except Exception as e:
+            self.logger.error(f"Error calculating whale dump probability: {e}")
+            return 0.2
+    
+    def _get_impact_multiplier(self, pattern: FailurePattern) -> float:
+        """Get impact severity multiplier for different failure patterns"""
+        impact_multipliers = {
+            FailurePattern.RUG_PULL: 0.95,          # 95% loss expected
+            FailurePattern.HONEYPOT: 0.90,          # 90% loss expected
+            FailurePattern.SLOW_RUG: 0.80,          # 80% loss expected
+            FailurePattern.CONTRACT_EXPLOIT: 0.85,   # 85% loss expected
+            FailurePattern.LIQUIDITY_DRAIN: 0.70,   # 70% loss expected
+            FailurePattern.WHALE_DUMP: 0.60,        # 60% loss expected
+            FailurePattern.SANDWICH_ATTACK: 0.15,   # 15% loss expected
+            FailurePattern.MEV_FRONT_RUN: 0.10,     # 10% loss expected
+            FailurePattern.PUMP_AND_DUMP: 0.50,     # 50% loss expected
+            FailurePattern.FAKE_VOLUME: 0.30,       # 30% loss expected
+        }
+        
+        return impact_multipliers.get(pattern, 0.5)  # Default 50% impact
     
     async def _analyze_failure_scenarios(self, trade_params: Dict[str, Any]) -> List[FailureScenario]:
         """Analyze all possible failure scenarios for the trade"""

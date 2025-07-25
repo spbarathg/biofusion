@@ -18,9 +18,8 @@ import importlib
 import aiohttp
 
 from worker_ant_v1.utils.logger import get_logger
-from worker_ant_v1.utils.constants import (
-    ValidationLevel, TradingMode, SecurityLevel, APIEndpoints, TokenMints,
-    DefaultValues, ErrorMessages, SuccessMessages, ValidationRules
+from worker_ant_v1.core.schemas import (
+    ValidationLevel, TradingMode, SecurityLevel, APIEndpoints, TokenMints, ValidationRules
 )
 
 
