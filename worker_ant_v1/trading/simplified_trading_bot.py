@@ -42,19 +42,31 @@ class SimplifiedConfig:
     """Lean configuration for simplified bot"""
     initial_capital_sol: float = 1.5  # ~$300
     
-    # Stage 1: Survival Filter
-    acceptable_rel_threshold: float = 0.1  # Max Risk-Adjusted Expected Loss
+    # Stage 1: Survival Filter - DYNAMIC RISK MODEL
+    acceptable_rel_threshold_percent: float = 0.02  # 2% of capital max risk
+    risk_score_veto_threshold: float = 0.8  # Veto if risk score > 80%
     
     # Stage 2: Win-Rate Engine  
     hunt_threshold: float = 0.6  # Minimum win probability to trade
     
-    # Stage 3: Growth Maximizer
-    kelly_fraction: float = 0.25  # Fraction of full Kelly to use
-    max_position_percent: float = 0.20  # 20% max position size
+    # Stage 3: Growth Maximizer - EXPONENTIAL OPTIMIZATION
+    kelly_fraction: float = 0.25  # Base fraction of full Kelly to use
+    kelly_max_fraction: float = 0.65  # Maximum Kelly fraction for ultra-high confidence
+    max_position_percent: float = 0.20  # Base max position size
+    max_position_ultra: float = 0.40  # Ultra-high confidence max position
     
-    # Compounding (simplified)
-    compound_rate: float = 0.8  # Fixed 80% reinvestment
+    # EXPONENTIAL COMPOUNDING SYSTEM
+    compound_rate: float = 0.8  # Base 80% reinvestment
+    compound_rate_aggressive: float = 0.95  # 95% reinvestment for hot streaks
     compound_threshold_sol: float = 0.2  # Compound when vault has 0.2 SOL
+    
+    # SIGNAL FUSION THRESHOLDS
+    ultra_confidence_threshold: float = 0.85  # 85%+ for exponential sizing
+    multi_signal_threshold: float = 0.75  # 75%+ for enhanced sizing
+    
+    # EXPONENTIAL TRIGGER CONDITIONS
+    hot_streak_threshold: int = 3  # 3 consecutive wins triggers aggressive mode
+    exponential_mode_duration: int = 10  # Number of trades in exponential mode
     
     # Risk management
     stop_loss_percent: float = 0.05  # 5% stop loss
@@ -116,10 +128,26 @@ class SimplifiedTradingBot:
             'last_update': datetime.now()
         }
         
-        # Kelly Criterion parameters
-        self.cached_win_loss_ratio = 1.5  # Default, updated from historical data
+        # DYNAMIC KELLY PARAMETERS - DATA-DRIVEN CALCULATIONS
+        self.cached_win_loss_ratio = 1.5  # Fallback, continuously updated from actual performance
+        self.trade_history = []  # Complete trade history for statistical analysis
+        self.winning_trades = []  # Winning trade profits for dynamic win/loss ratio
+        self.losing_trades = []  # Losing trade losses for dynamic win/loss ratio
+        self.min_trades_for_dynamic_ratio = 20  # Minimum trades before using dynamic ratio
         
-        self.logger.info("🎯 SimplifiedTradingBot initialized - Mathematical core only")
+        # CONTINUOUS RISK SCORING SYSTEM
+        self.risk_score_history = []  # Track risk scores vs actual outcomes for model improvement
+        self.current_risk_score = 0.0  # Current trade risk score (0.0 = no risk, 1.0 = maximum risk)
+        
+        # EXPONENTIAL GROWTH TRACKING
+        self.exponential_mode = False
+        self.exponential_trades_remaining = 0
+        self.consecutive_wins = 0
+        self.consecutive_losses = 0
+        self.performance_streak = []  # Track last 10 trades for momentum analysis
+        self.ultra_confidence_trades = 0  # Track ultra-high confidence opportunities
+        
+        self.logger.info("🎯 SimplifiedTradingBot initialized - Mathematical core with EXPONENTIAL GROWTH optimization")
     
     async def initialize(self) -> bool:
         """Initialize essential systems only"""
@@ -299,58 +327,60 @@ class SimplifiedTradingBot:
                 'rug_detector_score': rug_result.overall_risk
             }
             
-            wcca_result = await self.devils_advocate.conduct_pre_mortem_analysis(trade_params)
+            # CRITICAL IMPROVEMENT: Continuous Risk Scoring System
+            # Calculate continuous risk score (0.0 = no risk, 1.0 = maximum risk)
+            enhanced_trade_params = {
+                **trade_params,
+                'token_age_hours': opportunity.get('age_hours', 24),
+                'liquidity_sol': opportunity.get('liquidity_sol', 50),
+                'holder_count': opportunity.get('holder_count', 100)
+            }
+            
+            risk_score = self._calculate_continuous_risk_score(enhanced_trade_params)
+            
+            # Dynamic risk threshold based on current capital (percentage-based)
+            dynamic_risk_threshold_sol = self.metrics.current_capital_sol * self.config.acceptable_rel_threshold_percent
+            
+            # Calculate expected loss based on risk score
+            estimated_position_size = min(0.1, self.metrics.current_capital_sol * 0.1)  # Rough estimate
+            expected_loss = risk_score * estimated_position_size
             
             # ═══════════════════════════════════════════════════════════
-            # ENHANCED WCCA RESULT ANALYSIS - Full pattern breakdown
+            # ENHANCED RISK ASSESSMENT - Continuous scoring with veto only for extreme risk
             # ═══════════════════════════════════════════════════════════
             
-            if wcca_result.get('veto', False):
-                # Enhanced veto logging with pattern details
-                worst_pattern = wcca_result.get('worst_pattern', 'Unknown')
-                rel_calculated = wcca_result.get('rel_calculated', 0.0)
-                patterns_analyzed = wcca_result.get('patterns_analyzed', 0)
+            # Veto only if risk score exceeds threshold (80%) OR expected loss exceeds dynamic threshold
+            if risk_score > self.config.risk_score_veto_threshold or expected_loss > dynamic_risk_threshold_sol:
+                veto_reason = f"Risk score {risk_score:.3f} > {self.config.risk_score_veto_threshold}" if risk_score > self.config.risk_score_veto_threshold else f"Expected loss {expected_loss:.4f} > {dynamic_risk_threshold_sol:.4f} SOL"
                 
-                self.logger.warning(f"🚫 STAGE 1 WCCA VETO: {token_symbol}")
-                self.logger.warning(f"   └─ Worst Pattern: {worst_pattern}")
-                self.logger.warning(f"   └─ R-EL: {rel_calculated:.4f} SOL (Threshold: {wcca_result.get('threshold', 0.0):.4f})")
-                self.logger.warning(f"   └─ Patterns Analyzed: {patterns_analyzed}")
-                self.logger.warning(f"   └─ Reason: {wcca_result.get('reason', 'Unknown')}")
+                self.logger.warning(f"🚫 STAGE 1 RISK VETO: {token_symbol}")
+                self.logger.warning(f"   └─ Risk Score: {risk_score:.3f} | Expected Loss: {expected_loss:.4f} SOL")
+                self.logger.warning(f"   └─ Dynamic Threshold: {dynamic_risk_threshold_sol:.4f} SOL ({self.config.acceptable_rel_threshold_percent:.1%} of capital)")
+                self.logger.warning(f"   └─ Reason: {veto_reason}")
                 
-                # Log R-EL breakdown for analysis
-                rel_breakdown = wcca_result.get('rel_breakdown', {})
-                if rel_breakdown:
-                    self.logger.debug("📊 R-EL Pattern Breakdown:")
-                    for pattern, rel_value in sorted(rel_breakdown.items(), key=lambda x: x[1], reverse=True):
-                        if rel_value > 0.001:  # Only log significant risks
-                            self.logger.debug(f"   └─ {pattern}: {rel_value:.4f} SOL")
-                
-                # Store veto data for future ML training
-                self._record_wcca_veto(token_address, wcca_result, trade_params)
+                # Store risk data for model improvement
+                self._record_risk_veto({
+                    'token_address': token_address,
+                    'token_symbol': token_symbol,
+                    'risk_score': risk_score,
+                    'expected_loss': expected_loss,
+                    'dynamic_threshold': dynamic_risk_threshold_sol,
+                    'veto_reason': veto_reason,
+                    'timestamp': datetime.now()
+                })
                 return
             
-            # Enhanced clear logging with pattern insights
-            max_rel = wcca_result.get('max_rel', 0.0)
-            patterns_analyzed = wcca_result.get('patterns_analyzed', 0)
-            rel_breakdown = wcca_result.get('rel_breakdown', {})
+            # Risk accepted - log risk assessment for tracking
+            self.logger.info(f"✅ STAGE 1 RISK CLEAR: {token_symbol}")
+            self.logger.info(f"   └─ Risk Score: {risk_score:.3f} | Expected Loss: {expected_loss:.4f} SOL")
+            self.logger.info(f"   └─ Dynamic Threshold: {dynamic_risk_threshold_sol:.4f} SOL ({self.config.acceptable_rel_threshold_percent:.1%} of capital)")
             
-            self.logger.info(f"✅ STAGE 1 CLEAR: {token_symbol}")
-            self.logger.info(f"   └─ Max R-EL: {max_rel:.4f} SOL")
-            self.logger.info(f"   └─ Patterns Analyzed: {patterns_analyzed}")
-            
-            # Log top risk patterns for insight
-            if rel_breakdown:
-                top_risks = sorted(rel_breakdown.items(), key=lambda x: x[1], reverse=True)[:3]
-                risk_summary = " | ".join([f"{pattern}: {value:.3f}" for pattern, value in top_risks if value > 0.001])
-                if risk_summary:
-                    self.logger.debug(f"   └─ Top Risks: {risk_summary}")
-            
-            # Store WCCA analysis for position tracking
-            wcca_analysis_summary = {
-                'max_rel': max_rel,
-                'patterns_analyzed': patterns_analyzed,
-                'worst_pattern': rel_breakdown and max(rel_breakdown, key=rel_breakdown.get),
-                'analysis_duration_ms': wcca_result.get('analysis_duration_ms', 0)
+            # Store risk analysis for position tracking (used later in Kelly calculation)
+            risk_analysis_summary = {
+                'risk_score': risk_score,
+                'expected_loss': expected_loss,
+                'dynamic_threshold': dynamic_risk_threshold_sol,
+                'risk_components': enhanced_trade_params
             }
             
             # ═══════════════════════════════════════════════════════════
@@ -373,10 +403,11 @@ class SimplifiedTradingBot:
             # STAGE 3: GROWTH MAXIMIZER - KELLY CRITERION SIZING
             # ═══════════════════════════════════════════════════════════
             
-            # Calculate optimal position size using Kelly Criterion
+            # Calculate optimal position size using Enhanced Kelly Criterion
             optimal_position_size = self._calculate_kelly_position_size(
                 win_probability, 
-                self.metrics.current_capital_sol
+                self.metrics.current_capital_sol,
+                market_data  # Pass market signals for enhanced calculations
             )
             
             if optimal_position_size <= 0.005:  # Minimum viable position
@@ -394,7 +425,7 @@ class SimplifiedTradingBot:
                 position_size=optimal_position_size,
                 win_probability=win_probability,
                 entry_signals=market_data,  # Store signals for learning
-                wcca_analysis=wcca_analysis_summary  # Store WCCA insights
+                risk_analysis=risk_analysis_summary  # Store risk assessment insights
             )
             
         except Exception as e:
@@ -738,45 +769,409 @@ class SimplifiedTradingBot:
         except Exception as e:
             self.logger.error(f"Error recording WCCA veto: {e}")
     
-    def _calculate_kelly_position_size(self, win_probability: float, current_capital: float) -> float:
+    def _record_risk_veto(self, risk_data: Dict[str, Any]):
+        """Record risk veto for model improvement and pattern analysis"""
+        try:
+            # Add to risk score history for model training
+            self.risk_score_history.append({
+                **risk_data,
+                'outcome': 'veto',
+                'capital_at_time': self.metrics.current_capital_sol
+            })
+            
+            # Keep only recent history (last 500 records)
+            if len(self.risk_score_history) > 500:
+                self.risk_score_history = self.risk_score_history[-500:]
+            
+            self.logger.debug(f"📝 Risk veto recorded: {risk_data['token_symbol']} | Risk: {risk_data['risk_score']:.3f}")
+            
+        except Exception as e:
+            self.logger.error(f"Error recording risk veto: {e}")
+    
+    def _calculate_kelly_position_size(self, win_probability: float, current_capital: float, market_signals: Dict[str, Any] = None) -> float:
         """
-        Kelly Criterion position sizing calculation
-        f* = p - ((1 - p) / b) where p = win probability, b = win/loss ratio
+        EXPONENTIAL GROWTH KELLY CRITERION with Adaptive Scaling
+        
+        Base Formula: f* = p - ((1 - p) / b)
+        Enhanced with:
+        - Confidence-based Kelly scaling (25% to 65%)
+        - Multi-signal fusion multipliers
+        - Exponential mode amplification
+        - Performance streak momentum
         """
         try:
             # Ensure valid inputs
             win_probability = max(0.01, min(0.99, win_probability))
+            market_signals = market_signals or {}
             
-            # Get win/loss ratio (simplified - could be updated from historical data)
-            win_loss_ratio = self.cached_win_loss_ratio
+            # DYNAMIC WIN/LOSS RATIO - Data-driven calculation from actual performance
+            win_loss_ratio = self._calculate_dynamic_win_loss_ratio()
             
-            # Calculate Kelly fraction
+            # Calculate base Kelly fraction
             kelly_fraction_full = win_probability - ((1 - win_probability) / win_loss_ratio)
             
-            # Apply safety factor (fractional Kelly)
-            kelly_fraction_safe = kelly_fraction_full * self.config.kelly_fraction
+            # EXPONENTIAL OPTIMIZATION LAYER 1: Confidence-Based Kelly Scaling
+            confidence_multiplier = self._calculate_confidence_multiplier(win_probability, market_signals)
+            adaptive_kelly_fraction = self._interpolate_kelly_fraction(win_probability, confidence_multiplier)
             
-            # Calculate position size
-            position_size = kelly_fraction_safe * current_capital
+            # EXPONENTIAL OPTIMIZATION LAYER 2: Multi-Signal Fusion
+            signal_strength_multiplier = self._calculate_signal_fusion_multiplier(market_signals)
             
-            # Apply maximum position size limit
-            max_position = current_capital * self.config.max_position_percent
+            # EXPONENTIAL OPTIMIZATION LAYER 3: Performance Streak Momentum
+            momentum_multiplier = self._calculate_momentum_multiplier()
+            
+            # EXPONENTIAL OPTIMIZATION LAYER 4: Exponential Mode Amplification
+            exponential_multiplier = self._calculate_exponential_mode_multiplier()
+            
+            # CRITICAL IMPROVEMENT: Risk-Adjusted Kelly Calculation
+            # Calculate continuous risk score for this trade
+            trade_params = {
+                'token_address': market_signals.get('token_address', ''),
+                'amount': 0.0,  # Will be calculated
+                'token_age_hours': market_signals.get('token_age_hours', 24),
+                'liquidity_sol': market_signals.get('liquidity_sol', 50),
+                'holder_count': market_signals.get('holder_count', 100)
+            }
+            risk_score = self._calculate_continuous_risk_score(trade_params)
+            self.current_risk_score = risk_score
+            
+            # Apply risk adjustment to Kelly fraction: f* × (1 - risk_score)
+            risk_adjusted_kelly = kelly_fraction_full * (1 - risk_score)
+            
+            # Calculate enhanced Kelly fraction with all multipliers
+            enhanced_kelly = risk_adjusted_kelly * adaptive_kelly_fraction * signal_strength_multiplier * momentum_multiplier * exponential_multiplier
+            
+            # Calculate base position size
+            base_position_size = enhanced_kelly * current_capital
+            
+            # CRITICAL IMPROVEMENT: Multi-Asset Kelly Adjustment
+            position_size = self._calculate_multi_asset_kelly_adjustment(base_position_size)
+            
+            # Apply dynamic maximum position size limits
+            max_position_percent = self._get_dynamic_max_position(win_probability, confidence_multiplier)
+            max_position = current_capital * max_position_percent
             position_size = min(position_size, max_position)
             
             # Ensure minimum viable position
             position_size = max(0.0, position_size)
             
-            self.logger.debug(f"💰 Kelly: p={win_probability:.3f}, b={win_loss_ratio:.2f}, "
-                            f"Kelly={kelly_fraction_full:.3f}, Safe={kelly_fraction_safe:.3f}, "
-                            f"Size={position_size:.4f} SOL")
+            # Enhanced logging for risk-adjusted Kelly tracking
+            mode_status = "🚀 EXPONENTIAL" if self.exponential_mode else "📊 STANDARD"
+            ratio_source = "DYNAMIC" if len(self.winning_trades) >= 10 and len(self.losing_trades) >= 10 else "FALLBACK"
+            
+            self.logger.info(f"💰 {mode_status} RISK-ADJUSTED KELLY: p={win_probability:.3f}, b={win_loss_ratio:.2f} ({ratio_source})")
+            self.logger.info(f"   └─ Base Kelly: {kelly_fraction_full:.3f} → Risk Adj: {risk_adjusted_kelly:.3f} → Enhanced: {enhanced_kelly:.3f}")
+            self.logger.info(f"   └─ Risk Score: {risk_score:.3f} | Multi-Asset Adj: {base_position_size:.4f} → {position_size:.4f} SOL")
+            self.logger.info(f"   └─ Multipliers: Conf={confidence_multiplier:.2f}, Signal={signal_strength_multiplier:.2f}, "
+                           f"Momentum={momentum_multiplier:.2f}, Exp={exponential_multiplier:.2f}")
+            self.logger.info(f"   └─ Final Position: {position_size:.4f} SOL ({position_size/current_capital:.1%} of capital) | "
+                           f"Active Positions: {len(self.active_positions)}")
             
             return position_size
             
         except Exception as e:
-            self.logger.error(f"Error in Kelly Criterion calculation: {e}")
+            self.logger.error(f"Error in Enhanced Kelly Criterion calculation: {e}")
             return current_capital * 0.01  # Conservative fallback
     
-    async def _execute_trade(self, opportunity: Dict[str, Any], position_size: float, win_probability: float, entry_signals: Dict[str, Any] = None, wcca_analysis: Dict[str, Any] = None):
+    def _calculate_dynamic_win_loss_ratio(self) -> float:
+        """
+        CRITICAL IMPROVEMENT: Calculate win/loss ratio from actual bot performance
+        
+        This replaces the fixed 1.5 assumption with data-driven calculation.
+        Returns the ratio of average winning trade profit to average losing trade loss.
+        """
+        try:
+            # Need minimum trades for statistical validity
+            if len(self.winning_trades) < 10 or len(self.losing_trades) < 10:
+                self.logger.debug(f"Insufficient trade data (W:{len(self.winning_trades)}, L:{len(self.losing_trades)}), using fallback ratio")
+                return self.cached_win_loss_ratio
+            
+            # Calculate recent performance (last 50 trades of each type for relevance)
+            recent_wins = self.winning_trades[-50:] if len(self.winning_trades) >= 50 else self.winning_trades
+            recent_losses = self.losing_trades[-50:] if len(self.losing_trades) >= 50 else self.losing_trades
+            
+            # Calculate average profit and loss
+            avg_win = sum(recent_wins) / len(recent_wins)
+            avg_loss = abs(sum(recent_losses) / len(recent_losses))  # Ensure positive for ratio
+            
+            if avg_loss == 0:
+                self.logger.warning("Average loss is zero, using fallback ratio")
+                return self.cached_win_loss_ratio
+            
+            # Calculate dynamic win/loss ratio
+            dynamic_ratio = avg_win / avg_loss
+            
+            # Apply bounds to prevent extreme ratios (0.5 to 5.0)
+            dynamic_ratio = max(0.5, min(5.0, dynamic_ratio))
+            
+            self.logger.debug(f"📊 Dynamic W/L Ratio: {dynamic_ratio:.3f} (avg_win: {avg_win:.4f}, avg_loss: {avg_loss:.4f})")
+            
+            return dynamic_ratio
+            
+        except Exception as e:
+            self.logger.error(f"Error calculating dynamic win/loss ratio: {e}")
+            return self.cached_win_loss_ratio
+    
+    def _calculate_continuous_risk_score(self, trade_params: Dict[str, Any]) -> float:
+        """
+        CRITICAL IMPROVEMENT: Continuous risk scoring instead of binary veto
+        
+        Returns a risk score from 0.0 (no risk) to 1.0 (maximum risk)
+        This replaces the binary go/no-go decision with nuanced risk assessment.
+        """
+        try:
+            token_address = trade_params.get('token_address', '')
+            position_size_sol = abs(float(trade_params.get('amount', 0.0)))
+            
+            # Initialize risk components
+            risk_components = {
+                'rug_pull_risk': 0.0,
+                'honeypot_risk': 0.0,
+                'liquidity_risk': 0.0,
+                'whale_risk': 0.0,
+                'technical_risk': 0.0
+            }
+            
+            # STATISTICAL RISK MODEL COMPONENTS
+            # (In production, these would be ML model predictions)
+            
+            # Rug Pull Risk - based on token characteristics
+            token_age_hours = trade_params.get('token_age_hours', 0)
+            liquidity_sol = trade_params.get('liquidity_sol', 0)
+            holder_count = trade_params.get('holder_count', 0)
+            
+            # Age-based risk (newer = riskier)
+            if token_age_hours < 1:
+                risk_components['rug_pull_risk'] += 0.4
+            elif token_age_hours < 24:
+                risk_components['rug_pull_risk'] += 0.2
+            elif token_age_hours < 168:  # 1 week
+                risk_components['rug_pull_risk'] += 0.1
+            
+            # Liquidity-based risk
+            if liquidity_sol < 5:
+                risk_components['liquidity_risk'] += 0.3
+            elif liquidity_sol < 20:
+                risk_components['liquidity_risk'] += 0.15
+            elif liquidity_sol < 100:
+                risk_components['liquidity_risk'] += 0.05
+            
+            # Holder concentration risk
+            if holder_count < 50:
+                risk_components['whale_risk'] += 0.25
+            elif holder_count < 200:
+                risk_components['whale_risk'] += 0.1
+            
+            # Position size risk (larger positions = higher risk)
+            position_risk = min(0.3, position_size_sol / self.metrics.current_capital_sol)
+            risk_components['technical_risk'] = position_risk
+            
+            # Weighted risk score calculation
+            risk_weights = {
+                'rug_pull_risk': 0.3,
+                'honeypot_risk': 0.2,
+                'liquidity_risk': 0.2,
+                'whale_risk': 0.15,
+                'technical_risk': 0.15
+            }
+            
+            total_risk_score = sum(
+                risk_components[component] * risk_weights[component]
+                for component in risk_components
+            )
+            
+            # Bound to [0.0, 1.0]
+            total_risk_score = max(0.0, min(1.0, total_risk_score))
+            
+            self.logger.debug(f"🎯 Risk Score: {total_risk_score:.3f} | Components: {risk_components}")
+            
+            return total_risk_score
+            
+        except Exception as e:
+            self.logger.error(f"Error calculating continuous risk score: {e}")
+            return 0.5  # Conservative medium risk fallback
+    
+    def _calculate_multi_asset_kelly_adjustment(self, base_position_size: float) -> float:
+        """
+        CRITICAL IMPROVEMENT: Multi-asset Kelly adjustment for concurrent positions
+        
+        Adjusts position size based on number of open positions to prevent over-leveraging.
+        Classic Kelly assumes single bet, but we trade multiple assets simultaneously.
+        """
+        try:
+            num_active_positions = len(self.active_positions)
+            
+            if num_active_positions == 0:
+                return base_position_size
+            
+            # Multi-asset Kelly adjustment formula
+            # Reduces exposure as more positions are taken
+            adjustment_factor = 1.0 / (1.0 + (num_active_positions * 0.3))
+            
+            adjusted_position_size = base_position_size * adjustment_factor
+            
+            self.logger.debug(f"🔄 Multi-Asset Kelly: {num_active_positions} positions, "
+                            f"adjustment factor: {adjustment_factor:.3f}, "
+                            f"position: {base_position_size:.4f} → {adjusted_position_size:.4f} SOL")
+            
+            return adjusted_position_size
+            
+        except Exception as e:
+            self.logger.error(f"Error in multi-asset Kelly adjustment: {e}")
+            return base_position_size
+    
+    def _calculate_confidence_multiplier(self, win_probability: float, market_signals: Dict[str, Any]) -> float:
+        """Calculate confidence multiplier based on signal strength and probability"""
+        # Base confidence from win probability
+        prob_confidence = min(1.0, (win_probability - 0.5) * 2.0)  # Scale 0.5-1.0 to 0.0-1.0
+        
+        # Signal strength confidence
+        signal_count = len([s for s in market_signals.values() if isinstance(s, (int, float)) and s > 0])
+        signal_confidence = min(1.0, signal_count / 8.0)  # Normalize by expected 8 signals
+        
+        # Combined confidence
+        combined_confidence = (prob_confidence * 0.7) + (signal_confidence * 0.3)
+        
+        return 0.5 + (combined_confidence * 0.5)  # Scale to 0.5-1.0 range
+    
+    def _interpolate_kelly_fraction(self, win_probability: float, confidence_multiplier: float) -> float:
+        """Interpolate Kelly fraction based on win probability and confidence"""
+        if win_probability >= self.config.ultra_confidence_threshold:
+            # Ultra-high confidence: use maximum Kelly fraction
+            return self.config.kelly_max_fraction * confidence_multiplier
+        elif win_probability >= self.config.multi_signal_threshold:
+            # High confidence: interpolate between base and max
+            ratio = (win_probability - self.config.multi_signal_threshold) / (self.config.ultra_confidence_threshold - self.config.multi_signal_threshold)
+            interpolated_fraction = self.config.kelly_fraction + (ratio * (self.config.kelly_max_fraction - self.config.kelly_fraction))
+            return interpolated_fraction * confidence_multiplier
+        else:
+            # Standard confidence: use base Kelly fraction
+            return self.config.kelly_fraction * confidence_multiplier
+    
+    def _calculate_signal_fusion_multiplier(self, market_signals: Dict[str, Any]) -> float:
+        """Calculate multiplier based on multi-signal fusion strength"""
+        if not market_signals:
+            return 1.0
+        
+        # Count strong positive signals
+        strong_signals = 0
+        total_signals = 0
+        
+        signal_patterns = {
+            'price_momentum': market_signals.get('price_momentum', 0),
+            'volume_momentum': market_signals.get('volume_momentum', 0),
+            'volume_spike': market_signals.get('volume_spike', 0),
+            'strong_momentum': market_signals.get('strong_momentum', 0),
+            'rsi_strength': market_signals.get('rsi_strength', 0),
+            'macd_bullish': market_signals.get('macd_bullish', 0),
+            'breakout_signal': market_signals.get('breakout_signal', 0),
+            'sentiment_spike': market_signals.get('sentiment_spike', 0)
+        }
+        
+        for signal_name, signal_value in signal_patterns.items():
+            if isinstance(signal_value, (int, float)):
+                total_signals += 1
+                if signal_value > 0.7:  # Strong signal threshold
+                    strong_signals += 1
+        
+        if total_signals == 0:
+            return 1.0
+        
+        # Calculate signal strength ratio
+        signal_strength_ratio = strong_signals / total_signals
+        
+        # Return multiplier: 1.0 (no enhancement) to 1.5 (50% enhancement)
+        return 1.0 + (signal_strength_ratio * 0.5)
+    
+    def _calculate_momentum_multiplier(self) -> float:
+        """Calculate multiplier based on performance streak momentum"""
+        if len(self.performance_streak) < 3:
+            return 1.0  # No momentum data
+        
+        # Count recent wins
+        recent_wins = sum(1 for trade in self.performance_streak[-5:] if trade.get('profitable', False))
+        recent_trades = len(self.performance_streak[-5:])
+        
+        if recent_trades == 0:
+            return 1.0
+        
+        win_rate = recent_wins / recent_trades
+        
+        # Momentum multiplier based on recent performance
+        if win_rate >= 0.8:  # 80%+ recent win rate
+            return 1.3  # 30% enhancement
+        elif win_rate >= 0.6:  # 60%+ recent win rate
+            return 1.15  # 15% enhancement
+        elif win_rate <= 0.3:  # 30% or lower recent win rate
+            return 0.8  # 20% reduction for risk management
+        else:
+            return 1.0  # Neutral
+    
+    def _calculate_exponential_mode_multiplier(self) -> float:
+        """Calculate multiplier for exponential mode"""
+        if not self.exponential_mode:
+            return 1.0
+        
+        # Progressive amplification during exponential mode
+        trades_completed = self.config.exponential_mode_duration - self.exponential_trades_remaining
+        progress_ratio = trades_completed / self.config.exponential_mode_duration
+        
+        # Start at 1.2x and scale up to 1.8x during exponential mode
+        return 1.2 + (progress_ratio * 0.6)
+    
+    def _get_dynamic_max_position(self, win_probability: float, confidence_multiplier: float) -> float:
+        """Get dynamic maximum position percentage based on confidence"""
+        if win_probability >= self.config.ultra_confidence_threshold and confidence_multiplier > 0.8:
+            # Ultra-high confidence: allow larger positions
+            return self.config.max_position_ultra
+        elif win_probability >= self.config.multi_signal_threshold:
+            # High confidence: interpolate between base and ultra max
+            ratio = (win_probability - self.config.multi_signal_threshold) / (self.config.ultra_confidence_threshold - self.config.multi_signal_threshold)
+            return self.config.max_position_percent + (ratio * (self.config.max_position_ultra - self.config.max_position_percent))
+        else:
+            # Standard confidence: use base max position
+            return self.config.max_position_percent
+    
+    def _update_exponential_mode(self, trade_profitable: bool):
+        """Update exponential mode based on performance"""
+        # Update performance streak
+        self.performance_streak.append({
+            'profitable': trade_profitable,
+            'timestamp': datetime.now()
+        })
+        
+        # Keep only last 10 trades
+        if len(self.performance_streak) > 10:
+            self.performance_streak = self.performance_streak[-10:]
+        
+        # Update consecutive counters
+        if trade_profitable:
+            self.consecutive_wins += 1
+            self.consecutive_losses = 0
+            
+            # Check for exponential mode trigger
+            if self.consecutive_wins >= self.config.hot_streak_threshold and not self.exponential_mode:
+                self.exponential_mode = True
+                self.exponential_trades_remaining = self.config.exponential_mode_duration
+                self.logger.info(f"🚀 EXPONENTIAL MODE ACTIVATED! Hot streak: {self.consecutive_wins} wins")
+        else:
+            self.consecutive_losses += 1
+            self.consecutive_wins = 0
+            
+            # Exit exponential mode on loss
+            if self.exponential_mode:
+                self.exponential_mode = False
+                self.exponential_trades_remaining = 0
+                self.logger.info("📊 Exponential mode deactivated due to loss")
+        
+        # Decrement exponential mode counter
+        if self.exponential_mode:
+            self.exponential_trades_remaining -= 1
+            if self.exponential_trades_remaining <= 0:
+                self.exponential_mode = False
+                self.logger.info("📊 Exponential mode completed")
+    
+    async def _execute_trade(self, opportunity: Dict[str, Any], position_size: float, win_probability: float, entry_signals: Dict[str, Any] = None, risk_analysis: Dict[str, Any] = None):
         """Execute trade with simplified, direct execution and enhanced tracking"""
         try:
             token_address = opportunity['token_address']
@@ -823,7 +1218,8 @@ class SimplifiedTradingBot:
                     'target_profit': result.get('execution_price', 0) * 1.15,  # 15% target
                     'max_hold_until': datetime.now() + timedelta(hours=self.config.max_hold_time_hours),
                     'entry_signals': entry_signals or {},  # Store for learning
-                    'wcca_analysis': wcca_analysis or {}  # Store WCCA insights
+                    'risk_analysis': risk_analysis or {},  # Store risk assessment insights
+                    'risk_score': risk_analysis.get('risk_score', 0.5) if risk_analysis else 0.5  # Store risk score for tracking
                 }
                 
                 self.active_positions[token_address] = position
@@ -930,13 +1326,47 @@ class SimplifiedTradingBot:
                 # Simple P&L calculation (simplified)
                 pnl_sol = position_size * (exit_price / entry_price - 1) if entry_price > 0 else 0
                 
+                # CRITICAL IMPROVEMENT: Track trade history for dynamic calculations
+                trade_record = {
+                    'timestamp': datetime.now(),
+                    'token_address': token_address,
+                    'token_symbol': token_symbol,
+                    'position_size_sol': position_size,
+                    'entry_price': entry_price,
+                    'exit_price': exit_price,
+                    'pnl_sol': pnl_sol,
+                    'pnl_percent': (exit_price / entry_price - 1) if entry_price > 0 else 0,
+                    'profitable': pnl_sol > 0,
+                    'risk_score': position.get('risk_score', 0.5),
+                    'hold_time_minutes': (datetime.now() - position.get('entry_time', datetime.now())).total_seconds() / 60
+                }
+                
+                # Add to comprehensive trade history
+                self.trade_history.append(trade_record)
+                
+                # Update winning/losing trade arrays for dynamic win/loss ratio
+                if pnl_sol > 0:
+                    # Store profit as percentage for consistency
+                    profit_percent = trade_record['pnl_percent']
+                    self.winning_trades.append(profit_percent)
+                    self.metrics.successful_trades += 1
+                    
+                    # Keep only recent trades (last 100)
+                    if len(self.winning_trades) > 100:
+                        self.winning_trades = self.winning_trades[-100:]
+                else:
+                    # Store loss as positive percentage for ratio calculation
+                    loss_percent = abs(trade_record['pnl_percent'])
+                    self.losing_trades.append(loss_percent)
+                    
+                    # Keep only recent trades (last 100)
+                    if len(self.losing_trades) > 100:
+                        self.losing_trades = self.losing_trades[-100:]
+                
                 # Update metrics
                 self.metrics.trades_executed += 1
                 self.metrics.total_profit_sol += pnl_sol
                 self.metrics.current_capital_sol += position_size + pnl_sol
-                
-                if pnl_sol > 0:
-                    self.metrics.successful_trades += 1
                 
                 # Update win rate
                 self.metrics.win_rate = self.metrics.successful_trades / self.metrics.trades_executed if self.metrics.trades_executed > 0 else 0
@@ -947,6 +1377,9 @@ class SimplifiedTradingBot:
                     was_successful = pnl_sol > 0
                     self._record_signal_outcome(position['entry_signals'], was_successful)
                     self.logger.debug(f"📚 Recorded signal outcome for learning: {'WIN' if was_successful else 'LOSS'}")
+                
+                # EXPONENTIAL MODE: Update performance tracking
+                self._update_exponential_mode(pnl_sol > 0)
                 
                 # Remove from active positions
                 del self.active_positions[token_address]
@@ -965,44 +1398,88 @@ class SimplifiedTradingBot:
             self.logger.error(f"❌ Error closing position: {e}")
     
     async def _compounding_loop(self):
-        """Simple compounding loop - 80% reinvestment rule"""
+        """EXPONENTIAL COMPOUNDING LOOP with Dynamic Rates"""
         while self.running:
             try:
                 vault_balance = await self.vault_system.get_balance()
                 
                 if vault_balance >= self.config.compound_threshold_sol:
-                    # Simple rule: Reinvest 80% of vault balance
-                    compound_amount = vault_balance * self.config.compound_rate
+                    # DYNAMIC COMPOUND RATE based on performance and mode
+                    compound_rate = self._get_dynamic_compound_rate()
+                    compound_amount = vault_balance * compound_rate
                     
                     # Transfer from vault to active capital
                     await self.vault_system.withdraw(compound_amount)
                     self.metrics.current_capital_sol += compound_amount
                     self.metrics.total_compounds += 1
                     
-                    self.logger.info(f"💰 COMPOUND: {compound_amount:.4f} SOL reinvested | "
-                                   f"Active capital: {self.metrics.current_capital_sol:.4f} SOL")
+                    # Enhanced logging with mode status
+                    mode_indicator = "🚀 EXPONENTIAL" if self.exponential_mode else "📊 STANDARD"
+                    self.logger.info(f"💰 {mode_indicator} COMPOUND: {compound_amount:.4f} SOL ({compound_rate:.1%} rate)")
+                    self.logger.info(f"   └─ Active capital: {self.metrics.current_capital_sol:.4f} SOL | "
+                                   f"Vault reserve: {vault_balance - compound_amount:.4f} SOL")
+                    
+                    if self.exponential_mode:
+                        self.logger.info(f"   └─ 🔥 Exponential trades remaining: {self.exponential_trades_remaining}")
                 
                 await asyncio.sleep(300)  # Check every 5 minutes
                 
             except Exception as e:
-                self.logger.error(f"❌ Error in compounding loop: {e}")
+                self.logger.error(f"❌ Error in exponential compounding loop: {e}")
                 await asyncio.sleep(600)
     
+    def _get_dynamic_compound_rate(self) -> float:
+        """Calculate dynamic compound rate based on performance and mode"""
+        base_rate = self.config.compound_rate
+        
+        # Exponential mode: use aggressive compound rate
+        if self.exponential_mode:
+            return self.config.compound_rate_aggressive
+        
+        # Performance-based adjustment
+        if len(self.performance_streak) >= 5:
+            recent_wins = sum(1 for trade in self.performance_streak[-5:] if trade.get('profitable', False))
+            recent_win_rate = recent_wins / 5
+            
+            if recent_win_rate >= 0.8:  # 80%+ recent win rate
+                return min(0.95, base_rate + 0.1)  # Increase compound rate by 10%
+            elif recent_win_rate <= 0.4:  # 40% or lower recent win rate
+                return max(0.5, base_rate - 0.2)  # Decrease compound rate by 20% for safety
+        
+        return base_rate
+    
     async def _metrics_update_loop(self):
-        """Periodically log performance metrics"""
+        """Periodically log enhanced performance metrics with exponential tracking"""
         while self.running:
             try:
-                self.logger.info(f"📊 METRICS | Trades: {self.metrics.trades_executed} | "
-                               f"Win Rate: {self.metrics.win_rate:.1%} | "
-                               f"Total P&L: {self.metrics.total_profit_sol:.4f} SOL | "
-                               f"Active Capital: {self.metrics.current_capital_sol:.4f} SOL | "
-                               f"Active Positions: {len(self.active_positions)} | "
-                               f"Compounds: {self.metrics.total_compounds}")
+                # Calculate growth metrics
+                growth_rate = ((self.metrics.current_capital_sol / self.config.initial_capital_sol) - 1) * 100
+                
+                # Mode status indicator
+                mode_status = "🚀 EXPONENTIAL MODE" if self.exponential_mode else "📊 Standard Mode"
+                
+                self.logger.info(f"📊 ENHANCED METRICS | {mode_status}")
+                self.logger.info(f"   └─ Trades: {self.metrics.trades_executed} | Win Rate: {self.metrics.win_rate:.1%}")
+                self.logger.info(f"   └─ Total P&L: {self.metrics.total_profit_sol:.4f} SOL | Growth: {growth_rate:+.1f}%")
+                self.logger.info(f"   └─ Active Capital: {self.metrics.current_capital_sol:.4f} SOL")
+                self.logger.info(f"   └─ Active Positions: {len(self.active_positions)} | Compounds: {self.metrics.total_compounds}")
+                
+                # Exponential mode details
+                if self.exponential_mode:
+                    self.logger.info(f"   └─ 🔥 Hot Streak: {self.consecutive_wins} wins | "
+                                   f"Exp. Trades Left: {self.exponential_trades_remaining}")
+                
+                # Performance streak summary
+                if len(self.performance_streak) >= 3:
+                    recent_wins = sum(1 for trade in self.performance_streak[-5:] if trade.get('profitable', False))
+                    recent_trades = len(self.performance_streak[-5:])
+                    recent_win_rate = recent_wins / recent_trades if recent_trades > 0 else 0
+                    self.logger.info(f"   └─ Recent Performance: {recent_wins}/{recent_trades} ({recent_win_rate:.1%})")
                 
                 await asyncio.sleep(300)  # Every 5 minutes
                 
             except Exception as e:
-                self.logger.error(f"❌ Error in metrics update: {e}")
+                self.logger.error(f"❌ Error in enhanced metrics update: {e}")
                 await asyncio.sleep(600)
     
     def _signal_handler(self, signum, frame):

@@ -4,6 +4,12 @@ SWARM DECISION ENGINE - NARRATIVE-WEIGHTED OPPORTUNITY ANALYSIS
 
 Central decision-making engine that analyzes trading opportunities
 with narrative intelligence weighting and anti-fragile principles.
+
+MATHEMATICAL ENHANCEMENT:
+- Gradient Boosting Machine replaces Naive Bayes for feature correlation handling
+- LightGBM for fast, efficient ensemble learning
+- Feature engineering from multiple signal sources
+- Cold start problem handling with pre-trained models
 """
 
 import asyncio
@@ -11,7 +17,12 @@ from typing import Dict, List, Optional, Any, Tuple
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 import numpy as np
-import json # Added for Naive Bayes analysis
+import json
+import pickle
+import os
+import lightgbm as lgb
+from sklearn.preprocessing import StandardScaler
+from sklearn.model_selection import train_test_split
 
 from worker_ant_v1.utils.logger import setup_logger
 
@@ -43,14 +54,278 @@ class SwarmConsensus:
     reasoning: str
 
 
+class WinRatePredictionModel:
+    """
+    MATHEMATICAL ENHANCEMENT: Gradient Boosting Machine Win Rate Predictor
+    
+    Replaces Naive Bayes with LightGBM to handle feature correlation and complex interactions.
+    Provides sophisticated signal fusion and cold start problem handling.
+    
+    Features include:
+    - Technical indicators, sentiment scores, market structure
+    - Narrative alignment, volatility measures, liquidity metrics
+    - Time-based features, market regime indicators
+    """
+    
+    def __init__(self, model_dir: str = "data/win_rate_models"):
+        self.logger = setup_logger("WinRatePredictionModel")
+        self.model_dir = model_dir
+        
+        # LightGBM model
+        self.gbm_model: Optional[lgb.LGBMClassifier] = None
+        self.feature_scaler = StandardScaler()
+        
+        # Model configuration
+        self.model_params = {
+            'objective': 'binary',
+            'metric': 'binary_logloss',
+            'boosting_type': 'gbdt',
+            'num_leaves': 31,
+            'learning_rate': 0.05,
+            'feature_fraction': 0.9,
+            'bagging_fraction': 0.8,
+            'bagging_freq': 5,
+            'verbose': -1,
+            'random_state': 42
+        }
+        
+        # Feature engineering configuration
+        self.feature_names = [
+            # Technical indicators
+            'sentiment_score', 'viral_potential', 'technical_momentum',
+            'volume_profile', 'volatility_score', 'liquidity_score',
+            # Market structure
+            'market_cap', 'holder_count', 'transaction_velocity',
+            'whale_concentration', 'dev_holdings_percent',
+            # Narrative and timing
+            'narrative_alignment', 'market_timing_score', 'trend_strength',
+            'social_momentum', 'price_momentum', 'volume_momentum',
+            # Risk factors
+            'rug_risk_score', 'honeypot_risk', 'liquidity_risk',
+            'whale_dump_risk', 'contract_risk'
+        ]
+        
+        # Training status
+        self.model_trained = False
+        self.cold_start_handled = False
+        
+        # Create model directory
+        os.makedirs(self.model_dir, exist_ok=True)
+        
+        # Initialize model
+        self._initialize_model()
+    
+    def _initialize_model(self):
+        """Initialize GBM model with optimal parameters"""
+        try:
+            self.gbm_model = lgb.LGBMClassifier(**self.model_params)
+            self.logger.info("✅ LightGBM win rate model initialized")
+            
+            # Try to load pre-trained model
+            self._load_model()
+            
+        except Exception as e:
+            self.logger.error(f"❌ Error initializing GBM model: {e}")
+    
+    def _load_model(self):
+        """Load pre-trained model if available"""
+        try:
+            model_path = f"{self.model_dir}/win_rate_gbm_model.pkl"
+            scaler_path = f"{self.model_dir}/win_rate_scaler.pkl"
+            
+            if os.path.exists(model_path) and os.path.exists(scaler_path):
+                with open(model_path, 'rb') as f:
+                    self.gbm_model = pickle.load(f)
+                
+                with open(scaler_path, 'rb') as f:
+                    self.feature_scaler = pickle.load(f)
+                
+                self.model_trained = True
+                self.logger.info("✅ Pre-trained GBM win rate model loaded")
+            else:
+                self.logger.warning("⚠️ No pre-trained model found, creating default model")
+                self._create_cold_start_model()
+                
+        except Exception as e:
+            self.logger.error(f"❌ Error loading pre-trained model: {e}")
+            self._create_cold_start_model()
+    
+    def _create_cold_start_model(self):
+        """
+        COLD START SOLUTION: Create default model with synthetic training data
+        
+        Addresses the cold start problem by training on synthetic data patterns
+        that represent typical winning vs losing trades.
+        """
+        try:
+            self.logger.info("🚀 Creating cold start GBM model with synthetic data")
+            
+            # Generate synthetic training data
+            np.random.seed(42)
+            n_samples = 2000
+            
+            # Create realistic feature distributions for winning trades
+            winning_features = []
+            for _ in range(n_samples // 2):
+                features = {
+                    'sentiment_score': np.random.normal(0.7, 0.15),  # Higher sentiment for wins
+                    'viral_potential': np.random.normal(0.6, 0.2),
+                    'technical_momentum': np.random.normal(0.65, 0.2),
+                    'volume_profile': np.random.normal(0.7, 0.15),
+                    'volatility_score': np.random.normal(0.5, 0.2),
+                    'liquidity_score': np.random.normal(0.8, 0.1),  # Higher liquidity for wins
+                    'market_cap': np.random.lognormal(12, 1),
+                    'holder_count': np.random.lognormal(5, 0.5),
+                    'transaction_velocity': np.random.normal(0.6, 0.2),
+                    'whale_concentration': np.random.normal(0.3, 0.15),  # Lower concentration
+                    'dev_holdings_percent': np.random.normal(15, 5),
+                    'narrative_alignment': np.random.normal(0.75, 0.15),
+                    'market_timing_score': np.random.normal(0.65, 0.2),
+                    'trend_strength': np.random.normal(0.7, 0.15),
+                    'social_momentum': np.random.normal(0.6, 0.2),
+                    'price_momentum': np.random.normal(0.65, 0.2),
+                    'volume_momentum': np.random.normal(0.7, 0.15),
+                    'rug_risk_score': np.random.normal(0.2, 0.1),  # Lower risk for wins
+                    'honeypot_risk': np.random.normal(0.15, 0.1),
+                    'liquidity_risk': np.random.normal(0.1, 0.05),
+                    'whale_dump_risk': np.random.normal(0.2, 0.1),
+                    'contract_risk': np.random.normal(0.1, 0.05)
+                }
+                winning_features.append([max(0, min(1, features[name])) for name in self.feature_names])
+            
+            # Create realistic feature distributions for losing trades
+            losing_features = []
+            for _ in range(n_samples // 2):
+                features = {
+                    'sentiment_score': np.random.normal(0.3, 0.15),  # Lower sentiment for losses
+                    'viral_potential': np.random.normal(0.25, 0.15),
+                    'technical_momentum': np.random.normal(0.35, 0.2),
+                    'volume_profile': np.random.normal(0.4, 0.2),
+                    'volatility_score': np.random.normal(0.7, 0.2),  # Higher volatility
+                    'liquidity_score': np.random.normal(0.3, 0.15),  # Lower liquidity
+                    'market_cap': np.random.lognormal(10, 1.5),
+                    'holder_count': np.random.lognormal(3, 0.8),
+                    'transaction_velocity': np.random.normal(0.3, 0.15),
+                    'whale_concentration': np.random.normal(0.7, 0.2),  # Higher concentration
+                    'dev_holdings_percent': np.random.normal(25, 10),
+                    'narrative_alignment': np.random.normal(0.25, 0.15),
+                    'market_timing_score': np.random.normal(0.3, 0.2),
+                    'trend_strength': np.random.normal(0.25, 0.15),
+                    'social_momentum': np.random.normal(0.3, 0.15),
+                    'price_momentum': np.random.normal(0.25, 0.2),
+                    'volume_momentum': np.random.normal(0.3, 0.15),
+                    'rug_risk_score': np.random.normal(0.7, 0.2),  # Higher risk for losses
+                    'honeypot_risk': np.random.normal(0.6, 0.2),
+                    'liquidity_risk': np.random.normal(0.8, 0.15),
+                    'whale_dump_risk': np.random.normal(0.7, 0.2),
+                    'contract_risk': np.random.normal(0.6, 0.2)
+                }
+                losing_features.append([max(0, min(1, features[name])) for name in self.feature_names])
+            
+            # Combine datasets
+            X = np.array(winning_features + losing_features)
+            y = np.array([1] * (n_samples // 2) + [0] * (n_samples // 2))
+            
+            # Train the model
+            self.feature_scaler.fit(X)
+            X_scaled = self.feature_scaler.transform(X)
+            
+            self.gbm_model.fit(X_scaled, y)
+            
+            self.model_trained = True
+            self.cold_start_handled = True
+            
+            self.logger.info("✅ Cold start GBM model trained successfully with synthetic data")
+            
+        except Exception as e:
+            self.logger.error(f"❌ Error creating cold start model: {e}")
+    
+    def _extract_features(self, token_address: str, market_data: Dict[str, Any], 
+                         current_signals: Dict[str, Any]) -> np.ndarray:
+        """Extract feature vector from market data and signals"""
+        try:
+            features = []
+            
+            # Technical indicators
+            features.append(current_signals.get('sentiment_score', 0.5))
+            features.append(current_signals.get('viral_potential', 0.3))
+            features.append(current_signals.get('technical_momentum', 0.5))
+            features.append(current_signals.get('volume_profile', 0.5))
+            features.append(market_data.get('volatility_score', 0.5))
+            features.append(market_data.get('liquidity_score', 0.5))
+            
+            # Market structure
+            features.append(market_data.get('market_cap', 100000.0) / 1000000.0)  # Normalize
+            features.append(market_data.get('holder_count', 100) / 1000.0)  # Normalize
+            features.append(current_signals.get('transaction_velocity', 0.5))
+            features.append(market_data.get('whale_concentration', 0.3))
+            features.append(market_data.get('dev_holdings_percent', 15.0) / 100.0)  # Normalize
+            
+            # Narrative and timing
+            features.append(current_signals.get('narrative_alignment', 0.5))
+            features.append(current_signals.get('market_timing_score', 0.5))
+            features.append(current_signals.get('trend_strength', 0.5))
+            features.append(current_signals.get('social_momentum', 0.5))
+            features.append(current_signals.get('price_momentum', 0.5))
+            features.append(current_signals.get('volume_momentum', 0.5))
+            
+            # Risk factors
+            features.append(current_signals.get('rug_risk_score', 0.3))
+            features.append(current_signals.get('honeypot_risk', 0.2))
+            features.append(current_signals.get('liquidity_risk', 0.2))
+            features.append(current_signals.get('whale_dump_risk', 0.3))
+            features.append(current_signals.get('contract_risk', 0.2))
+            
+            return np.array(features).reshape(1, -1)
+            
+        except Exception as e:
+            self.logger.error(f"Error extracting features: {e}")
+            return np.zeros((1, len(self.feature_names)))
+    
+    async def predict_win_probability(self, token_address: str, market_data: Dict[str, Any], 
+                                    current_signals: Dict[str, Any]) -> float:
+        """
+        ENHANCED WIN RATE PREDICTION: Use GBM to predict win probability
+        
+        Handles feature correlations and complex interactions that Naive Bayes cannot.
+        """
+        try:
+            if not self.model_trained:
+                self.logger.warning("⚠️ Model not trained, using fallback probability")
+                return 0.5
+            
+            # Extract and scale features
+            features = self._extract_features(token_address, market_data, current_signals)
+            features_scaled = self.feature_scaler.transform(features)
+            
+            # Get prediction probability
+            win_probability = self.gbm_model.predict_proba(features_scaled)[0][1]
+            
+            # Apply smoothing to prevent extreme predictions
+            win_probability = max(0.05, min(0.95, win_probability))
+            
+            self.logger.debug(f"📊 GBM win prediction for {token_address[:8]}: {win_probability:.3f}")
+            
+            return win_probability
+            
+        except Exception as e:
+            self.logger.error(f"Error in GBM win prediction: {e}")
+            return 0.5
+
+
 class SwarmDecisionEngine:
     """
     Central decision engine that processes multiple signals and applies
     narrative weighting to determine optimal trading decisions.
+    
+    MATHEMATICAL ENHANCEMENT: Uses GBM instead of Naive Bayes for win rate prediction.
     """
     
     def __init__(self, kill_switch=None):
         self.logger = setup_logger("SwarmDecisionEngine")
+        
+        # MATHEMATICAL ENHANCEMENT: GBM Win Rate Predictor
+        self.win_rate_predictor = WinRatePredictionModel()
         
         # Safety systems
         self.kill_switch = kill_switch
@@ -76,7 +351,7 @@ class SwarmDecisionEngine:
             'risk_cascading_prevention': True
         }
         
-        self.logger.info("🧠 Swarm Decision Engine initialized with narrative weighting")
+        self.logger.info("🧠 Swarm Decision Engine initialized with GBM win rate prediction")
     
     async def analyze_opportunity(
         self, 
@@ -85,15 +360,15 @@ class SwarmDecisionEngine:
         narrative_weight: float = 1.0
     ) -> float:
         """
-        Win-Rate Engine: Naive Bayes Probability Calculator
+        MATHEMATICAL ENHANCEMENT: Gradient Boosting Machine Win Rate Predictor
         
-        Calculates the precise probability of trade success using historical signal patterns.
-        Uses Naive Bayes formula: P(Win | Signals) ∝ P(Win) * Π P(Signal_i | Win)
+        Replaces Naive Bayes with sophisticated GBM that handles feature correlations.
+        Uses LightGBM for fast, accurate ensemble learning with cold start handling.
         
         Args:
             token_address: Token contract address
             market_data: Current market data for the token
-            narrative_weight: Narrative strength multiplier (legacy parameter)
+            narrative_weight: Narrative strength multiplier
             
         Returns:
             float: Win probability (0.0 to 1.0)
@@ -104,67 +379,58 @@ class SwarmDecisionEngine:
             return 0.0
             
         try:
-            self.logger.debug(f"🧠 Naive Bayes analysis for {token_address}")
+            self.logger.debug(f"🧠 GBM analysis for {token_address}")
             
-            # Load cached signal probabilities
-            signal_probabilities = await self._load_signal_probabilities()
-            if not signal_probabilities:
-                self.logger.warning("⚠️ No signal probabilities available, using default")
-                return 0.5  # Default 50% probability
-            
-            # Gather current signals from all AI ants
+            # Gather comprehensive signals from all AI modules
             current_signals = await self._gather_current_signals(token_address, market_data)
             if not current_signals:
-                self.logger.warning("⚠️ No current signals available")
+                self.logger.warning("⚠️ No current signals available, using default")
                 return 0.5
+            
+            # Enhanced signal processing with narrative weighting
+            enhanced_signals = current_signals.copy()
+            
+            # Apply narrative weighting to relevant signals
+            if narrative_weight != 1.0:
+                narrative_influenced_signals = [
+                    'narrative_alignment', 'social_momentum', 'sentiment_score',
+                    'viral_potential', 'trend_strength'
+                ]
                 
-            # Get base probabilities
-            base_probs = signal_probabilities.get('base_probabilities', {'p_win': 0.5, 'p_loss': 0.5})
-            p_win_base = base_probs['p_win']
-            p_loss_base = base_probs['p_loss']
-            
-            # Calculate Naive Bayes likelihoods
-            likelihood_win = p_win_base
-            likelihood_loss = p_loss_base
-            
-            signal_conditionals = signal_probabilities.get('signal_conditionals', {})
-            
-            # Apply Naive Bayes for each active signal
-            active_signals_count = 0
-            for signal_name, signal_value in current_signals.items():
-                if signal_name in signal_conditionals and self._signal_is_positive(signal_value):
-                    signal_data = signal_conditionals[signal_name]
-                    
-                    # Get conditional probabilities
-                    p_signal_given_win = signal_data.get('p_signal_given_win', 0.5)
-                    p_signal_given_loss = signal_data.get('p_signal_given_loss', 0.5)
-                    confidence = signal_data.get('confidence', 0.5)
-                    
-                    # Only use signals with reasonable confidence
-                    if confidence > 0.3:
-                        likelihood_win *= p_signal_given_win
-                        likelihood_loss *= p_signal_given_loss
-                        active_signals_count += 1
+                for signal_name in narrative_influenced_signals:
+                    if signal_name in enhanced_signals:
+                        original_value = enhanced_signals[signal_name]
+                        # Apply narrative weight with bounds checking
+                        weighted_value = original_value * narrative_weight
+                        enhanced_signals[signal_name] = max(0.0, min(1.0, weighted_value))
                         
-                        self.logger.debug(f"📊 {signal_name}: P(S|W)={p_signal_given_win:.3f}, P(S|L)={p_signal_given_loss:.3f}")
+                        self.logger.debug(f"📊 Narrative weighting {signal_name}: "
+                                        f"{original_value:.3f} → {enhanced_signals[signal_name]:.3f}")
             
-            # Normalize to get final probability
-            total_likelihood = likelihood_win + likelihood_loss
-            if total_likelihood > 0:
-                final_win_probability = likelihood_win / total_likelihood
-            else:
-                final_win_probability = 0.5  # Default if no valid signals
+            # Use GBM for sophisticated win probability prediction
+            win_probability = await self.win_rate_predictor.predict_win_probability(
+                token_address, market_data, enhanced_signals
+            )
             
-            # Apply smoothing to prevent extreme probabilities
-            final_win_probability = max(0.05, min(0.95, final_win_probability))
+            # Apply additional confidence adjustments based on signal quality
+            signal_quality_score = await self._assess_signal_quality(enhanced_signals)
+            confidence_adjusted_probability = win_probability * (0.8 + 0.2 * signal_quality_score)
             
-            self.logger.info(f"✅ Naive Bayes result for {token_address}: {final_win_probability:.3f} "
-                           f"({active_signals_count} signals analyzed)")
+            # Apply narrative momentum bias (anti-fragile factor)
+            if self.anti_fragile_factors.get('narrative_momentum_bias', False) and narrative_weight > 1.2:
+                momentum_boost = min(0.1, (narrative_weight - 1.0) * 0.05)
+                confidence_adjusted_probability += momentum_boost
             
-            return final_win_probability
+            # Ensure bounds
+            final_probability = max(0.05, min(0.95, confidence_adjusted_probability))
+            
+            self.logger.info(f"✅ GBM result for {token_address}: {final_probability:.3f} "
+                           f"(quality: {signal_quality_score:.2f}, narrative: {narrative_weight:.2f})")
+            
+            return final_probability
             
         except Exception as e:
-            self.logger.error(f"❌ Naive Bayes analysis failed for {token_address}: {e}")
+            self.logger.error(f"❌ GBM analysis failed for {token_address}: {e}")
             return 0.5  # Safe default
     
     async def _load_signal_probabilities(self) -> Optional[Dict[str, Any]]:
@@ -234,6 +500,86 @@ class SwarmDecisionEngine:
             self.logger.error(f"Error gathering current signals: {e}")
             return {}
     
+    async def _assess_signal_quality(self, signals: Dict[str, Any]) -> float:
+        """
+        MATHEMATICAL ENHANCEMENT: Assess overall signal quality for confidence adjustment
+        
+        Evaluates the reliability and completeness of available signals for 
+        more accurate confidence weighting in GBM predictions.
+        
+        Args:
+            signals: Dictionary of current signal values
+            
+        Returns:
+            float: Signal quality score (0.0 to 1.0)
+        """
+        try:
+            quality_factors = []
+            
+            # Check signal completeness (how many expected signals are present)
+            expected_signals = [
+                'sentiment_score', 'viral_potential', 'technical_momentum',
+                'volume_profile', 'narrative_alignment', 'rug_risk_score'
+            ]
+            
+            present_signals = sum(1 for signal in expected_signals if signal in signals)
+            completeness_score = present_signals / len(expected_signals)
+            quality_factors.append(completeness_score)
+            
+            # Check signal confidence (how far from neutral 0.5 are the signals)
+            confidence_scores = []
+            for signal_name, signal_value in signals.items():
+                if isinstance(signal_value, (int, float)) and 0 <= signal_value <= 1:
+                    # Distance from neutral (0.5) indicates signal strength
+                    confidence = abs(signal_value - 0.5) * 2  # Scale to 0-1
+                    confidence_scores.append(confidence)
+            
+            avg_confidence = sum(confidence_scores) / len(confidence_scores) if confidence_scores else 0.5
+            quality_factors.append(avg_confidence)
+            
+            # Check for signal consistency (are related signals aligned?)
+            consistency_score = 1.0  # Default high consistency
+            
+            # Example: sentiment and social momentum should be correlated
+            sentiment = signals.get('sentiment_score', 0.5)
+            social_momentum = signals.get('social_momentum', 0.5)
+            if abs(sentiment - social_momentum) > 0.3:  # Large divergence
+                consistency_score *= 0.8
+            
+            # Technical momentum and price momentum should be correlated
+            tech_momentum = signals.get('technical_momentum', 0.5)
+            price_momentum = signals.get('price_momentum', 0.5)
+            if abs(tech_momentum - price_momentum) > 0.3:
+                consistency_score *= 0.8
+            
+            quality_factors.append(consistency_score)
+            
+            # Check for extreme values that might indicate data quality issues
+            extreme_value_penalty = 1.0
+            for signal_value in signals.values():
+                if isinstance(signal_value, (int, float)):
+                    if signal_value <= 0.01 or signal_value >= 0.99:  # Very extreme values
+                        extreme_value_penalty *= 0.95  # Small penalty per extreme value
+            
+            quality_factors.append(extreme_value_penalty)
+            
+            # Calculate weighted average
+            weights = [0.3, 0.3, 0.25, 0.15]  # Completeness, confidence, consistency, extreme values
+            final_quality = sum(factor * weight for factor, weight in zip(quality_factors, weights))
+            
+            # Ensure bounds
+            final_quality = max(0.1, min(1.0, final_quality))
+            
+            self.logger.debug(f"📊 Signal quality assessment: {final_quality:.3f} "
+                           f"(completeness: {completeness_score:.2f}, confidence: {avg_confidence:.2f}, "
+                           f"consistency: {consistency_score:.2f})")
+            
+            return final_quality
+            
+        except Exception as e:
+            self.logger.error(f"Error assessing signal quality: {e}")
+            return 0.5  # Default medium quality
+
     def _signal_is_positive(self, signal_value: Any) -> bool:
         """
         Determine if a signal value should be considered 'positive'
